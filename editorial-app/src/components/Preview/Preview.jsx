@@ -605,15 +605,10 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
             hyphens: 'auto',
             wordBreak: 'break-word'
           }}
-          onMouseEnter={(e) => {
-            magnifierTimeoutRef.current = setTimeout(() => {
-              setShowMagnifier(true);
-            }, 300);
+          onMouseEnter={() => {
+            setShowMagnifier(true);
           }}
           onMouseLeave={() => {
-            if (magnifierTimeoutRef.current) {
-              clearTimeout(magnifierTimeoutRef.current);
-            }
             setShowMagnifier(false);
           }}
           onMouseMove={(e) => {
@@ -624,8 +619,8 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
               mousePosRef.current = { x, y };
               
               if (magnifierPanelRef.current) {
-                const offsetX = (x - 50) * 2;
-                const offsetY = (y - 50) * 2;
+                const offsetX = (x - 50) * 3;
+                const offsetY = (y - 50) * 3;
                 magnifierPanelRef.current.style.transform = 
                   `translate(${-offsetX}px, ${-offsetY}px)`;
               }
@@ -657,35 +652,37 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
           <div className="magnifier-panel-header">
             <span>Vista 150%</span>
           </div>
-          <div 
-            ref={magnifierPanelRef}
-            className="magnifier-panel-content"
-          >
-            <div
-              className="preview-page"
-              lang="es"
-              style={{
-                width: pageWidth,
-                height: pageHeight,
-                padding: `${marginTop}px ${marginRight}px ${marginBottom}px ${marginLeft}px`,
-                fontSize: fontSize,
-                fontFamily: fontFamily,
-                lineHeight: lineHeight,
-                textAlign: textAlign,
-                textJustify: 'inter-word',
-                hyphens: 'auto',
-                wordBreak: 'break-word',
-                transform: 'scale(1.5)',
-                transformOrigin: 'top left',
-                background: 'white',
-                boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
-              }}
+          <div className="magnifier-panel-content">
+            <div 
+              ref={magnifierPanelRef}
+              className="magnifier-page-wrapper"
             >
-              <div 
-                className="preview-content"
-                style={{ height: '100%', overflow: 'hidden' }}
-                dangerouslySetInnerHTML={{ __html: currentPageData.isBlank ? '' : currentPageData.html }}
-              />
+              <div
+                className="preview-page"
+                lang="es"
+                style={{
+                  width: pageWidth,
+                  height: pageHeight,
+                  padding: `${marginTop}px ${marginRight}px ${marginBottom}px ${marginLeft}px`,
+                  fontSize: fontSize,
+                  fontFamily: fontFamily,
+                  lineHeight: lineHeight,
+                  textAlign: textAlign,
+                  textJustify: 'inter-word',
+                  hyphens: 'auto',
+                  wordBreak: 'break-word',
+                  transform: 'scale(1.5)',
+                  transformOrigin: 'top left',
+                  background: 'white',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+                }}
+              >
+                <div 
+                  className="preview-content"
+                  style={{ height: '100%', overflow: 'hidden' }}
+                  dangerouslySetInnerHTML={{ __html: currentPageData.isBlank ? '' : currentPageData.html }}
+                />
+              </div>
             </div>
           </div>
         </div>

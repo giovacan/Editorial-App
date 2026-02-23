@@ -189,10 +189,14 @@
 
 .magnifier-panel-content {
   padding: 1rem;
-  overflow: auto;
+  overflow: hidden;
   max-height: calc(80vh - 40px);
   background: #f3f4f6;
-  transition: transform 0.1s ease-out;
+}
+
+.magnifier-page-wrapper {
+  transition: transform 0.05s linear;
+  will-change: transform;
 }
 
 .magnifier-panel-content .preview-page {
