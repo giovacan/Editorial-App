@@ -1,0 +1,108 @@
+/* ================================================================
+   ESTILOS DEL SIDEBAR
+   ================================================================ */
+
+.sidebar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+}
+
+/* Generales */
+.sidebar-section {
+    margin-bottom: var(--space-2xl);
+}
+
+.sidebar-section:last-child {
+    margin-bottom: 0;
+}
+
+.sidebar-title {
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    margin-bottom: var(--space-md);
+    padding-bottom: var(--space-md);
+    border-bottom: var(--border-width) solid var(--color-border);
+}
+
+/* Controles */
+.structure-controls {
+    margin-bottom: var(--space-lg);
+}
+
+.structure-controls .btn {
+    width: 100%;
+}
+
+/* Panel de estructura */
+.structure-panel {
+    background-color: var(--color-bg);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--border-radius-md);
+    padding: var(--space-md);
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.structure-panel .empty-state {
+    padding: var(--space-lg);
+}
+
+/* Exportación */
+.export-section {
+    margin-bottom: var(--space-2xl);
+}
+
+.export-section h3 {
+    font-size: var(--font-size-base);
+    font-weight: 600;
+    margin-bottom: var(--space-md);
+}
+
+.export-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+
+.export-buttons .btn {
+    width: 100%;
+    justify-content: flex-start;
+}
+
+.ai-section {
+    padding: var(--space-lg);
+    background-color: rgba(37, 99, 235, 0.05);
+    border: var(--border-width) solid rgba(37, 99, 235, 0.2);
+    border-radius: var(--border-radius-md);
+}
+
+.ai-stats {
+    margin-top: var(--space-md);
+    padding-top: var(--space-md);
+    border-top: var(--border-width) solid rgba(37, 99, 235, 0.2);
+    font-size: var(--font-size-sm);
+}
+
+/* Sub-opciones colapsables (números de página, encabezados) */
+.sub-options {
+    margin: 4px 0 8px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: var(--font-size-sm);
+}
+
+.sub-options label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    color: var(--color-text-light, #666);
+}
+
+.sub-options select {
+    font-size: var(--font-size-sm);
+    padding: 2px 4px;
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--border-radius-sm, 3px);
+    background: var(--color-surface, #fff);
+}

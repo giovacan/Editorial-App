@@ -1,0 +1,423 @@
+/* ================================================================
+   EDITOR - Estilos para el área de carga y edición
+   ================================================================ */
+
+/* ================================================================
+   UPLOAD AREA - Área de carga de archivos
+   ================================================================ */
+
+.upload-area {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-2xl);
+    padding: var(--space-3xl);
+    overflow-y: auto;
+    flex: 1;
+}
+
+.upload-column {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+}
+
+.upload-box,
+.paste-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: var(--space-lg);
+    padding: var(--space-2xl);
+    border: 2px dashed var(--color-border);
+    border-radius: var(--border-radius-lg);
+    background-color: var(--color-bg-alt);
+    min-height: 300px;
+    transition: all 0.2s;
+}
+
+.upload-box:hover,
+.paste-box:hover {
+    border-color: var(--color-primary);
+    background-color: rgba(37, 99, 235, 0.05);
+}
+
+.upload-icon {
+    color: var(--color-text-light);
+    width: 48px;
+    height: 48px;
+}
+
+.upload-title,
+.paste-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.upload-subtitle,
+.paste-subtitle {
+    color: var(--color-text-light);
+    margin: 0;
+    font-size: 14px;
+}
+
+.upload-formats {
+    font-size: 12px;
+    color: var(--color-text-light);
+}
+
+.upload-info,
+.upload-tips {
+    background-color: white;
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-md);
+    padding: var(--space-lg);
+}
+
+.upload-info h3,
+.upload-tips h3 {
+    font-size: 14px;
+    margin-bottom: var(--space-sm);
+    font-weight: 600;
+}
+
+.upload-info ul,
+.upload-tips ul {
+    margin: 0;
+    padding-left: var(--space-lg);
+}
+
+.upload-info li,
+.upload-tips li {
+    margin-bottom: var(--space-sm);
+    font-size: 12px;
+    color: var(--color-text-light);
+}
+
+.upload-divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2px;
+    background-color: var(--color-border);
+    color: var(--color-text-light);
+    font-weight: 600;
+    padding: 0 var(--space-md);
+    min-height: 200px;
+}
+
+.textarea-paste {
+    width: 100%;
+    min-height: 250px;
+    font-family: Georgia, serif;
+    padding: var(--space-lg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-md);
+    font-size: 14px;
+    resize: vertical;
+}
+
+/* ================================================================
+   EDITOR AREA - Área de edición del texto
+   ================================================================ */
+
+.editor-area {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.editor-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-md);
+    background-color: var(--color-bg-alt);
+    border-bottom: 1px solid var(--color-border);
+    flex-wrap: wrap;
+    min-height: 50px;
+    flex-shrink: 0;
+}
+
+.toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+}
+
+.toolbar-separator {
+    width: 1px;
+    height: 24px;
+    background-color: var(--color-border);
+    margin: 0 var(--space-sm);
+}
+
+.toolbar-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--color-text-light);
+}
+
+.toolbar-chapter-name {
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--color-text);
+    white-space: nowrap;
+}
+
+.toolbar-stats {
+    font-size: 12px;
+    color: var(--color-text-light);
+}
+
+.editor-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-lg);
+}
+
+.main-editor {
+    font-family: Georgia, serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--color-text);
+    min-height: 300px;
+    padding: var(--space-lg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-md);
+}
+
+.main-editor:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.editor-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-md) var(--space-lg);
+    background-color: var(--color-bg-alt);
+    border-top: 1px solid var(--color-border);
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.editor-info {
+    font-size: 12px;
+    color: var(--color-text-light);
+}
+
+.editor-actions {
+    display: flex;
+    gap: var(--space-sm);
+}
+
+/* ================================================================
+   ESTRUCTURA DE CAPÍTULOS
+   ================================================================ */
+
+.structure-controls {
+    margin-bottom: var(--space-lg);
+}
+
+.structure-controls .btn {
+    width: 100%;
+}
+
+.structure-panel {
+    background-color: white;
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-md);
+    padding: var(--space-md);
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.chapter-item {
+    padding: var(--space-md);
+    margin-bottom: var(--space-sm);
+    background-color: var(--color-bg-alt);
+    border-left: 3px solid var(--color-primary);
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.chapter-item:hover {
+    background-color: white;
+}
+
+.chapter-item.active {
+    background-color: rgba(37, 99, 235, 0.1);
+}
+
+.chapter-item-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.chapter-item-title {
+    font-weight: 600;
+    font-size: 12px;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.btn-delete-item {
+    display: none;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--color-text-light);
+    font-size: 11px;
+    line-height: 1;
+    padding: 2px 4px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    transition: color 0.15s, background 0.15s;
+}
+
+.chapter-item:hover .btn-delete-item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-delete-item:hover {
+    color: #dc2626;
+    background: rgba(220, 38, 38, 0.1);
+}
+
+.chapter-item-meta {
+    font-size: 11px;
+    color: var(--color-text-light);
+}
+
+/* Badge de tipo (Cap. / Sección) */
+.item-type-badge {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    flex-shrink: 0;
+}
+
+.chapter-badge {
+    background: rgba(37, 99, 235, 0.12);
+    color: var(--color-primary);
+}
+
+.section-badge {
+    background: rgba(22, 163, 74, 0.12);
+    color: var(--color-success);
+}
+
+/* Sección: borde verde en lugar de azul */
+.section-item {
+    border-left-color: var(--color-success);
+}
+
+.section-item.active {
+    background-color: rgba(22, 163, 74, 0.08);
+}
+
+/* Botones de estructura en fila */
+.structure-controls {
+    display: flex;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-lg);
+}
+
+.structure-controls .btn {
+    flex: 1;
+}
+
+/* ================================================================
+   ESTADÍSTICAS
+   ================================================================ */
+
+.document-stats {
+    background-color: white;
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-md);
+    padding: var(--space-lg);
+    margin-top: var(--space-lg);
+}
+
+.stats-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: var(--space-md);
+}
+
+.stats-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    font-size: 12px;
+}
+
+.stats-list dt {
+    display: inline;
+    font-weight: 600;
+}
+
+.stats-list dd {
+    display: inline;
+    color: var(--color-primary);
+    font-weight: 600;
+    margin-left: var(--space-sm);
+}
+
+/* ================================================================
+   RESPONSIVE
+   ================================================================ */
+
+@media (max-width: 1200px) {
+    .upload-area {
+        flex-direction: column;
+        gap: var(--space-lg);
+    }
+    
+    .upload-divider {
+        width: 100%;
+        height: 2px;
+        min-height: auto;
+    }
+}
+
+@media (max-width: 768px) {
+    .upload-area {
+        padding: var(--space-lg);
+    }
+    
+    .upload-info,
+    .upload-tips {
+        display: none;
+    }
+    
+    .upload-box,
+    .paste-box {
+        min-height: 250px;
+    }
+    
+    .editor-toolbar {
+        padding: var(--space-sm);
+        gap: var(--space-xs);
+    }
+}

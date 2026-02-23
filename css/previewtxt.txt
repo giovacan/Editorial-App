@@ -1,0 +1,88 @@
+/* ================================================================
+   ESTILOS DEL PREVIEW
+   ================================================================ */
+
+.preview-controls {
+    display: flex;
+    gap: var(--space-md);
+    margin-bottom: var(--space-lg);
+}
+
+.preview-controls button,
+.preview-controls select {
+    flex: 0 0 auto;
+}
+
+.preview-controls select {
+    width: auto;
+}
+
+.preview-container {
+    flex: 1;
+    background-color: var(--color-bg);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--border-radius-md);
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.preview-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-lg);
+    font-family: var(--font-serif);
+    font-size: var(--font-size-base);
+    line-height: var(--line-height-base);
+}
+
+.preview-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--color-text-light);
+    text-align: center;
+}
+
+.pagination-info {
+    padding: var(--space-md);
+    border-top: var(--border-width) solid var(--color-border);
+    text-align: center;
+    font-size: var(--font-size-sm);
+}
+
+.pagination-controls {
+    display: flex;
+    justify-content: center;
+    gap: var(--space-md);
+    margin-top: var(--space-md);
+}
+
+/* ================================================================
+   FULLSCREEN PREVIEW
+   ================================================================ */
+
+.fullscreen-preview {
+    position: fixed;
+    inset: 0;
+    background-color: #000;
+    z-index: var(--z-modal);
+    display: flex;
+    flex-direction: column;
+}
+
+.fullscreen-preview #btn-exit-fullscreen {
+    position: absolute;
+    top: var(--space-lg);
+    right: var(--space-lg);
+    background-color: rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+    z-index: 1001;
+}
+
+#fullscreen-preview-content {
+    flex: 1;
+    overflow-y: auto;
+    background-color: #222;
+}

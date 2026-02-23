@@ -1,0 +1,283 @@
+/* ================================================================
+   TIPOGRAFÍA AVANZADA
+   ================================================================ */
+
+/* Importar fuentes si es necesario */
+@import url('https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&display=swap');
+
+/* ================================================================
+   ESCALAS TIPOGRÁFICAS
+   ================================================================ */
+
+.text-xs {
+    font-size: var(--font-size-xs);
+    line-height: 1.4;
+}
+
+.text-sm {
+    font-size: var(--font-size-sm);
+    line-height: 1.5;
+}
+
+.text-base {
+    font-size: var(--font-size-base);
+    line-height: var(--line-height-base);
+}
+
+.text-lg {
+    font-size: var(--font-size-lg);
+    line-height: 1.7;
+}
+
+.text-xl {
+    font-size: var(--font-size-xl);
+    line-height: 1.8;
+}
+
+.text-2xl {
+    font-size: var(--font-size-2xl);
+    line-height: 2;
+}
+
+/* ================================================================
+   ESTILOS DE TEXTO
+   ================================================================ */
+
+.font-serif {
+    font-family: var(--font-serif);
+}
+
+.font-sans {
+    font-family: var(--font-sans);
+}
+
+.font-mono {
+    font-family: var(--font-mono);
+}
+
+.font-light {
+    font-weight: 300;
+}
+
+.font-normal {
+    font-weight: 400;
+}
+
+.font-semibold {
+    font-weight: 600;
+}
+
+.font-bold {
+    font-weight: 700;
+}
+
+/* Alineación */
+.text-left {
+    text-align: left;
+}
+
+.text-center {
+    text-align: center;
+}
+
+.text-right {
+    text-align: right;
+}
+
+.text-justify {
+    text-align: justify;
+}
+
+/* Transformación */
+.uppercase {
+    text-transform: uppercase;
+}
+
+.lowercase {
+    text-transform: lowercase;
+}
+
+.capitalize {
+    text-transform: capitalize;
+}
+
+/* Decoración */
+.underline {
+    text-decoration: underline;
+}
+
+.line-through {
+    text-decoration: line-through;
+}
+
+.no-underline {
+    text-decoration: none;
+}
+
+/* ================================================================
+   INTERLINEADO
+   ================================================================ */
+
+.leading-tight {
+    line-height: var(--line-height-tight);
+}
+
+.leading-normal {
+    line-height: var(--line-height-base);
+}
+
+.leading-relaxed {
+    line-height: var(--line-height-relaxed);
+}
+
+.leading-loose {
+    line-height: var(--line-height-loose);
+}
+
+/* ================================================================
+   ESPACIADO DE LETRAS
+   ================================================================ */
+
+.tracking-tight {
+    letter-spacing: -0.5px;
+}
+
+.tracking-normal {
+    letter-spacing: 0;
+}
+
+.tracking-wide {
+    letter-spacing: 1px;
+}
+
+/* ================================================================
+   COLORES DE TEXTO
+   ================================================================ */
+
+.text-primary {
+    color: var(--color-primary);
+}
+
+.text-secondary {
+    color: var(--color-secondary);
+}
+
+.text-success {
+    color: var(--color-success);
+}
+
+.text-warning {
+    color: var(--color-warning);
+}
+
+.text-danger {
+    color: var(--color-danger);
+}
+
+.text-info {
+    color: var(--color-info);
+}
+
+.text-muted {
+    color: var(--color-text-light);
+}
+
+/* ================================================================
+   HEADINGS ESPECÍFICOS
+   ================================================================ */
+
+.h1 {
+    font-size: var(--font-size-4xl);
+    font-weight: 600;
+    line-height: var(--line-height-tight);
+}
+
+.h2 {
+    font-size: var(--font-size-3xl);
+    font-weight: 600;
+    line-height: var(--line-height-tight);
+}
+
+.h3 {
+    font-size: var(--font-size-2xl);
+    font-weight: 600;
+    line-height: var(--line-height-tight);
+}
+
+.h4 {
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    line-height: var(--line-height-base);
+}
+
+/* ================================================================
+   TIPOGRAFÍA EDITORIAL
+   ================================================================ */
+
+.opening-paragraph::first-letter {
+    font-size: 2em;
+    font-weight: bold;
+    float: left;
+    line-height: 1;
+    padding-right: 0.1em;
+}
+
+.drop-cap {
+    font-size: 0.95em;
+}
+
+.drop-cap-letter {
+    font-size: 2em;
+    font-weight: bold;
+    float: left;
+    line-height: 1;
+    padding-right: 0.1em;
+}
+
+.chapter-title {
+    font-size: var(--font-size-3xl);
+    font-weight: 600;
+    margin-bottom: var(--space-md);
+}
+
+.chapter-number {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-light);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    display: block;
+    margin-bottom: var(--space-sm);
+}
+
+.chapter-name {
+    font-size: var(--font-size-3xl);
+    font-weight: 600;
+    display: block;
+}
+
+/* ================================================================
+   ÉPOCAS Y ESPACIOS ESPECIALES
+   ================================================================ */
+
+.epigraph {
+    font-style: italic;
+    color: var(--color-text-light);
+    margin: var(--space-xl) 0;
+    padding-left: var(--space-lg);
+}
+
+.attribution {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    margin-top: var(--space-sm);
+}
+
+/* ================================================================
+   SMOOTH SCROLLING
+   ================================================================ */
+
+@supports (scroll-behavior: smooth) {
+    html {
+        scroll-behavior: smooth;
+    }
+}

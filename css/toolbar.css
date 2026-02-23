@@ -1,0 +1,58 @@
+/* ================================================================
+   ESTILOS DE TOOLBAR
+   ================================================================ */
+
+.editor-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-md);
+    background-color: var(--color-bg-light);
+    border-bottom: var(--border-width) solid var(--color-border);
+    flex-wrap: wrap;
+    min-height: 50px;
+}
+
+.toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+}
+
+.toolbar-separator {
+    width: var(--border-width);
+    height: 24px;
+    background-color: var(--color-border);
+    margin: 0 var(--space-sm);
+}
+
+.toolbar-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    margin-left: auto;
+}
+
+.toolbar-chapter-name {
+    font-weight: 600;
+    font-size: var(--font-size-sm);
+    color: var(--color-text);
+    white-space: nowrap;
+}
+
+.toolbar-stats {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-light);
+}
+
+/* Botones de toolbar */
+.editor-toolbar .btn-icon {
+    width: 36px;
+    height: 36px;
+    padding: var(--space-sm);
+}
+
+.editor-toolbar .btn-icon:active {
+    background-color: var(--color-primary);
+    color: #ffffff;
+}

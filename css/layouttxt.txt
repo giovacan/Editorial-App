@@ -1,0 +1,300 @@
+/* ================================================================
+   LAYOUT PRINCIPAL - Grid de tres columnas
+   ================================================================ */
+
+.app-container {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background-color: var(--color-bg);
+}
+
+/* ================================================================
+   HEADER
+   ================================================================ */
+
+.app-header {
+    height: var(--header-height);
+    background-color: var(--color-bg);
+    border-bottom: var(--border-width) solid var(--color-border);
+    display: flex;
+    align-items: center;
+    padding: 0 var(--space-lg);
+    position: sticky;
+    top: 0;
+    z-index: var(--z-sticky);
+    box-shadow: var(--shadow-sm);
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    max-width: var(--max-width);
+    margin: 0 auto;
+}
+
+.header-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+}
+
+.logo {
+    width: 32px;
+    height: 32px;
+    color: var(--color-primary);
+    flex-shrink: 0;
+}
+
+.app-title {
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    margin: 0;
+}
+
+.header-nav {
+    display: flex;
+    gap: var(--space-md);
+}
+
+.header-actions {
+    display: flex;
+    gap: var(--space-sm);
+    margin-left: auto;
+}
+
+/* ================================================================
+   MAIN - Contenido principal
+   ================================================================ */
+
+.app-main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* ================================================================
+   SIDEBARS
+   ================================================================ */
+
+.sidebar {
+    width: var(--sidebar-width);
+    background-color: var(--color-bg-alt);
+    border-right: var(--border-width) solid var(--color-border);
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: var(--space-lg);
+    flex-shrink: 0;
+}
+
+.sidebar-left {
+    order: -1;
+    border-right: var(--border-width) solid var(--color-border);
+    border-left: none;
+}
+
+.sidebar-right {
+    border-right: none;
+    border-left: var(--border-width) solid var(--color-border);
+}
+
+/* Tabs en sidebar */
+.sidebar-tabs {
+    display: flex;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-lg);
+    border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.sidebar-tab {
+    padding: var(--space-md) var(--space-lg);
+    background-color: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-light);
+    transition: all var(--transition-base);
+}
+
+.sidebar-tab:hover {
+    color: var(--color-text);
+}
+
+.sidebar-tab.active {
+    color: var(--color-primary);
+    border-bottom-color: var(--color-primary);
+}
+
+/* Secciones del sidebar */
+.sidebar-section {
+    margin-bottom: var(--space-2xl);
+}
+
+.sidebar-section:last-child {
+    margin-bottom: 0;
+}
+
+.sidebar-title {
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    margin-bottom: var(--space-md);
+    padding-bottom: var(--space-md);
+    border-bottom: var(--border-width) solid var(--color-border);
+}
+
+/* ================================================================
+   EDITOR SECTION - Sección central
+   ================================================================ */
+
+.editor-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background-color: var(--color-bg);
+}
+
+/* ================================================================
+   FOOTER
+   ================================================================ */
+
+.app-footer {
+    height: var(--footer-height);
+    background-color: var(--color-bg-alt);
+    border-top: var(--border-width) solid var(--color-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 var(--space-lg);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-light);
+    flex-shrink: 0;
+}
+
+.footer-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    max-width: var(--max-width);
+    margin: 0 auto;
+}
+
+.footer-version {
+    margin: 0;
+}
+
+.footer-links {
+    display: flex;
+    gap: var(--space-md);
+    align-items: center;
+}
+
+.footer-links a {
+    color: var(--color-text-light);
+    transition: color var(--transition-fast);
+}
+
+.footer-links a:hover {
+    color: var(--color-primary);
+}
+
+.separator {
+    color: var(--color-border);
+}
+
+/* ================================================================
+   SCROLLBAR PERSONALIZADO
+   ================================================================ */
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background-color: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: var(--color-border);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-text-light);
+}
+
+/* ================================================================
+   FLEXBOX Y GRID UTILITIES
+   ================================================================ */
+
+.flex {
+    display: flex;
+}
+
+.flex-col {
+    flex-direction: column;
+}
+
+.flex-row {
+    flex-direction: row;
+}
+
+.flex-wrap {
+    flex-wrap: wrap;
+}
+
+.gap-sm {
+    gap: var(--space-sm);
+}
+
+.gap-md {
+    gap: var(--space-md);
+}
+
+.gap-lg {
+    gap: var(--space-lg);
+}
+
+.grid {
+    display: grid;
+}
+
+.grid-cols-2 {
+    grid-template-columns: repeat(2, 1fr);
+}
+
+.grid-cols-3 {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+/* ================================================================
+   SPACING UTILITIES
+   ================================================================ */
+
+.m-0 { margin: 0; }
+.m-xs { margin: var(--space-xs); }
+.m-sm { margin: var(--space-sm); }
+.m-md { margin: var(--space-md); }
+.m-lg { margin: var(--space-lg); }
+.m-xl { margin: var(--space-xl); }
+
+.p-0 { padding: 0; }
+.p-xs { padding: var(--space-xs); }
+.p-sm { padding: var(--space-sm); }
+.p-md { padding: var(--space-md); }
+.p-lg { padding: var(--space-lg); }
+.p-xl { padding: var(--space-xl); }
+
+.mb-sm { margin-bottom: var(--space-sm); }
+.mb-md { margin-bottom: var(--space-md); }
+.mb-lg { margin-bottom: var(--space-lg); }
+
+.mt-sm { margin-top: var(--space-sm); }
+.mt-md { margin-top: var(--space-md); }
+.mt-lg { margin-top: var(--space-lg); }

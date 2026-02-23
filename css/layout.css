@@ -1,0 +1,333 @@
+/* ================================================================
+   LAYOUT - Layout principal de 3 columnas
+   ================================================================ */
+
+:root {
+    --color-primary: #2563eb;
+    --color-primary-dark: #1d4ed8;
+    --color-secondary: #64748b;
+    --color-bg: #ffffff;
+    --color-bg-alt: #f8fafc;
+    --color-border: #e2e8f0;
+    --color-text: #1e293b;
+    --color-text-light: #64748b;
+    
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 12px;
+    --space-lg: 16px;
+    --space-xl: 24px;
+    --space-2xl: 32px;
+    
+    --border-radius-md: 4px;
+    --border-radius-lg: 8px;
+    
+    --header-height: 64px;
+    --footer-height: 48px;
+    --sidebar-width: 280px;
+    
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+body {
+    font-family: Georgia, serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--color-text);
+    background-color: white;
+}
+
+/* ================================================================
+   CONTENEDOR PRINCIPAL
+   ================================================================ */
+
+.app-container {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+/* ================================================================
+   HEADER
+   ================================================================ */
+
+.app-header {
+    height: var(--header-height);
+    background-color: white;
+    border-bottom: 1px solid var(--color-border);
+    display: flex;
+    align-items: center;
+    padding: 0 var(--space-lg);
+    box-shadow: var(--shadow-sm);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    flex-shrink: 0;
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
+
+.header-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+}
+
+.logo {
+    width: 32px;
+    height: 32px;
+    color: var(--color-primary);
+    flex-shrink: 0;
+}
+
+.app-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.header-nav {
+    display: flex;
+    gap: var(--space-md);
+}
+
+.header-actions {
+    display: flex;
+    gap: var(--space-sm);
+    margin-left: auto;
+}
+
+/* ================================================================
+   MAIN - LAYOUT DE 3 COLUMNAS
+   ================================================================ */
+
+.app-main {
+    display: grid;
+    grid-template-columns: var(--sidebar-width) 1fr var(--sidebar-width);
+    flex: 1;
+    overflow: hidden;
+    gap: 0;
+}
+
+/* ================================================================
+   SIDEBARS
+   ================================================================ */
+
+.sidebar {
+    background-color: var(--color-bg-alt);
+    overflow-y: auto;
+    padding: var(--space-lg);
+    flex-shrink: 0;
+    border: 1px solid var(--color-border);
+}
+
+.sidebar-left {
+    border-right: 1px solid var(--color-border);
+    border-left: none;
+}
+
+.sidebar-right {
+    border-left: 1px solid var(--color-border);
+    border-right: none;
+}
+
+.sidebar-tabs {
+    display: flex;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-lg);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.sidebar-tab {
+    padding: var(--space-md) var(--space-lg);
+    background-color: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 12px;
+    color: var(--color-text-light);
+    transition: all 0.2s;
+}
+
+.sidebar-tab:hover {
+    color: var(--color-text);
+}
+
+.sidebar-tab.active {
+    color: var(--color-primary);
+    border-bottom-color: var(--color-primary);
+}
+
+.sidebar-section {
+    margin-bottom: var(--space-2xl);
+}
+
+.sidebar-section:last-child {
+    margin-bottom: 0;
+}
+
+.sidebar-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: var(--space-md);
+    padding-bottom: var(--space-md);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.sidebar-section [hidden] {
+    display: none;
+}
+
+/* ================================================================
+   EDITOR SECTION - Sección central
+   ================================================================ */
+
+.editor-section {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background-color: white;
+}
+
+/* ================================================================
+   FOOTER
+   ================================================================ */
+
+.app-footer {
+    height: var(--footer-height);
+    background-color: var(--color-bg-alt);
+    border-top: 1px solid var(--color-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 var(--space-lg);
+    font-size: 12px;
+    color: var(--color-text-light);
+    flex-shrink: 0;
+}
+
+.footer-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
+
+.footer-version {
+    margin: 0;
+}
+
+.footer-links {
+    display: flex;
+    gap: var(--space-md);
+}
+
+.footer-links a {
+    color: var(--color-text-light);
+    transition: color 0.2s;
+}
+
+.footer-links a:hover {
+    color: var(--color-primary);
+}
+
+/* ================================================================
+   SCROLLBAR PERSONALIZADO
+   ================================================================ */
+
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background-color: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: var(--color-border);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-text-light);
+}
+
+/* ================================================================
+   UTILITIES
+   ================================================================ */
+
+.flex {
+    display: flex;
+}
+
+.flex-col {
+    flex-direction: column;
+}
+
+.gap-md {
+    gap: var(--space-md);
+}
+
+.m-0 {
+    margin: 0;
+}
+
+.p-lg {
+    padding: var(--space-lg);
+}
+
+[hidden] {
+    display: none !important;
+}
+
+/* ================================================================
+   RESPONSIVE
+   ================================================================ */
+
+@media (max-width: 1200px) {
+    .app-main {
+        grid-template-columns: 1fr;
+    }
+    
+    .sidebar-left {
+        border-right: none;
+        border-bottom: 1px solid var(--color-border);
+        max-height: 300px;
+    }
+    
+    .sidebar-right {
+        border-left: none;
+        border-top: 1px solid var(--color-border);
+        max-height: 300px;
+    }
+}
+
+@media (max-width: 768px) {
+    .app-header {
+        flex-direction: column;
+        height: auto;
+        padding: var(--space-md);
+        gap: var(--space-md);
+    }
+    
+    .header-content {
+        flex-direction: column;
+        gap: var(--space-md);
+        width: 100%;
+    }
+    
+    .header-nav {
+        width: 100%;
+    }
+    
+    .header-nav .btn {
+        flex: 1;
+    }
+}

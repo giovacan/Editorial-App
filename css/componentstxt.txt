@@ -1,0 +1,354 @@
+/* ================================================================
+   COMPONENTES REUTILIZABLES
+   ================================================================ */
+
+/* ================================================================
+   BOTONES
+   ================================================================ */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+    padding: var(--space-md) var(--space-lg);
+    font-family: var(--font-sans);
+    font-size: var(--font-size-base);
+    font-weight: 500;
+    border: var(--border-width) solid transparent;
+    border-radius: var(--border-radius-md);
+    cursor: pointer;
+    transition: all var(--transition-base);
+    white-space: nowrap;
+    text-decoration: none;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+}
+
+.btn:active {
+    transform: scale(0.98);
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Variantes de botones */
+
+.btn-primary {
+    background-color: var(--color-primary);
+    color: #ffffff;
+    border-color: var(--color-primary);
+}
+
+.btn-primary:hover {
+    background-color: var(--color-primary-dark);
+    border-color: var(--color-primary-dark);
+}
+
+.btn-secondary {
+    background-color: transparent;
+    color: var(--color-secondary);
+    border-color: var(--color-border);
+}
+
+.btn-secondary:hover {
+    background-color: var(--color-bg-alt);
+    border-color: var(--color-secondary);
+    color: var(--color-text);
+}
+
+.btn-success {
+    background-color: var(--color-success);
+    color: #ffffff;
+}
+
+.btn-danger {
+    background-color: var(--color-danger);
+    color: #ffffff;
+}
+
+.btn-warning {
+    background-color: var(--color-warning);
+    color: #ffffff;
+}
+
+/* Tamaños de botones */
+
+.btn-small {
+    padding: var(--space-sm) var(--space-md);
+    font-size: var(--font-size-sm);
+}
+
+.btn-large {
+    padding: var(--space-lg) var(--space-xl);
+    font-size: var(--font-size-lg);
+}
+
+.btn-icon {
+    width: 40px;
+    height: 40px;
+    padding: var(--space-md);
+    background-color: transparent;
+    border: none;
+    color: var(--color-text-light);
+    font-size: var(--font-size-lg);
+}
+
+.btn-icon:hover {
+    background-color: var(--color-bg-light);
+    color: var(--color-text);
+}
+
+.btn-block {
+    width: 100%;
+    margin-bottom: var(--space-md);
+}
+
+/* ================================================================
+   INPUTS Y CAMPOS DE FORMULARIO
+   ================================================================ */
+
+.form-group {
+    margin-bottom: var(--space-lg);
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: var(--space-sm);
+    font-weight: 500;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+    width: 100%;
+}
+
+.input-wrapper {
+    position: relative;
+}
+
+.input-icon {
+    position: absolute;
+    right: var(--space-md);
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-text-light);
+    pointer-events: none;
+}
+
+/* ================================================================
+   ALERTAS Y NOTIFICACIONES
+   ================================================================ */
+
+.alert {
+    padding: var(--space-lg);
+    border-radius: var(--border-radius-md);
+    margin-bottom: var(--space-lg);
+    border-left: 4px solid;
+}
+
+.alert-success {
+    background-color: #f0fdf4;
+    border-left-color: var(--color-success);
+    color: var(--color-success);
+}
+
+.alert-danger {
+    background-color: #fef2f2;
+    border-left-color: var(--color-danger);
+    color: var(--color-danger);
+}
+
+.alert-warning {
+    background-color: #fffbeb;
+    border-left-color: var(--color-warning);
+    color: var(--color-warning);
+}
+
+.alert-info {
+    background-color: #ecf0ff;
+    border-left-color: var(--color-info);
+    color: var(--color-info);
+}
+
+.alert-close {
+    float: right;
+    cursor: pointer;
+    font-size: var(--font-size-lg);
+}
+
+/* ================================================================
+   BADGES
+   ================================================================ */
+
+.badge {
+    display: inline-block;
+    padding: var(--space-xs) var(--space-md);
+    border-radius: 999px;
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.badge-primary {
+    background-color: #dbeafe;
+    color: var(--color-primary);
+}
+
+.badge-success {
+    background-color: #dcfce7;
+    color: var(--color-success);
+}
+
+.badge-danger {
+    background-color: #fee2e2;
+    color: var(--color-danger);
+}
+
+/* ================================================================
+   CARDS
+   ================================================================ */
+
+.card {
+    background-color: var(--color-bg);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--border-radius-lg);
+    padding: var(--space-lg);
+    box-shadow: var(--shadow-sm);
+    transition: all var(--transition-base);
+}
+
+.card:hover {
+    box-shadow: var(--shadow-md);
+}
+
+.card-header {
+    margin-bottom: var(--space-md);
+    padding-bottom: var(--space-md);
+    border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.card-body {
+    margin-bottom: var(--space-md);
+}
+
+.card-footer {
+    padding-top: var(--space-md);
+    border-top: var(--border-width) solid var(--color-border);
+}
+
+/* ================================================================
+   BADGES Y TAGS
+   ================================================================ */
+
+.tag {
+    display: inline-block;
+    padding: var(--space-xs) var(--space-md);
+    background-color: var(--color-bg-light);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--border-radius-md);
+    font-size: var(--font-size-xs);
+    margin-right: var(--space-sm);
+    margin-bottom: var(--space-sm);
+}
+
+/* ================================================================
+   DIVIDERS
+   ================================================================ */
+
+.divider {
+    border: none;
+    border-top: var(--border-width) solid var(--color-border);
+    margin: var(--space-lg) 0;
+}
+
+.divider-vertical {
+    width: var(--border-width);
+    height: 24px;
+    background-color: var(--color-border);
+    display: inline-block;
+    margin: 0 var(--space-md);
+}
+
+/* ================================================================
+   EMPTY STATES
+   ================================================================ */
+
+.empty-state {
+    text-align: center;
+    padding: var(--space-3xl) var(--space-lg);
+    color: var(--color-text-light);
+}
+
+.empty-state-icon {
+    font-size: 48px;
+    margin-bottom: var(--space-lg);
+}
+
+.empty-state-title {
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    margin-bottom: var(--space-sm);
+}
+
+.empty-state-description {
+    font-size: var(--font-size-sm);
+    margin-bottom: var(--space-lg);
+}
+
+/* ================================================================
+   LOADING SPINNER
+   ================================================================ */
+
+.spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid var(--color-border);
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.loading-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-md);
+    padding: var(--space-lg);
+    background-color: var(--color-bg);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--border-radius-md);
+}
+
+/* ================================================================
+   PROGRESS BAR
+   ================================================================ */
+
+.progress {
+    width: 100%;
+    height: 4px;
+    background-color: var(--color-border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: var(--space-lg);
+}
+
+.progress-bar {
+    height: 100%;
+    background-color: var(--color-primary);
+    width: 0%;
+    transition: width var(--transition-base);
+}

@@ -1,0 +1,258 @@
+/* ================================================================
+   MEDIA QUERIES - RESPONSIVE DESIGN
+   ================================================================ */
+
+/* ================================================================
+   TABLET (768px)
+   ================================================================ */
+
+@media (max-width: 1024px) {
+    :root {
+        --sidebar-width: 240px;
+    }
+
+    .app-main {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        width: 100%;
+        height: auto;
+        max-height: 300px;
+        border-right: none;
+        border-bottom: var(--border-width) solid var(--color-border);
+        order: 1;
+    }
+
+    .sidebar-left {
+        border-bottom: var(--border-width) solid var(--color-border);
+        border-right: none;
+        order: 0;
+    }
+
+    .sidebar-right {
+        border-left: none;
+        border-top: var(--border-width) solid var(--color-border);
+        order: 2;
+    }
+
+    .editor-section {
+        order: 1;
+    }
+
+    .upload-area {
+        flex-direction: column;
+        gap: var(--space-lg);
+        padding: var(--space-lg);
+    }
+
+    .upload-divider {
+        display: none;
+    }
+
+    .upload-box,
+    .paste-box {
+        min-height: 250px;
+    }
+
+    .header-nav {
+        display: none;
+    }
+
+    .header-actions {
+        margin-left: 0;
+    }
+}
+
+/* ================================================================
+   MOBILE (640px)
+   ================================================================ */
+
+@media (max-width: 768px) {
+    :root {
+        --font-size-base: 13px;
+        --sidebar-width: 200px;
+        --header-height: auto;
+    }
+
+    .app-header {
+        height: auto;
+        flex-direction: column;
+        padding: var(--space-md);
+        gap: var(--space-md);
+    }
+
+    .header-content {
+        flex-direction: column;
+        gap: var(--space-md);
+        width: 100%;
+    }
+
+    .header-brand {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .header-nav {
+        display: flex;
+        width: 100%;
+        gap: var(--space-sm);
+    }
+
+    .header-nav .btn {
+        flex: 1;
+        padding: var(--space-md);
+    }
+
+    .header-actions {
+        width: 100%;
+        justify-content: center;
+        margin-left: 0;
+    }
+
+    .sidebar {
+        max-height: 400px;
+    }
+
+    .upload-info,
+    .upload-tips {
+        display: none;
+    }
+
+    .upload-box,
+    .paste-box {
+        padding: var(--space-lg);
+        min-height: 200px;
+    }
+
+    .upload-title,
+    .paste-title {
+        font-size: var(--font-size-lg);
+    }
+
+    .editor-toolbar {
+        padding: var(--space-sm);
+        gap: var(--space-xs);
+    }
+
+    .editor-toolbar .btn-icon {
+        width: 32px;
+        height: 32px;
+        padding: var(--space-xs);
+    }
+
+    .toolbar-info {
+        display: none;
+    }
+
+    .notifications-container {
+        right: var(--space-sm);
+        left: var(--space-sm);
+        width: auto;
+    }
+
+    .modal-content {
+        padding: var(--space-lg);
+        width: 95%;
+        max-width: 100%;
+    }
+
+    .preview-controls {
+        flex-direction: column;
+    }
+
+    .preview-controls button,
+    .preview-controls select {
+        width: 100%;
+    }
+
+    .structure-panel {
+        max-height: 250px;
+    }
+
+    .config-group select,
+    .config-group input {
+        font-size: 16px;
+    }
+}
+
+/* ================================================================
+   EXTRA SMALL (320px)
+   ================================================================ */
+
+@media (max-width: 480px) {
+    :root {
+        --font-size-base: 12px;
+        --space-lg: 12px;
+        --space-xl: 16px;
+    }
+
+    .app-title {
+        font-size: var(--font-size-lg);
+    }
+
+    .header-brand {
+        gap: var(--space-sm);
+    }
+
+    .logo {
+        width: 24px;
+        height: 24px;
+    }
+
+    .upload-box,
+    .paste-box {
+        padding: var(--space-md);
+    }
+
+    .upload-icon {
+        width: 32px;
+        height: 32px;
+    }
+
+    .btn {
+        padding: var(--space-sm) var(--space-md);
+        font-size: var(--font-size-sm);
+    }
+
+    .btn-icon {
+        width: 32px;
+        height: 32px;
+        padding: var(--space-xs);
+    }
+}
+
+/* ================================================================
+   IMPRESIÓN
+   ================================================================ */
+
+@media print {
+    .app-header,
+    .app-footer,
+    .sidebar,
+    .editor-toolbar,
+    .preview-controls,
+    .export-buttons,
+    .notifications-container,
+    .upload-area {
+        display: none !important;
+    }
+
+    body {
+        background-color: white;
+    }
+
+    .app-main {
+        flex-direction: column;
+    }
+
+    .editor-section {
+        width: 100%;
+    }
+
+    .main-editor {
+        border: none;
+        box-shadow: none;
+        padding: 0;
+    }
+}
