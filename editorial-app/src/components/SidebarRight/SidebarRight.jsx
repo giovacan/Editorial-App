@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import useEditorStore from '../../store/useEditorStore';
+import Preview from '../Preview/Preview';
 import './SidebarRight.css';
 
 function SidebarRight({ onExportPdf, onExportEpub, onExportHtml }) {
@@ -26,37 +27,16 @@ function SidebarRight({ onExportPdf, onExportEpub, onExportHtml }) {
       </div>
 
       {activeTab === 'preview' && (
-        <section className="sidebar-section">
+        <section className="sidebar-section preview-section">
           <h2 className="sidebar-title">Vista Previa del Libro</h2>
           
-          <div className="preview-controls">
-            <button 
-              className="btn btn-secondary btn-small" 
-              onClick={() => setUi({ showPreview: !ui.showPreview })}
-            >
-              {ui.showPreview ? '👁 Ocultar preview' : '👁 Mostrar preview'}
-            </button>
-            <select className="preview-zoom" aria-label="Nivel de zoom">
-              <option value="40">40%</option>
-              <option value="50" selected>50%</option>
-              <option value="75">75%</option>
-              <option value="100">100%</option>
-            </select>
-          </div>
-
-          <div className={`preview-container ${ui.showPreview ? '' : 'hidden'}`} role="region" aria-label="Vista previa del libro">
-            <div className="preview-content">
-              {document.chapters.length === 0 ? (
-                <div className="preview-placeholder">
-                  <p>Procesa un documento para ver la vista previa aquí</p>
-                </div>
-              ) : (
-                <div className="preview-page">
-                  <p>Selecciona un capítulo para ver la vista previa</p>
-                </div>
-              )}
+          {document.chapters.length === 0 ? (
+            <div className="preview-placeholder">
+              <p>Sube contenido para ver la vista previa</p>
             </div>
-          </div>
+          ) : (
+            <Preview />
+          )}
         </section>
       )}
 

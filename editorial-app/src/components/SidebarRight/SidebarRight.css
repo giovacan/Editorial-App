@@ -1,3 +1,10 @@
+.preview-section {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
 .preview-controls {
   display: flex;
   gap: 0.5rem;

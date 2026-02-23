@@ -1,0 +1,111 @@
+.preview-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.preview-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: #9ca3af;
+  text-align: center;
+}
+
+.preview-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background: #f9fafb;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+}
+
+.page-info {
+  font-size: 0.8125rem;
+  color: #374151;
+  min-width: 60px;
+  text-align: center;
+}
+
+.zoom-select {
+  margin-left: auto;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.8125rem;
+  background: white;
+}
+
+.preview-scroll {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  padding: 1rem;
+  background: #e5e7eb;
+  border-radius: 8px;
+}
+
+.preview-page {
+  background: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.preview-content {
+  height: 100%;
+  overflow: hidden;
+  text-align: justify;
+  hyphens: auto;
+  word-wrap: break-word;
+}
+
+.preview-title {
+  font-size: 1.5em;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 1em;
+  margin-top: 0.5em;
+}
+
+.preview-paragraph {
+  margin-bottom: 0.5em;
+}
+
+.blank-page {
+  width: 100%;
+  height: 100%;
+}
+
+.page-number {
+  position: absolute;
+  bottom: 8px;
+  font-size: 0.8em;
+  color: #888;
+}
+
+.page-number {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.preview-info {
+  display: flex;
+  gap: 1rem;
+  padding: 0.5rem;
+  font-size: 0.75rem;
+  color: #6b7280;
+  justify-content: center;
+  margin-top: 0.5rem;
+}
+
+.preview-info span {
+  background: #f3f4f6;
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+}
