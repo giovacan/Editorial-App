@@ -1,99 +1,29 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import useEditorStore from '../../store/useEditorStore';
 import './Preview.css';
 
 function Preview() {
-  const { document, config, editing } = useEditorStore();
+  const { document, config } = useEditorStore();
   const [currentPage, setCurrentPage] = useState(0);
   const [zoom, setZoom] = useState(50);
+  const containerRef = useRef(null);
   
-  const activeChapter = document.chapters.find(ch => ch.id === editing.activeChapterId);
+  const bookConfig = KDP_STANDARDS.getBookTypeConfig(document.bookType);
+  const pageFormat = KDP_STANDARDS.getPageFormat(config.pageFormat || bookConfig.recommendedFormat);
 
-  const bookConfig = useMemo(() => {
-    return KDP_STANDARDS.getBookTypeConfig(document.bookType);
-  }, [document.bookType]);
+  const totalChars = document.chapters.reduce((sum, ch) => sum + (ch.html?.length || 0), 0);
+  const charsPerPage = 1500;
+  const totalPages = Math.max(1, Math.ceil(totalChars / charsPerPage));
 
-  const pageFormat = useMemo(() => {
-    return KDP_STANDARDS.getPageFormat(config.pageFormat || bookConfig.recommendedFormat);
-  }, [config.pageFormat, bookConfig]);
-
-  const pages = useMemo(() => {
-    if (!document.chapters.length) return [];
-    
-    const PX_PER_MM = 3.7795;
-    const PT2PX = 96 / 72;
-    
-    const pageWidth = pageFormat.width * PX_PER_MM;
-    const pageHeight = pageFormat.height * PX_PER_MM;
-    
-    const marginTop = bookConfig.marginTop * 96;
-    const marginBottom = bookConfig.marginBottom * 96;
-    const marginLeft = (bookConfig.marginLeft + (bookConfig.gutter || 0)) * 96;
-    const marginRight = bookConfig.marginRight * 96;
-    
-    const contentWidth = pageWidth - marginLeft - marginRight;
-    const contentHeight = pageHeight - marginTop - marginBottom;
-    
-    const pagesList = [];
-    let currentPageContent = '';
-    let pageNumber = 1;
-    
-    document.chapters.forEach((chapter, chapterIndex) => {
-      const isSection = chapter.type === 'section';
-      
-      if (chapterIndex > 0 && !isSection) {
-        if (pagesList.length % 2 === 1) {
-          pagesList.push({ html: '', pageNumber: pageNumber++, isBlank: true });
-        }
-      }
-      
-      const titleHtml = `<div class="preview-title">${chapter.title}</div>`;
-      currentPageContent += titleHtml;
-      
-      const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = chapter.html || '<p></p>';
-      const paragraphs = Array.from(tempDiv.querySelectorAll('p, h2, h3, ul, ol, hr'));
-      
-      paragraphs.forEach(p => {
-        const pHtml = `<div class="preview-paragraph">${p.innerHTML}</div>`;
-        currentPageContent += pHtml;
-        
-        const testDiv = document.createElement('div');
-        testDiv.style.cssText = `width:${contentWidth}px;font-family:${bookConfig.fontFamily};font-size:${bookConfig.fontSize}pt;line-height:${bookConfig.lineHeight};`;
-        testDiv.innerHTML = currentPageContent;
-        document.body.appendChild(testDiv);
-        
-        if (testDiv.offsetHeight > contentHeight) {
-          document.body.removeChild(testDiv);
-          pagesList.push({ html: currentPageContent, pageNumber: pageNumber++, isBlank: false });
-          currentPageContent = pHtml;
-        } else {
-          document.body.removeChild(testDiv);
-        }
-      });
-      
-      if (currentPageContent) {
-        pagesList.push({ html: currentPageContent, pageNumber: pageNumber++, isBlank: false });
-        currentPageContent = '';
-      }
-    });
-    
-    return pagesList;
-  }, [document.chapters, bookConfig, pageFormat]);
-
-  const currentPageData = pages[currentPage];
+  const currentPageData = document.chapters.length > 0 ? document.chapters[0] : null;
 
   const goToPrevPage = () => {
     if (currentPage > 0) setCurrentPage(currentPage - 1);
   };
 
   const goToNextPage = () => {
-    if (currentPage < pages.length - 1) setCurrentPage(currentPage + 1);
-  };
-
-  const handleZoomChange = (e) => {
-    setZoom(parseInt(e.target.value));
+    if (currentPage < totalPages - 1) setCurrentPage(currentPage + 1);
   };
 
   if (!document.chapters.length) {
@@ -121,22 +51,20 @@ function Preview() {
           className="btn btn-icon" 
           onClick={goToPrevPage}
           disabled={currentPage === 0}
-          aria-label="Página anterior"
         >
           ←
         </button>
         <span className="page-info">
-          {pages.length > 0 ? `${currentPage + 1} / ${pages.length}` : '0 / 0'}
+          {currentPage + 1} / {totalPages}
         </span>
         <button 
           className="btn btn-icon" 
           onClick={goToNextPage}
-          disabled={currentPage >= pages.length - 1}
-          aria-label="Página siguiente"
+          disabled={currentPage >= totalPages - 1}
         >
           →
         </button>
-        <select value={zoom} onChange={handleZoomChange} className="zoom-select">
+        <select value={zoom} onChange={(e) => setZoom(parseInt(e.target.value))} className="zoom-select">
           <option value="40">40%</option>
           <option value="50">50%</option>
           <option value="75">75%</option>
@@ -156,18 +84,14 @@ function Preview() {
             lineHeight: bookConfig.lineHeight
           }}
         >
-          {currentPageData?.isBlank ? (
-            <div className="blank-page"></div>
-          ) : (
-            <div 
-              className="preview-content"
-              dangerouslySetInnerHTML={{ __html: currentPageData?.html || '' }}
-            />
-          )}
+          <div 
+            className="preview-content"
+            dangerouslySetInnerHTML={{ __html: currentPageData?.html || '' }}
+          />
           
-          {config.showPageNumbers && !currentPageData?.isBlank && (
+          {config.showPageNumbers && (
             <div className="page-number">
-              {currentPageData?.pageNumber}
+              {currentPage + 1}
             </div>
           )}
         </div>

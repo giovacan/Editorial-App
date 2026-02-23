@@ -37,6 +37,7 @@ function Layout() {
   };
 
   const handleContentLoaded = (chapters) => {
+    console.log('📥 Content loaded:', chapters);
     loadContent(chapters);
   };
 
