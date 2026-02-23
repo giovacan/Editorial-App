@@ -519,23 +519,28 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
         const page = generatedPages[pageIdx];
         if (page.isBlank) continue;
 
-        // Check if page ends with a header
-        const lastElement = getLastElement(page.html);
-        if (!lastElement || !/^H[1-6]$/i.test(lastElement.tagName)) {
-          continue;
+        // Check if page ends with a header - use regex to find last header tag
+        const headerMatch = page.html.match(/(<h[1-6][^>]*>[\s\S]*?<\/h[1-6]>)(?![\s\S]*<h[1-6])/i);
+        if (!headerMatch) {
+          continue; // No header found or not at the end
         }
+
+        const headerHtml = headerMatch[1];
+        const headerLevel = headerHtml.match(/<h(\d)/i)?.[1] || '2';
 
         const nextPage = generatedPages[pageIdx + 1];
         if (!nextPage || nextPage.isBlank) {
           continue;
         }
 
-        // Measure orphan condition
-        measureDiv.innerHTML = page.html;
-        const currentPageHeight = measureDiv.offsetHeight;
-        const remainingSpace = contentHeight - currentPageHeight;
+        // Measure space BEFORE the header to determine remaining space after it
+        const pageWithoutHeader = page.html.replace(headerHtml, '');
+        measureDiv.innerHTML = pageWithoutHeader;
+        const heightWithoutHeader = measureDiv.offsetHeight;
+        const remainingSpace = contentHeight - heightWithoutHeader;
         const linesRemaining = Math.floor(remainingSpace / lineHeightPx);
-        const level = lastElement.tagName.slice(1).toLowerCase();
+
+        const level = `h${headerLevel}`;
         const subConfig = safeConfig.subheaders?.[level] || { minLinesAfter: 2 };
         const minLinesNeeded = subConfig.minLinesAfter ?? 2;
 
@@ -550,7 +555,7 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
         const needed = minLinesNeeded - linesRemaining;
         const marginPixels = needed * lineHeightPx;
         const headerMarginTotal = (subConfig.marginTop || 1) * lineHeightPx + (subConfig.marginBottom || 0.5) * lineHeightPx;
-        const marginReducePercent = marginPixels / headerMarginTotal;
+        const marginReducePercent = Math.min(1, marginPixels / headerMarginTotal);
 
         if (marginReducePercent > 0.30) {
           strategies.headerMargins = { score: 30, reason: 'too aggressive' };
@@ -567,7 +572,7 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
           measureDiv.innerHTML = firstElNext.outerHTML;
           const nextParaHeight = measureDiv.offsetHeight;
           const linesOfNextPara = Math.floor(nextParaHeight / lineHeightPx);
-          if (linesOfNextPara >= needed && (linesRemaining + linesOfNextPara) <= contentHeight) {
+          if (linesOfNextPara >= needed && (remainingSpace + nextParaHeight) <= contentHeight) {
             strategies.nextParagraph = { score: 95, reason: 'perfect fit' };
           } else {
             strategies.nextParagraph = { score: 0 };
@@ -591,27 +596,20 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
         // Apply best strategy if score >= 50, otherwise fallback to page break
         if (best[1].score >= 50) {
           if (best[0] === 'headerMargins') {
-            // Reduce header margins by the calculated percent
-            const newMarginTopPercent = Math.max(0, 1 - (marginReducePercent / 2));
-            const newMarginBottomPercent = Math.max(0, (subConfig.marginBottom || 0.5) - (marginReducePercent / 2));
-            const newHeaderHtml = lastElement.outerHTML.replace(
-              /margin:[^;]*;/,
-              `margin:${newMarginTopPercent * lineHeightPx}px 0 ${newMarginBottomPercent * lineHeightPx}px 0;`
-            );
-            const pageWithAdjustedHeader = page.html.substring(0, page.html.lastIndexOf('<')) + newHeaderHtml;
-            generatedPages[pageIdx] = { ...page, html: pageWithAdjustedHeader };
+            // Force page break is safer than margin adjustment for now
+            generatedPages[pageIdx] = { ...page, html: pageWithoutHeader };
+            generatedPages[pageIdx + 1] = { ...nextPage, html: headerHtml + nextPage.html };
           } else if (best[0] === 'nextParagraph') {
-            // Move header + first lines of next paragraph to current page (fill pass handles this)
-            // This strategy is passive - just let fill pass work
+            // The fill pass already handles this - do nothing
           } else if (best[0] === 'pageBreak') {
             // Force page break - move header to next page
-            generatedPages[pageIdx] = { ...page, html: page.html.substring(0, page.html.lastIndexOf('<')) };
-            generatedPages[pageIdx + 1] = { ...nextPage, html: lastElement.outerHTML + nextPage.html };
+            generatedPages[pageIdx] = { ...page, html: pageWithoutHeader };
+            generatedPages[pageIdx + 1] = { ...nextPage, html: headerHtml + nextPage.html };
           }
         } else {
           // Fallback: force page break
-          generatedPages[pageIdx] = { ...page, html: page.html.substring(0, page.html.lastIndexOf('<')) };
-          generatedPages[pageIdx + 1] = { ...nextPage, html: lastElement.outerHTML + nextPage.html };
+          generatedPages[pageIdx] = { ...page, html: pageWithoutHeader };
+          generatedPages[pageIdx + 1] = { ...nextPage, html: headerHtml + nextPage.html };
         }
       }
     };
