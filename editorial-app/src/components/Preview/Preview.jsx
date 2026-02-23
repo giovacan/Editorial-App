@@ -513,8 +513,126 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
       }
     };
 
+    const intelligentHeaderOrphanFix = () => {
+      // Post-fill validation: detect and fix orphaned headers using intelligent strategy selection
+      for (let pageIdx = 0; pageIdx < generatedPages.length; pageIdx++) {
+        const page = generatedPages[pageIdx];
+        if (page.isBlank) continue;
+
+        // Check if page ends with a header
+        const lastElement = getLastElement(page.html);
+        if (!lastElement || !/^H[1-6]$/i.test(lastElement.tagName)) {
+          continue;
+        }
+
+        const nextPage = generatedPages[pageIdx + 1];
+        if (!nextPage || nextPage.isBlank) {
+          continue;
+        }
+
+        // Measure orphan condition
+        measureDiv.innerHTML = page.html;
+        const currentPageHeight = measureDiv.offsetHeight;
+        const remainingSpace = contentHeight - currentPageHeight;
+        const linesRemaining = Math.floor(remainingSpace / lineHeightPx);
+        const level = lastElement.tagName.slice(1).toLowerCase();
+        const subConfig = safeConfig.subheaders?.[level] || { minLinesAfter: 2 };
+        const minLinesNeeded = subConfig.minLinesAfter ?? 2;
+
+        if (linesRemaining >= minLinesNeeded) {
+          continue; // Not orphaned
+        }
+
+        // Calculate scores for each strategy
+        const strategies = {};
+
+        // Strategy A: Reduce header margins
+        const needed = minLinesNeeded - linesRemaining;
+        const marginPixels = needed * lineHeightPx;
+        const headerMarginTotal = (subConfig.marginTop || 1) * lineHeightPx + (subConfig.marginBottom || 0.5) * lineHeightPx;
+        const marginReducePercent = marginPixels / headerMarginTotal;
+
+        if (marginReducePercent > 0.30) {
+          strategies.headerMargins = { score: 30, reason: 'too aggressive' };
+        } else {
+          strategies.headerMargins = { score: Math.max(50, 90 - (marginReducePercent * 200)), reason: `${Math.round(marginReducePercent * 100)}% reduction` };
+        }
+
+        // Strategy B: Reduce paragraph spacing (not implemented yet - set to 0)
+        strategies.paragraphSpacing = { score: 0 };
+
+        // Strategy C: Bring lines from next paragraph
+        const firstElNext = getFirstElement(nextPage.html);
+        if (firstElNext && (firstElNext.tagName === 'P' || firstElNext.tagName === 'DIV')) {
+          measureDiv.innerHTML = firstElNext.outerHTML;
+          const nextParaHeight = measureDiv.offsetHeight;
+          const linesOfNextPara = Math.floor(nextParaHeight / lineHeightPx);
+          if (linesOfNextPara >= needed && (linesRemaining + linesOfNextPara) <= contentHeight) {
+            strategies.nextParagraph = { score: 95, reason: 'perfect fit' };
+          } else {
+            strategies.nextParagraph = { score: 0 };
+          }
+        } else {
+          strategies.nextParagraph = { score: 0 };
+        }
+
+        // Strategy D: Force page break
+        if (remainingSpace <= 20) {
+          strategies.pageBreak = { score: 85, reason: 'almost no space' };
+        } else if (remainingSpace <= 50) {
+          strategies.pageBreak = { score: 70, reason: 'acceptable space waste' };
+        } else {
+          strategies.pageBreak = { score: 40, reason: 'significant empty space' };
+        }
+
+        // Select best strategy
+        const best = Object.entries(strategies).reduce((a, b) => b[1].score > a[1].score ? b : a);
+
+        // Apply best strategy if score >= 50, otherwise fallback to page break
+        if (best[1].score >= 50) {
+          if (best[0] === 'headerMargins') {
+            // Reduce header margins by the calculated percent
+            const newMarginTopPercent = Math.max(0, 1 - (marginReducePercent / 2));
+            const newMarginBottomPercent = Math.max(0, (subConfig.marginBottom || 0.5) - (marginReducePercent / 2));
+            const newHeaderHtml = lastElement.outerHTML.replace(
+              /margin:[^;]*;/,
+              `margin:${newMarginTopPercent * lineHeightPx}px 0 ${newMarginBottomPercent * lineHeightPx}px 0;`
+            );
+            const pageWithAdjustedHeader = page.html.substring(0, page.html.lastIndexOf('<')) + newHeaderHtml;
+            generatedPages[pageIdx] = { ...page, html: pageWithAdjustedHeader };
+          } else if (best[0] === 'nextParagraph') {
+            // Move header + first lines of next paragraph to current page (fill pass handles this)
+            // This strategy is passive - just let fill pass work
+          } else if (best[0] === 'pageBreak') {
+            // Force page break - move header to next page
+            generatedPages[pageIdx] = { ...page, html: page.html.substring(0, page.html.lastIndexOf('<')) };
+            generatedPages[pageIdx + 1] = { ...nextPage, html: lastElement.outerHTML + nextPage.html };
+          }
+        } else {
+          // Fallback: force page break
+          generatedPages[pageIdx] = { ...page, html: page.html.substring(0, page.html.lastIndexOf('<')) };
+          generatedPages[pageIdx + 1] = { ...nextPage, html: lastElement.outerHTML + nextPage.html };
+        }
+      }
+    };
+
+    const getLastElement = (html) => {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      const children = Array.from(tmp.children);
+      return children.length > 0 ? children[children.length - 1] : null;
+    };
+
+    const getFirstElement = (html) => {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      const children = Array.from(tmp.children);
+      return children.length > 0 ? children[0] : null;
+    };
+
     const finalize = () => {
       applyFillPass();
+      intelligentHeaderOrphanFix();
       const finalPages = generatedPages.filter(p => p.isBlank || p.html.trim());
       finalPages.forEach((p, idx) => { p.pageNumber = idx + 1; });
       setPages(finalPages);
