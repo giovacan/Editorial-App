@@ -123,8 +123,8 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
     const measureDiv = measureRef.current;
 
     const PX_PER_MM = 3.7795;
-    // Usar la misma escala que el preview
-    const previewScale = Math.min(0.55, 300 / (pageFormat.width * PX_PER_MM));
+    // Escala ajustada al espacio real disponible en el sidebar (~220px)
+    const previewScale = Math.min(0.42, 220 / (pageFormat.width * PX_PER_MM));
 
     const pageWidthPx = pageFormat.width * PX_PER_MM * previewScale;
     const pageHeightPx = pageFormat.height * PX_PER_MM * previewScale;
@@ -497,8 +497,8 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
   const currentPageData = pages[currentPage] || { html: '', pageNumber: 1, isBlank: true };
 
   const PX_PER_MM = 3.7795;
-  // Escala fija para que la página quepa en el panel (~300px de ancho objetivo)
-  const previewScale = Math.min(0.55, 300 / (pageFormat.width * PX_PER_MM));
+  // Escala ajustada al espacio real disponible en el sidebar (~220px)
+  const previewScale = Math.min(0.42, 220 / (pageFormat.width * PX_PER_MM));
   // Dimensiones del preview con la escala fija
   const pageWidth = pageFormat.width * PX_PER_MM * previewScale;
   const pageHeight = pageFormat.height * PX_PER_MM * previewScale;
@@ -651,7 +651,12 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
         <span>{safeConfig.fontSize || bookConfig.fontSize}pt</span>
       </div>
 
-      {showMagnifier && (
+      {showMagnifier && (() => {
+        const magScale = magnifierZoom / 100;
+        const tx = -(magnifierPos.x / 100) * pageWidth * (magScale - 1);
+        const ty = -(magnifierPos.y / 100) * pageHeight * (magScale - 1);
+
+        return (
         <div className="magnifier-panel" ref={magnifierPanelRef}>
           <div className="magnifier-panel-header">
             <span>Vista {magnifierZoom}%</span>
@@ -674,10 +679,8 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
                   wordBreak: 'break-word',
                   background: 'white',
                   boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-                  transform: `scale(${magnifierZoom / 100})`,
-                  transformOrigin: `${magnifierPos.x}% ${magnifierPos.y}%`,
-                  ['--magnifier-x']: `${magnifierPos.x}%`,
-                  ['--magnifier-y']: `${magnifierPos.y}%`
+                  transform: `scale(${magScale}) translate(${tx / magScale}px, ${ty / magScale}px)`,
+                  transformOrigin: '0 0'
                 }}
               >
                 <div 
@@ -691,7 +694,8 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
