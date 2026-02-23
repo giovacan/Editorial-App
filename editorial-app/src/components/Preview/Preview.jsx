@@ -13,10 +13,25 @@ function Preview() {
   const navigatedChapterRef = useRef(null);
   
   const [showMagnifier, setShowMagnifier] = useState(false);
+  const [magnifierPos, setMagnifierPos] = useState({ x: 50, y: 50 });
   const previewPageRef = useRef(null);
   const magnifierPanelRef = useRef(null);
   
-  const mousePosRef = useRef({ x: 50, y: 50 });
+  const isOverPreview = useRef(false);
+  
+  const updateMagnifierPosition = (e) => {
+    if (previewPageRef.current) {
+      const rect = previewPageRef.current.getBoundingClientRect();
+      const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+      const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+      setMagnifierPos({ x, y });
+      
+      if (magnifierPanelRef.current) {
+        magnifierPanelRef.current.style.setProperty('--magnifier-x', `${x}%`);
+        magnifierPanelRef.current.style.setProperty('--magnifier-y', `${y}%`);
+      }
+    }
+  };
   
   const safeBookData = bookData || { bookType: 'novela', chapters: [], title: '' };
   const safeConfig = config || { 
@@ -587,14 +602,17 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
             wordBreak: 'break-word'
           }}
           onMouseEnter={(e) => {
+            isOverPreview.current = true;
             setShowMagnifier(true);
-            if (previewPageRef.current && magnifierPanelRef.current) {
-              const rect = previewPageRef.current.getBoundingClientRect();
-              const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-              const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
-              mousePosRef.current = { x, y };
-              magnifierPanelRef.current.style.setProperty('--magnifier-x', `${x}%`);
-              magnifierPanelRef.current.style.setProperty('--magnifier-y', `${y}%`);
+            updateMagnifierPosition(e);
+          }}
+          onMouseLeave={() => {
+            isOverPreview.current = false;
+            setShowMagnifier(false);
+          }}
+          onMouseMove={(e) => {
+            if (isOverPreview.current) {
+              updateMagnifierPosition(e);
             }
           }}
           onMouseLeave={() => {
@@ -656,7 +674,9 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
                   hyphens: 'auto',
                   wordBreak: 'break-word',
                   background: 'white',
-                  boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+                  ['--magnifier-x']: `${magnifierPos.x}%`,
+                  ['--magnifier-y']: `${magnifierPos.y}%`
                 }}
                 ref={magnifierPanelRef}
               >
