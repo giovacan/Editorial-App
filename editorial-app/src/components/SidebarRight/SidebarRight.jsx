@@ -5,7 +5,8 @@ import './SidebarRight.css';
 
 function SidebarRight({ onExportPdf, onExportEpub, onExportHtml }) {
   const [activeTab, setActiveTab] = useState('preview');
-  const { ui, setUi, bookData } = useEditorStore();
+  const ui = useEditorStore((state) => state.ui);
+  const bookData = useEditorStore((state) => state.bookData);
   
   const safeBookData = bookData || { chapters: [] };
   const safeUi = ui || { showPreview: false, showUpload: true };

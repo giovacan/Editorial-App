@@ -9,7 +9,11 @@ import html2pdf from 'html2pdf.js';
 import './Layout.css';
 
 function Layout() {
-  const { ui, bookData, config, loadContent, newProject } = useEditorStore();
+  const ui = useEditorStore((state) => state.ui);
+  const bookData = useEditorStore((state) => state.bookData);
+  const config = useEditorStore((state) => state.config);
+  const loadContent = useEditorStore((state) => state.loadContent);
+  const newProject = useEditorStore((state) => state.newProject);
   
   const safeBookData = bookData || { title: '', author: '', chapters: [], bookType: 'novela', pageFormat: '6x9', margins: {} };
   const safeConfig = config || { pageFormat: 'a5', fontSize: 12, lineHeight: 1.6 };

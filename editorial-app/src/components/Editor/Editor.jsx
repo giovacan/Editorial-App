@@ -1,37 +1,41 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo, useCallback } from 'react';
 import useEditorStore from '../../store/useEditorStore';
 import './Editor.css';
 
 function Editor() {
   const editorRef = useRef(null);
-  const { bookData, editing, updateChapter, setActiveChapter } = useEditorStore();
+  
+  const bookData = useEditorStore((state) => state.bookData);
+  const editing = useEditorStore((state) => state.editing);
+  const updateChapter = useEditorStore((state) => state.updateChapter);
+  const setActiveChapter = useEditorStore((state) => state.setActiveChapter);
   
   const activeChapter = bookData?.chapters?.find(ch => ch.id === editing?.activeChapterId);
 
   useEffect(() => {
-    if (editorRef.current && activeChapter) {
+    if (editorRef.current && activeChapter && editorRef.current.innerHTML !== activeChapter.html) {
       editorRef.current.innerHTML = activeChapter.html;
     }
-  }, [editing?.activeChapterId, bookData]);
+  }, [editing?.activeChapterId]);
 
-  const handleInput = () => {
+  const wordCount = useMemo(() => {
+    if (!editorRef.current) return activeChapter?.wordCount || 0;
+    return editorRef.current.innerText.split(/\s+/).filter(w => w.length > 0).length;
+  }, [activeChapter?.wordCount]);
+
+  const handleInput = useCallback(() => {
     if (activeChapter && editorRef.current) {
       const html = editorRef.current.innerHTML;
       const text = editorRef.current.innerText;
       const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
       updateChapter(activeChapter.id, { html, wordCount });
     }
-  };
+  }, [activeChapter, updateChapter]);
 
-  const applyFormat = (command) => {
+  const applyFormat = useCallback((command) => {
     window.document.execCommand(command, false, null);
     editorRef.current?.focus();
-  };
-
-  const getWordCount = () => {
-    if (!editorRef.current) return 0;
-    return editorRef.current.innerText.split(/\s+/).filter(w => w.length > 0).length;
-  };
+  }, []);
 
   if (!activeChapter) {
     return (
@@ -65,7 +69,7 @@ function Editor() {
         <div className="toolbar-info">
           <span className="toolbar-chapter-name">{activeChapter.title}</span>
           <span className="toolbar-separator"></span>
-          <span className="toolbar-stats">{getWordCount()} palabras</span>
+          <span className="toolbar-stats">{wordCount} palabras</span>
         </div>
       </div>
 

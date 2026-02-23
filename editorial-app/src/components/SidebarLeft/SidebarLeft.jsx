@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import useEditorStore from '../../store/useEditorStore';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import Accordion from '../Accordion/Accordion';
@@ -8,19 +8,17 @@ function SidebarLeft() {
   const [activeTab, setActiveTab] = useState('structure');
   const [selectedSubheaderLevel, setSelectedSubheaderLevel] = useState('h1');
   
-  const { 
-    bookData, 
-    config, 
-    editing, 
-    getStats,
-    addChapter,
-    addSection,
-    deleteChapter,
-    setActiveChapter,
-    setConfig,
-    setBookData,
-    updateChapter
-  } = useEditorStore();
+  const bookData = useEditorStore((state) => state.bookData);
+  const config = useEditorStore((state) => state.config);
+  const editing = useEditorStore((state) => state.editing);
+  const getStats = useEditorStore((state) => state.getStatsSelector);
+  const addChapter = useEditorStore((state) => state.addChapter);
+  const addSection = useEditorStore((state) => state.addSection);
+  const deleteChapter = useEditorStore((state) => state.deleteChapter);
+  const setActiveChapter = useEditorStore((state) => state.setActiveChapter);
+  const setConfig = useEditorStore((state) => state.setConfig);
+  const setBookData = useEditorStore((state) => state.setBookData);
+  const updateChapter = useEditorStore((state) => state.updateChapter);
   
   const safeBookData = bookData || { title: '', author: '', chapters: [], bookType: 'novela' };
   const safeConfig = config || { 
@@ -41,21 +39,21 @@ function SidebarLeft() {
     pagination: { minOrphanLines: 2, minWidowLines: 2, splitLongParagraphs: true }
   };
   
-  const stats = getStats();
+const stats = useMemo(() => getStats(), [getStats, safeBookData?.chapters]);
 
-  const handleAddChapter = () => {
+  const handleAddChapter = useCallback(() => {
     const title = prompt('Título del capítulo:');
     if (title) {
       addChapter(title);
     }
-  };
+  }, [addChapter]);
 
-  const handleAddSection = () => {
+  const handleAddSection = useCallback(() => {
     const title = prompt('Nombre de la sección (ej: Prólogo, Dedicatoria):');
     if (title) {
       addSection(title);
     }
-  };
+  }, [addSection]);
 
   const handleBookTypeChange = (e) => {
     const bookType = e.target.value;

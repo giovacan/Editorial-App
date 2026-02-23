@@ -17,8 +17,8 @@ function Preview() {
     lineHeight: 1.6,
     chapterTitle: { align: 'center', bold: true, sizeMultiplier: 1.8, marginTop: 2, marginBottom: 1, startOnRightPage: true },
     subheaders: {
-      h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBottom: 0.5, minLinesAfter: 2 },
-      h2: { align: 'center', bold: true, sizeMultiplier: 1.35, marginTop: 1.25, marginBottom: 0.5, minLinesAfter: 2 },
+h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBottom: 0.5, minLinesAfter: 1 },
+      h2: { align: 'center', bold: true, sizeMultiplier: 1.35, marginTop: 1.25, marginBottom: 0.5, minLinesAfter: 1 },
       h3: { align: 'center', bold: true, sizeMultiplier: 1.25, marginTop: 1, marginBottom: 0.5, minLinesAfter: 1 },
       h4: { align: 'left', bold: true, sizeMultiplier: 1.15, marginTop: 1, marginBottom: 0.5, minLinesAfter: 1 },
       h5: { align: 'left', bold: true, sizeMultiplier: 1.1, marginTop: 0.75, marginBottom: 0.25, minLinesAfter: 1 },
@@ -123,8 +123,8 @@ function Preview() {
 
     measureDiv.innerHTML = 'Ag';
     const lineHeightPx = measureDiv.offsetHeight;
-    const minOrphanLines = safeConfig.pagination?.minOrphanLines || 2;
-    const minWidowLines = safeConfig.pagination?.minWidowLines || 2;
+    const minOrphanLines = safeConfig.pagination?.minOrphanLines || 1;
+    const minWidowLines = safeConfig.pagination?.minWidowLines || 1;
     const splitLongParagraphs = safeConfig.pagination?.splitLongParagraphs !== false;
 
     const generatedPages = [];
@@ -189,7 +189,7 @@ function Preview() {
           paragraphCount++;
         } else if (tag.match(/^H[1-6]$/i)) {
           const level = tag.slice(1).toLowerCase();
-          const subConfig = safeConfig.subheaders?.[level] || safeConfig.subheaders?.h2 || { align: 'center', bold: true, sizeMultiplier: 1.25, marginTop: 1, marginBottom: 0.5, minLinesAfter: 2 };
+          const subConfig = safeConfig.subheaders?.[level] || safeConfig.subheaders?.h2 || { align: 'center', bold: true, sizeMultiplier: 1.25, marginTop: 1, marginBottom: 0.5, minLinesAfter: 1 };
           const subSize = Math.round(baseFontSize * subConfig.sizeMultiplier);
           const subMarginTop = subConfig.marginTop * lineHeightPx;
           const subMarginBottom = subConfig.marginBottom * lineHeightPx;
@@ -212,7 +212,7 @@ function Preview() {
         const isHeader = tag.match(/^H[1-6]$/i);
         const headerLevel = isHeader ? tag.slice(1).toLowerCase() : null;
         const subheaderConfig = headerLevel ? (safeConfig.subheaders?.[headerLevel] || safeConfig.subheaders?.h2) : null;
-        const minLinesAfterHeader = subheaderConfig?.minLinesAfter || 2;
+        const minLinesAfterHeader = subheaderConfig?.minLinesAfter || 1;
         
         if (elHeight > contentHeight) {
           if (currentHtml) {
@@ -264,9 +264,21 @@ function Preview() {
         const candidateHeight = measureDiv.offsetHeight;
         
         if (candidateHeight > contentHeight) {
-          const remainingLinesOnPage = Math.round((contentHeight - currentHeight) / lineHeightPx);
+const remainingSpace = contentHeight - currentHeight;
+          const remainingLinesOnPage = Math.round(remainingSpace / lineHeightPx);
           
-          if (isHeader && remainingLinesOnPage < minLinesAfterHeader) {
+          const shouldBreakPage = (el) => {
+            const tag = el.tagName;
+            const isList = tag === 'UL' || tag === 'OL';
+            const isHeader = tag.match(/^H[1-6]$/i);
+            
+            if (isHeader && remainingLinesOnPage < minLinesAfterHeader) return true;
+            if (remainingLinesOnPage < minOrphanLines) return true;
+            if (isList && remainingLinesOnPage < 2) return true;
+            return false;
+          };
+          
+          if (shouldBreakPage(el)) {
             generatedPages.push({ html: currentHtml, pageNumber: generatedPages.length + 1, chapterTitle: chapter.title, isBlank: false });
             currentHtml = elHtml;
             measureDiv.innerHTML = elHtml;
@@ -274,15 +286,62 @@ function Preview() {
             return;
           }
           
-          if (remainingLinesOnPage < minOrphanLines) {
-            generatedPages.push({ html: currentHtml, pageNumber: generatedPages.length + 1, chapterTitle: chapter.title, isBlank: false });
+          const tryToFillPage = () => {
+            const currentIdx = children.indexOf(el);
+            if (currentIdx < 0 || currentIdx >= children.length - 1) return null;
+            
+            let testHtml = currentHtml;
+            let testHeight = currentHeight;
+            
+            for (let j = currentIdx + 1; j < children.length; j++) {
+              const nextEl = children[j];
+              const nextTag = nextEl.tagName;
+              const isNextList = nextTag === 'UL' || nextTag === 'OL';
+              
+              let nextElHtml = '';
+              if (nextTag === 'P' || nextTag === 'DIV') {
+                const nextIndent = safeConfig.paragraph?.firstLineIndent || 1.5;
+                const nextSpacing = safeConfig.paragraph?.spacingBetween || 0;
+                nextElHtml = `<p style="margin:${nextSpacing > 0 ? nextSpacing + 'em' : '0'} 0;padding:0;text-align:${textAlign};text-indent:${nextSpacing > 0 ? '0' : nextIndent + 'em'};text-justify:inter-word;line-height:${baseLineHeight};">${nextEl.innerHTML}</p>`;
+              } else if (nextTag === 'UL' || nextTag === 'OL') {
+                nextElHtml = `<${nextTag.toLowerCase()} style="margin:0.5em 0;padding-left:1.5em;line-height:${baseLineHeight};">${nextEl.innerHTML}</${nextTag.toLowerCase()}>`;
+              } else if (nextTag.match(/^H[1-6]$/i)) {
+                const level = nextTag.slice(1).toLowerCase();
+                const subCfg = safeConfig.subheaders?.[level] || safeConfig.subheaders?.h2;
+                const subSize = Math.round(baseFontSize * (subCfg?.sizeMultiplier || 1.25));
+                const subMT = (subCfg?.marginTop || 1) * lineHeightPx;
+                const subMB = (subCfg?.marginBottom || 0.5) * lineHeightPx;
+                nextElHtml = `<h${level} style="font-size:${subSize}pt;font-weight:${subCfg?.bold ? 'bold' : 'normal'};margin:${subMT}px 0 ${subMB}px 0;text-align:${subCfg?.align || 'center'};line-height:1.3;">${nextEl.innerHTML}</h${level}>`;
+              } else {
+                nextElHtml = `<p style="margin:0;padding:0;text-align:${textAlign};text-indent:1.5em;text-justify:inter-word;line-height:${baseLineHeight};">${nextEl.innerHTML}</p>`;
+              }
+              
+              measureDiv.innerHTML = testHtml + nextElHtml;
+              const newHeight = measureDiv.offsetHeight;
+              
+              if (newHeight <= contentHeight) {
+                testHtml += nextElHtml;
+                testHeight = newHeight;
+              } else {
+                break;
+              }
+            }
+            
+            const newRemainingSpace = contentHeight - testHeight;
+            if (newRemainingSpace < lineHeightPx * 3 && testHeight > currentHeight) {
+              return { html: testHtml, height: testHeight };
+            }
+            return null;
+          };
+          
+          const fillResult = tryToFillPage();
+          
+          if (fillResult) {
+            generatedPages.push({ html: fillResult.html, pageNumber: generatedPages.length + 1, chapterTitle: chapter.title, isBlank: false });
             currentHtml = elHtml;
             measureDiv.innerHTML = elHtml;
             currentHeight = measureDiv.offsetHeight;
-            return;
-          }
-          
-          if (splitLongParagraphs) {
+          } else if (splitLongParagraphs) {
             const elLinesArr = splitParagraphByLines(elHtml, measureDiv, contentHeight, textAlign);
             
             let pageContent = currentHtml;

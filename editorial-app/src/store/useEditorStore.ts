@@ -21,16 +21,21 @@ const loadFromStorage = () => {
   return null;
 };
 
+let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+
 const saveToStorage = (state: EditorState) => {
-  try {
-    const toSave = {
-      bookData: state.bookData,
-      config: state.config
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
-  } catch (e) {
-    console.error('Error saving to storage:', e);
-  }
+  if (saveTimeout) clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => {
+    try {
+      const toSave = {
+        bookData: state.bookData,
+        config: state.config
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+    } catch (e) {
+      console.error('Error saving to storage:', e);
+    }
+  }, 500);
 };
 
 const initialState = {
@@ -242,6 +247,23 @@ const useEditorStore = create<EditorState>()(
         characters: totalWords * 5,
         pages: estimatedPages,
         readingTime
+      };
+    },
+
+    getStatsSelector: () => {
+      const state = get();
+      const chapters = state.bookData?.chapters || [];
+      const totalChapters = chapters.length;
+      const totalWords = chapters.reduce(
+        (sum, ch) => sum + (ch.html?.replace(/<[^>]*>/g, '').trim().split(/\s+/).filter(w => w.length > 0).length || 0),
+        0
+      );
+      return {
+        chapters: totalChapters,
+        words: totalWords,
+        characters: totalWords * 5,
+        pages: Math.ceil(totalWords / 275),
+        readingTime: Math.ceil(totalWords / 250)
       };
     }
   })
