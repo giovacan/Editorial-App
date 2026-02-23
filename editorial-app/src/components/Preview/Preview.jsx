@@ -100,8 +100,10 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
       
       const lastSpace = text.substring(0, fitLength).lastIndexOf(' ');
       const breakPoint = lastSpace > fitLength * 0.5 ? lastSpace : fitLength;
-      
-      lines.push(`<p style="margin:0;padding:0;text-align:${textAlign};text-indent:0;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;">${text.substring(0, breakPoint)}</p>`);
+
+      const chunkText = text.substring(0, breakPoint);
+      const endsWithSentence = /[.!?]\s*$/.test(chunkText);
+      lines.push(`<p style="margin:0;padding:0;text-align:${textAlign};text-indent:0;text-justify:inter-word;hyphens:auto;text-align-last:${endsWithSentence ? 'left' : 'justify'};overflow-wrap:break-word;">${chunkText}</p>`);
       remainingHtml = text.substring(breakPoint);
       
       if (remainingHtml) {
