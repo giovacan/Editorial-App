@@ -614,21 +614,13 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
             setShowMagnifier(false);
           }}
           onMouseMove={(e) => {
-            if (isOverPreview.current) {
-              updateMagnifierPosition(e);
-            }
-          }}
-          onMouseLeave={() => {
-            setShowMagnifier(false);
-          }}
-          onMouseMove={(e) => {
-            if (previewPageRef.current && magnifierPanelRef.current) {
+            if (isOverPreview.current && previewPageRef.current && magnifierPanelRef.current) {
               const rect = previewPageRef.current.getBoundingClientRect();
               const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
               const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
-              mousePosRef.current = { x, y };
               magnifierPanelRef.current.style.setProperty('--magnifier-x', `${x}%`);
               magnifierPanelRef.current.style.setProperty('--magnifier-y', `${y}%`);
+              updateMagnifierPosition(e);
             }
           }}
         >

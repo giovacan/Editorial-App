@@ -29,7 +29,7 @@ function SidebarLeft() {
     pagination: { minOrphanLines: 2, minWidowLines: 2, splitLongParagraphs: true }
   };
   
-  const stats = useMemo(() => store.getStatsSelector(), [store.getStatsSelector, safeBookData?.chapters?.length]);
+  const stats = useMemo(() => store.getStatsSelector(), [safeBookData?.chapters?.length]);
 
   const handleAddChapter = useCallback(() => {
     const title = prompt('Título del capítulo:');
