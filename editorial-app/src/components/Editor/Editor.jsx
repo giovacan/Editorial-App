@@ -1,36 +1,30 @@
-import { useEffect, useRef, useMemo, useCallback } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import useEditorStore from '../../store/useEditorStore';
 import './Editor.css';
 
 function Editor() {
   const editorRef = useRef(null);
   
-  const bookData = useEditorStore((state) => state.bookData);
-  const editing = useEditorStore((state) => state.editing);
-  const updateChapter = useEditorStore((state) => state.updateChapter);
-  const setActiveChapter = useEditorStore((state) => state.setActiveChapter);
+  const store = useEditorStore((s) => s);
   
-  const activeChapter = bookData?.chapters?.find(ch => ch.id === editing?.activeChapterId);
+  const activeChapter = store.bookData?.chapters?.find(ch => ch.id === store.editing?.activeChapterId);
 
   useEffect(() => {
     if (editorRef.current && activeChapter && editorRef.current.innerHTML !== activeChapter.html) {
       editorRef.current.innerHTML = activeChapter.html;
     }
-  }, [editing?.activeChapterId]);
+  }, [store.editing?.activeChapterId]);
 
-  const wordCount = useMemo(() => {
-    if (!editorRef.current) return activeChapter?.wordCount || 0;
-    return editorRef.current.innerText.split(/\s+/).filter(w => w.length > 0).length;
-  }, [activeChapter?.wordCount]);
+  const wordCount = activeChapter?.wordCount || 0;
 
   const handleInput = useCallback(() => {
     if (activeChapter && editorRef.current) {
       const html = editorRef.current.innerHTML;
       const text = editorRef.current.innerText;
       const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
-      updateChapter(activeChapter.id, { html, wordCount });
+      store.updateChapter(activeChapter.id, { html, wordCount });
     }
-  }, [activeChapter, updateChapter]);
+  }, [activeChapter, store.updateChapter]);
 
   const applyFormat = useCallback((command) => {
     window.document.execCommand(command, false, null);

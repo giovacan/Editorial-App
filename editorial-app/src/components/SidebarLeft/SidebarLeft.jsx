@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, memo } from 'react';
 import useEditorStore from '../../store/useEditorStore';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import Accordion from '../Accordion/Accordion';
@@ -8,20 +8,10 @@ function SidebarLeft() {
   const [activeTab, setActiveTab] = useState('structure');
   const [selectedSubheaderLevel, setSelectedSubheaderLevel] = useState('h1');
   
-  const bookData = useEditorStore((state) => state.bookData);
-  const config = useEditorStore((state) => state.config);
-  const editing = useEditorStore((state) => state.editing);
-  const getStats = useEditorStore((state) => state.getStatsSelector);
-  const addChapter = useEditorStore((state) => state.addChapter);
-  const addSection = useEditorStore((state) => state.addSection);
-  const deleteChapter = useEditorStore((state) => state.deleteChapter);
-  const setActiveChapter = useEditorStore((state) => state.setActiveChapter);
-  const setConfig = useEditorStore((state) => state.setConfig);
-  const setBookData = useEditorStore((state) => state.setBookData);
-  const updateChapter = useEditorStore((state) => state.updateChapter);
+  const store = useEditorStore((s) => s);
   
-  const safeBookData = bookData || { title: '', author: '', chapters: [], bookType: 'novela' };
-  const safeConfig = config || { 
+  const safeBookData = store.bookData || { title: '', author: '', chapters: [], bookType: 'novela' };
+  const safeConfig = store.config || { 
     pageFormat: 'a5', 
     fontSize: 12, 
     lineHeight: 1.6,
@@ -39,51 +29,51 @@ function SidebarLeft() {
     pagination: { minOrphanLines: 2, minWidowLines: 2, splitLongParagraphs: true }
   };
   
-const stats = useMemo(() => getStats(), [getStats, safeBookData?.chapters]);
+  const stats = useMemo(() => store.getStatsSelector(), [store.getStatsSelector, safeBookData?.chapters?.length]);
 
   const handleAddChapter = useCallback(() => {
     const title = prompt('Título del capítulo:');
     if (title) {
-      addChapter(title);
+      store.addChapter(title);
     }
-  }, [addChapter]);
+  }, [store.addChapter]);
 
   const handleAddSection = useCallback(() => {
     const title = prompt('Nombre de la sección (ej: Prólogo, Dedicatoria):');
     if (title) {
-      addSection(title);
+      store.addSection(title);
     }
-  }, [addSection]);
+  }, [store.addSection]);
 
   const handleBookTypeChange = (e) => {
     const bookType = e.target.value;
     const bookConfig = KDP_STANDARDS.getBookTypeConfig(bookType);
-    setBookData({ bookType });
-    setConfig({
+    store.setBookData({ bookType });
+    store.store.setConfig({
       pageFormat: bookConfig.recommendedFormat,
       fontSize: bookConfig.fontSize,
       lineHeight: bookConfig.lineHeight
     });
   };
 
-  const handleTitleChange = (chapterId, newTitle) => {
-    updateChapter(chapterId, { title: newTitle });
-  };
+  const handleTitleChange = useCallback((chapterId, newTitle) => {
+    store.updateChapter(chapterId, { title: newTitle });
+  }, [store.updateChapter]);
 
   const handleDocumentTitleChange = (e) => {
-    setBookData({ title: e.target.value });
+    store.setBookData({ title: e.target.value });
   };
 
   const handleDocumentAuthorChange = (e) => {
-    setBookData({ author: e.target.value });
+    store.setBookData({ author: e.target.value });
   };
 
   const updateChapterTitle = (key, value) => {
-    setConfig({ chapterTitle: { ...safeConfig.chapterTitle, [key]: value } });
+    store.store.setConfig({ chapterTitle: { ...safeConfig.chapterTitle, [key]: value } });
   };
 
   const updateSubheader = (key, value) => {
-    setConfig({
+    store.store.setConfig({
       subheaders: {
         ...safeConfig.subheaders,
         [selectedSubheaderLevel]: { ...safeConfig.subheaders[selectedSubheaderLevel], [key]: value }
@@ -92,18 +82,18 @@ const stats = useMemo(() => getStats(), [getStats, safeBookData?.chapters]);
   };
 
   const updateParagraph = (key, value) => {
-    setConfig({ paragraph: { ...safeConfig.paragraph, [key]: value } });
+    store.store.setConfig({ paragraph: { ...safeConfig.paragraph, [key]: value } });
   };
 
   const updateQuote = (key, value) => {
-    setConfig({ quote: { ...safeConfig.quote, [key]: value } });
+    store.store.setConfig({ quote: { ...safeConfig.quote, [key]: value } });
   };
 
   const updatePagination = (key, value) => {
-    setConfig({ pagination: { ...safeConfig.pagination, [key]: value } });
+    store.store.setConfig({ pagination: { ...safeConfig.pagination, [key]: value } });
   };
 
-  const accordionItems = [
+  const accordionItems = useMemo(() => [
     {
       id: 'formato',
       title: 'Formato del Libro',
@@ -128,7 +118,7 @@ const stats = useMemo(() => getStats(), [getStats, safeBookData?.chapters]);
             <legend>Formato de página</legend>
             <select 
               value={safeConfig.pageFormat} 
-              onChange={(e) => setConfig({ pageFormat: e.target.value })}
+              onChange={(e) => store.store.setConfig({ pageFormat: e.target.value })}
             >
               <option value="a5">A5 (14.8 × 21 cm)</option>
               <option value="a4">A4 (21 × 29.7 cm)</option>
@@ -151,7 +141,7 @@ const stats = useMemo(() => getStats(), [getStats, safeBookData?.chapters]);
             <legend>Familia de fuente</legend>
             <select 
               value={safeConfig.fontFamily} 
-              onChange={(e) => setConfig({ fontFamily: e.target.value })}
+              onChange={(e) => store.setConfig({ fontFamily: e.target.value })}
             >
               <optgroup label="Serif">
                 <option value="Georgia, serif">Georgia</option>
@@ -186,7 +176,7 @@ const stats = useMemo(() => getStats(), [getStats, safeBookData?.chapters]);
               min="10" 
               max="16" 
               value={safeConfig.fontSize}
-              onChange={(e) => setConfig({ fontSize: parseInt(e.target.value) })}
+              onChange={(e) => store.setConfig({ fontSize: parseInt(e.target.value) })}
             />
           </fieldset>
 
@@ -194,12 +184,12 @@ const stats = useMemo(() => getStats(), [getStats, safeBookData?.chapters]);
             <legend>Interlineado</legend>
             <select 
               value={safeConfig.lineHeight}
-              onChange={(e) => setConfig({ lineHeight: parseFloat(e.target.value) })}
+              onChange={(e) => store.setConfig({ lineHeight: parseFloat(e.target.value) })}
             >
               <option value="1.4">1.4 (Apretado)</option>
-              <option value="1.5">1.5</option>
-              <option value="1.6">1.6 (Recomendado)</option>
-              <option value="1.8">1.8 (Espaciado)</option>
+              <option value="1.5">1.5 (Recomendado)</option>
+              <option value="1.6">1.6 (Espaciado)</option>
+              <option value="1.8">1.8 (Amplio)</option>
               <option value="2.0">2.0 (Doble)</option>
             </select>
           </fieldset>
@@ -433,7 +423,7 @@ const stats = useMemo(() => getStats(), [getStats, safeBookData?.chapters]);
           <fieldset className="config-group">
             <legend>Mostrar</legend>
             <label className="checkbox-label">
-              <input type="checkbox" checked={safeConfig.showHeaders} onChange={(e) => setConfig({ showHeaders: e.target.checked })} />
+              <input type="checkbox" checked={safeConfig.showHeaders} onChange={(e) => store.setConfig({ showHeaders: e.target.checked })} />
               Mostrar encabezados en páginas
             </label>
           </fieldset>
@@ -442,7 +432,7 @@ const stats = useMemo(() => getStats(), [getStats, safeBookData?.chapters]);
             <>
               <fieldset className="config-group">
                 <legend>Contenido</legend>
-                <select value={safeConfig.headerContent} onChange={(e) => setConfig({ headerContent: e.target.value })}>
+                <select value={safeConfig.headerContent} onChange={(e) => store.setConfig({ headerContent: e.target.value })}>
                   <option value="title">Título del libro</option>
                   <option value="chapter">Título del capítulo</option>
                   <option value="both">Alternar (pár/impar)</option>
@@ -451,7 +441,7 @@ const stats = useMemo(() => getStats(), [getStats, safeBookData?.chapters]);
 
               <fieldset className="config-group">
                 <legend>Posición</legend>
-                <select value={safeConfig.headerPosition} onChange={(e) => setConfig({ headerPosition: e.target.value })}>
+                <select value={safeConfig.headerPosition} onChange={(e) => store.setConfig({ headerPosition: e.target.value })}>
                   <option value="top">Arriba</option>
                   <option value="bottom">Abajo</option>
                 </select>
@@ -460,7 +450,7 @@ const stats = useMemo(() => getStats(), [getStats, safeBookData?.chapters]);
               <fieldset className="config-group">
                 <legend>Línea divisoria</legend>
                 <label className="checkbox-label">
-                  <input type="checkbox" checked={safeConfig.headerLine} onChange={(e) => setConfig({ headerLine: e.target.checked })} />
+                  <input type="checkbox" checked={safeConfig.headerLine} onChange={(e) => store.setConfig({ headerLine: e.target.checked })} />
                   Mostrar línea
                 </label>
               </fieldset>
@@ -478,7 +468,7 @@ const stats = useMemo(() => getStats(), [getStats, safeBookData?.chapters]);
           <fieldset className="config-group">
             <legend>Mostrar</legend>
             <label className="checkbox-label">
-              <input type="checkbox" checked={safeConfig.showPageNumbers} onChange={(e) => setConfig({ showPageNumbers: e.target.checked })} />
+              <input type="checkbox" checked={safeConfig.showPageNumbers} onChange={(e) => store.setConfig({ showPageNumbers: e.target.checked })} />
               Mostrar números de página
             </label>
           </fieldset>
@@ -487,7 +477,7 @@ const stats = useMemo(() => getStats(), [getStats, safeBookData?.chapters]);
             <>
               <fieldset className="config-group">
                 <legend>Posición</legend>
-                <select value={safeConfig.pageNumberPos} onChange={(e) => setConfig({ pageNumberPos: e.target.value })}>
+                <select value={safeConfig.pageNumberPos} onChange={(e) => store.setConfig({ pageNumberPos: e.target.value })}>
                   <option value="top">Arriba</option>
                   <option value="bottom">Abajo</option>
                 </select>
@@ -495,7 +485,7 @@ const stats = useMemo(() => getStats(), [getStats, safeBookData?.chapters]);
 
               <fieldset className="config-group">
                 <legend>Alineación</legend>
-                <select value={safeConfig.pageNumberAlign} onChange={(e) => setConfig({ pageNumberAlign: e.target.value })}>
+                <select value={safeConfig.pageNumberAlign} onChange={(e) => store.setConfig({ pageNumberAlign: e.target.value })}>
                   <option value="left">Izquierda</option>
                   <option value="center">Centro</option>
                   <option value="right">Derecha</option>
@@ -539,7 +529,7 @@ const stats = useMemo(() => getStats(), [getStats, safeBookData?.chapters]);
         </>
       )
     }
-  ];
+  ], [selectedSubheaderLevel, safeConfig, safeBookData?.bookType, handleBookTypeChange, store.setConfig]);
 
   return (
     <aside className="sidebar sidebar-left" role="complementary" aria-label="Panel de estructura y configuración">
@@ -601,49 +591,18 @@ const stats = useMemo(() => getStats(), [getStats, safeBookData?.chapters]);
               {safeBookData?.chapters?.length === 0 ? (
                 <p className="empty-state">Sin capítulos cargados</p>
               ) : (
-                safeBookData?.chapters?.map((chapter) => (
-                  <div 
+                safeBookData?.chapters?.map((chapter, index) => (
+                  <ChapterItem
                     key={chapter.id}
-                    className={`chapter-item ${editing?.activeChapterId === chapter.id ? 'active' : ''}`}
-                    onClick={() => setActiveChapter(chapter.id)}
-                  >
-                    <div className="chapter-item-header">
-                      <span className={`item-type-badge ${chapter.type === 'section' ? 'section-badge' : 'chapter-badge'}`}>
-                        {chapter.type === 'section' ? 'Sección' : 'Cap.'}
-                      </span>
-                      <input 
-                        className="chapter-item-title-input"
-                        value={chapter.title}
-                        onChange={(e) => handleTitleChange(chapter.id, e.target.value)}
-                        onClick={(e) => e.stopPropagation()}
-                        onFocus={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            e.target.blur();
-                          }
-                        }}
-                        onBlur={(e) => {
-                          if (!e.target.value.trim()) {
-                            handleTitleChange(chapter.id, 'Sin título');
-                          }
-                        }}
-                      />
-                      <button 
-                        className="btn-delete-item" 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (confirm(`¿Eliminar "${chapter.title}"?`)) {
-                            deleteChapter(chapter.id);
-                          }
-                        }}
-                        aria-label="Eliminar"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                    <span className="chapter-item-meta">{chapter.wordCount} palabras</span>
-                  </div>
+                    chapter={chapter}
+                    index={index}
+                    isActive={store.editing?.activeChapterId === chapter.id}
+                    onSelect={store.setActiveChapter}
+                    onDelete={store.deleteChapter}
+                    onMove={store.moveChapter}
+                    onTitleChange={handleTitleChange}
+                    totalChapters={safeBookData.chapters.length}
+                  />
                 ))
               )}
             </div>
@@ -676,5 +635,126 @@ const stats = useMemo(() => getStats(), [getStats, safeBookData?.chapters]);
     </aside>
   );
 }
+
+const ChapterItem = memo(function ChapterItem({ 
+  chapter, 
+  index, 
+  isActive, 
+  onSelect, 
+  onDelete, 
+  onMove, 
+  onTitleChange,
+  totalChapters 
+}) {
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+
+  const handleDragStart = useCallback((e) => {
+    setIsDragging(true);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', index);
+  }, [index]);
+
+  const handleDragEnd = useCallback(() => {
+    setIsDragging(false);
+    setDragOver(false);
+  }, []);
+
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault();
+    if (!isDragging) {
+      setDragOver(true);
+    }
+  }, [isDragging]);
+
+  const handleDragLeave = useCallback(() => {
+    setDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const fromIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
+    if (fromIndex !== index) {
+      onMove(fromIndex, index);
+    }
+    setIsDragging(false);
+  }, [index, onMove]);
+
+  return (
+    <div 
+      className={`chapter-item ${isActive ? 'active' : ''} ${dragOver ? 'drag-over' : ''} ${isDragging ? 'dragging' : ''}`}
+      onClick={() => onSelect(chapter.id)}
+      draggable
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      <div className="chapter-item-header">
+        <span className="chapter-drag-handle" title="Arrastrar">⋮⋮</span>
+        <span className={`item-type-badge ${chapter.type === 'section' ? 'section-badge' : 'chapter-badge'}`}>
+          {chapter.type === 'section' ? 'Sección' : 'Cap.'}
+        </span>
+        <input 
+          className="chapter-item-title-input"
+          value={chapter.title}
+          onChange={(e) => onTitleChange(chapter.id, e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          onFocus={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              e.target.blur();
+            }
+          }}
+          onBlur={(e) => {
+            if (!e.target.value.trim()) {
+              onTitleChange(chapter.id, 'Sin título');
+            }
+          }}
+        />
+        <div className="reorder-buttons">
+          <button 
+            className="btn-reorder"
+            onClick={(e) => {
+              e.stopPropagation();
+              onMove(index, index - 1);
+            }}
+            disabled={index === 0}
+            title="Subir"
+          >
+            ↑
+          </button>
+          <button 
+            className="btn-reorder"
+            onClick={(e) => {
+              e.stopPropagation();
+              onMove(index, index + 1);
+            }}
+            disabled={index === totalChapters - 1}
+            title="Bajar"
+          >
+            ↓
+          </button>
+        </div>
+        <button 
+          className="btn-delete-item" 
+          onClick={(e) => {
+            e.stopPropagation();
+            if (confirm(`¿Eliminar "${chapter.title}"?`)) {
+              onDelete(chapter.id);
+            }
+          }}
+          aria-label="Eliminar"
+        >
+          ✕
+        </button>
+      </div>
+      <span className="chapter-item-meta">{chapter.wordCount} palabras</span>
+    </div>
+  );
+});
 
 export default SidebarLeft;

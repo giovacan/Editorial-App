@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { subscribeWithSelector } from 'zustand/middleware';
 import type { EditorState, Chapter } from '../types';
 
 const STORAGE_KEY = 'editorial-app-storage';
@@ -55,7 +56,7 @@ const initialState = {
     pageFormat: 'a5',
     fontSize: 12,
     fontFamily: 'Georgia, serif',
-    lineHeight: 1.6,
+    lineHeight: 1.5,
     chaptersOnRight: true,
     showPageNumbers: true,
     pageNumberPos: 'bottom' as const,
@@ -110,8 +111,40 @@ const initialState = {
 
 const savedState = loadFromStorage();
 
+let cachedStats: { chapters: number; words: number; characters: number; pages: number; readingTime: number } | null = null;
+let cachedChaptersLength = 0;
+
+const calculateStats = (chapters: Chapter[]) => {
+  const totalChapters = chapters.length;
+  if (cachedStats && cachedChaptersLength === totalChapters && chapters.length > 0) {
+    return cachedStats;
+  }
+  
+  cachedChaptersLength = totalChapters;
+  let totalWords = 0;
+  
+  for (let i = 0; i < chapters.length; i++) {
+    const ch = chapters[i];
+    if (ch.html) {
+      const text = ch.html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      totalWords += text.split(' ').filter(w => w.length > 0).length;
+    }
+  }
+  
+  cachedStats = {
+    chapters: totalChapters,
+    words: totalWords,
+    characters: totalWords * 5,
+    pages: Math.ceil(totalWords / 275),
+    readingTime: Math.ceil(totalWords / 250)
+  };
+  
+  return cachedStats;
+};
+
 const useEditorStore = create<EditorState>()(
-  (set, get) => ({
+  subscribeWithSelector(
+    (set, get) => ({
     ...(savedState || initialState),
 
     setBookData: (bookData) => {
@@ -197,6 +230,20 @@ const useEditorStore = create<EditorState>()(
       return newState;
     }),
 
+    moveChapter: (fromIndex, toIndex) => set((state) => {
+      const chapters = [...(state.bookData?.chapters || [])];
+      if (fromIndex < 0 || fromIndex >= chapters.length || toIndex < 0 || toIndex >= chapters.length) {
+        return state;
+      }
+      const [moved] = chapters.splice(fromIndex, 1);
+      chapters.splice(toIndex, 0, moved);
+      const newState = {
+        bookData: { ...state.bookData, chapters }
+      };
+      saveToStorage(newState as EditorState);
+      return newState;
+    }),
+
     setActiveChapter: (id) => set((state) => ({
       editing: { ...state.editing, activeChapterId: id }
     })),
@@ -231,42 +278,16 @@ const useEditorStore = create<EditorState>()(
     },
 
     getStats: () => {
-      const state = get();
-      const chapters = state.bookData?.chapters || [];
-      const totalChapters = chapters.length;
-      const totalWords = chapters.reduce(
-        (sum, ch) => sum + (ch.html?.replace(/<[^>]*>/g, '').trim().split(/\s+/).filter(w => w.length > 0).length || 0),
-        0
-      );
-      const estimatedPages = Math.ceil(totalWords / 275);
-      const readingTime = Math.ceil(totalWords / 250);
-      
-      return {
-        chapters: totalChapters,
-        words: totalWords,
-        characters: totalWords * 5,
-        pages: estimatedPages,
-        readingTime
-      };
+      const chapters = get().bookData?.chapters || [];
+      return calculateStats(chapters);
     },
 
     getStatsSelector: () => {
-      const state = get();
-      const chapters = state.bookData?.chapters || [];
-      const totalChapters = chapters.length;
-      const totalWords = chapters.reduce(
-        (sum, ch) => sum + (ch.html?.replace(/<[^>]*>/g, '').trim().split(/\s+/).filter(w => w.length > 0).length || 0),
-        0
-      );
-      return {
-        chapters: totalChapters,
-        words: totalWords,
-        characters: totalWords * 5,
-        pages: Math.ceil(totalWords / 275),
-        readingTime: Math.ceil(totalWords / 250)
-      };
+      const chapters = get().bookData?.chapters || [];
+      return calculateStats(chapters);
     }
   })
+  )
 );
 
 export default useEditorStore;

@@ -9,15 +9,12 @@ import html2pdf from 'html2pdf.js';
 import './Layout.css';
 
 function Layout() {
-  const ui = useEditorStore((state) => state.ui);
-  const bookData = useEditorStore((state) => state.bookData);
-  const config = useEditorStore((state) => state.config);
-  const loadContent = useEditorStore((state) => state.loadContent);
-  const newProject = useEditorStore((state) => state.newProject);
+  const state = useEditorStore((s) => s);
   
-  const safeBookData = bookData || { title: '', author: '', chapters: [], bookType: 'novela', pageFormat: '6x9', margins: {} };
-  const safeConfig = config || { pageFormat: 'a5', fontSize: 12, lineHeight: 1.6 };
-  const safeUi = ui || { showPreview: false, showUpload: true, activeTab: 'structure' };
+  const safeBookData = state.bookData || { title: '', author: '', chapters: [], bookType: 'novela', pageFormat: '6x9', margins: {} };
+  const safeUi = state.ui || { showPreview: false, showUpload: true, activeTab: 'structure' };
+  const loadContent = state.loadContent;
+  const newProject = state.newProject;
 
   const handleNewProject = () => {
     if (safeBookData?.chapters?.length > 0) {
@@ -43,9 +40,9 @@ function Layout() {
         
         if (projectData.safeBookData && projectData.safeBookData.chapters && projectData.safeConfig) {
           useEditorStore.setState({
-            safeBookData: projectData.safeBookData,
-            safeConfig: projectData.safeConfig,
-            safeUi: { showUpload: false, showPreview: true, activeTab: 'structure' },
+            bookData: projectData.safeBookData,
+            config: projectData.safeConfig,
+            ui: { showUpload: false, showPreview: true, activeTab: 'structure' },
             editing: { activeChapterId: projectData.safeBookData.chapters[0]?.id || null, isDirty: false }
           });
         } else {
@@ -61,8 +58,8 @@ function Layout() {
   const handleSaveProject = () => {
     const projectData = {
       timestamp: Date.now(),
-      safeBookData: useEditorStore.getState().safeBookData,
-      safeConfig: useEditorStore.getState().safeConfig
+      safeBookData: useEditorStore.getState().bookData,
+      safeConfig: useEditorStore.getState().config
     };
 
     const json = JSON.stringify(projectData, null, 2);
@@ -81,7 +78,7 @@ function Layout() {
   };
 
   const handleExportPdf = async () => {
-    const { safeBookData, safeConfig } = useEditorStore.getState();
+    const { bookData: safeBookData, config: safeConfig } = useEditorStore.getState();
     
     const bookConfig = KDP_STANDARDS.getBookTypeConfig(safeBookData.bookType);
     const pageFormat = KDP_STANDARDS.getPageFormat(safeConfig.pageFormat || bookConfig.recommendedFormat);
@@ -132,7 +129,7 @@ function Layout() {
   };
 
   const handleExportEpub = async () => {
-    const { safeBookData } = useEditorStore.getState();
+    const { bookData: safeBookData } = useEditorStore.getState();
     
     const title = safeBookData.title || 'Sin título';
     const author = safeBookData.author || 'Autor desconocido';
@@ -146,7 +143,7 @@ function Layout() {
       return `    <itemref idref="chapter${i}"/>`;
     }).join('\n');
 
-    const chaptersContent = safeBookData.chapters.map((ch, i) => {
+    const chaptersContent = safeBookData.chapters.map((ch) => {
       return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
@@ -346,7 +343,7 @@ ${safeBookData.chapters.map((ch, i) => `      <li><a href="chapter${i}.xhtml">${
   };
 
   const handleExportHtml = () => {
-    const { safeBookData } = useEditorStore.getState();
+    const { bookData: safeBookData } = useEditorStore.getState();
     
     let html = `<!DOCTYPE html>
 <html lang="es">
