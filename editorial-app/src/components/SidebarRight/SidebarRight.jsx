@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import useEditorStore from '../../store/useEditorStore';
 import Preview from '../Preview/Preview';
 import './SidebarRight.css';
@@ -100,4 +100,4 @@ function SidebarRight({ onExportPdf, onExportEpub, onExportHtml }) {
   );
 }
 
-export default SidebarRight;
+export default memo(SidebarRight);

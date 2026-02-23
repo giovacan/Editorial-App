@@ -757,4 +757,4 @@ const ChapterItem = memo(function ChapterItem({
   );
 });
 
-export default SidebarLeft;
+export default memo(SidebarLeft);

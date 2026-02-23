@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import './Accordion.css';
 
 interface AccordionItem {
@@ -44,4 +44,4 @@ function Accordion({ items, defaultOpen }: AccordionProps) {
   );
 }
 
-export default Accordion;
+export default memo(Accordion);
