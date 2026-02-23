@@ -544,9 +544,14 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
         const subConfig = safeConfig.subheaders?.[level] || { minLinesAfter: 2 };
         const minLinesNeeded = subConfig.minLinesAfter ?? 2;
 
+        console.log(`[OrphanFix] Page ${pageIdx}: header h${headerLevel}, lines=${linesRemaining}, need=${minLinesNeeded}, remaining=${remainingSpace}px`);
+
         if (linesRemaining >= minLinesNeeded) {
+          console.log(`[OrphanFix] Page ${pageIdx}: NOT orphaned, skipping`);
           continue; // Not orphaned
         }
+
+        console.log(`[OrphanFix] Page ${pageIdx}: ORPHANED! Moving to next page`);
 
         // Calculate scores for each strategy
         const strategies = {};
