@@ -5,6 +5,48 @@ export type TabName = 'structure' | 'config' | 'preview' | 'export';
 export type PageNumberPos = 'top' | 'bottom';
 export type PageNumberAlign = 'left' | 'center' | 'right' | 'outer';
 export type HeaderContent = 'title' | 'chapter' | 'both';
+export type TextAlign = 'left' | 'center' | 'right' | 'justify';
+
+export interface SubheaderLevelConfig {
+  align: TextAlign;
+  bold: boolean;
+  sizeMultiplier: number;
+  marginTop: number;
+  marginBottom: number;
+  minLinesAfter: number;
+}
+
+export interface ChapterTitleConfig {
+  align: TextAlign;
+  bold: boolean;
+  sizeMultiplier: number;
+  marginTop: number;
+  marginBottom: number;
+  startOnRightPage: boolean;
+}
+
+export interface ParagraphConfig {
+  firstLineIndent: number;
+  align: TextAlign;
+  spacingBetween: number;
+}
+
+export interface QuoteConfig {
+  enabled: boolean;
+  indentLeft: number;
+  indentRight: number;
+  showLine: boolean;
+  italic: boolean;
+  sizeMultiplier: number;
+  marginTop: number;
+  marginBottom: number;
+}
+
+export interface PaginationRules {
+  minOrphanLines: number;
+  minWidowLines: number;
+  splitLongParagraphs: boolean;
+}
 
 export interface Chapter {
   id: string;
@@ -46,6 +88,18 @@ export interface Config {
   headerContent: HeaderContent;
   headerPosition: 'top';
   headerLine: boolean;
+  chapterTitle: ChapterTitleConfig;
+  subheaders: {
+    h1: SubheaderLevelConfig;
+    h2: SubheaderLevelConfig;
+    h3: SubheaderLevelConfig;
+    h4: SubheaderLevelConfig;
+    h5: SubheaderLevelConfig;
+    h6: SubheaderLevelConfig;
+  };
+  paragraph: ParagraphConfig;
+  quote: QuoteConfig;
+  pagination: PaginationRules;
 }
 
 export interface UI {

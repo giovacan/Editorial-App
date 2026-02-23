@@ -11,10 +11,83 @@ function Preview() {
   const [pages, setPages] = useState([]);
   
   const safeBookData = bookData || { bookType: 'novela', chapters: [], title: '' };
-  const safeConfig = config || { pageFormat: 'a5', fontSize: 12, lineHeight: 1.6 };
+  const safeConfig = config || { 
+    pageFormat: 'a5', 
+    fontSize: 12, 
+    lineHeight: 1.6,
+    chapterTitle: { align: 'center', bold: true, sizeMultiplier: 1.8, marginTop: 2, marginBottom: 1, startOnRightPage: true },
+    subheaders: {
+      h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBottom: 0.5, minLinesAfter: 2 },
+      h2: { align: 'center', bold: true, sizeMultiplier: 1.35, marginTop: 1.25, marginBottom: 0.5, minLinesAfter: 2 },
+      h3: { align: 'center', bold: true, sizeMultiplier: 1.25, marginTop: 1, marginBottom: 0.5, minLinesAfter: 1 },
+      h4: { align: 'left', bold: true, sizeMultiplier: 1.15, marginTop: 1, marginBottom: 0.5, minLinesAfter: 1 },
+      h5: { align: 'left', bold: true, sizeMultiplier: 1.1, marginTop: 0.75, marginBottom: 0.25, minLinesAfter: 1 },
+      h6: { align: 'left', bold: false, sizeMultiplier: 1.0, marginTop: 0.5, marginBottom: 0.25, minLinesAfter: 1 }
+    },
+    paragraph: { firstLineIndent: 1.5, align: 'justify', spacingBetween: 0 },
+    quote: { enabled: true, indentLeft: 2, indentRight: 2, showLine: true, italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1 },
+    pagination: { minOrphanLines: 2, minWidowLines: 2, splitLongParagraphs: true }
+  };
   
   const bookConfig = KDP_STANDARDS.getBookTypeConfig(safeBookData.bookType);
   const pageFormat = KDP_STANDARDS.getPageFormat(safeConfig.pageFormat || bookConfig.recommendedFormat);
+
+  const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign) => {
+    const lines = [];
+    let remainingHtml = html;
+    
+    while (remainingHtml) {
+      measureDiv.innerHTML = remainingHtml;
+      
+      if (measureDiv.offsetHeight <= maxHeight) {
+        lines.push(remainingHtml);
+        break;
+      }
+      
+      const tmp = window.document.createElement('div');
+      tmp.innerHTML = remainingHtml;
+      const text = tmp.textContent || '';
+      
+      if (!text.trim()) {
+        lines.push(remainingHtml);
+        break;
+      }
+      
+      let low = 0;
+      let high = text.length;
+      let fitLength = 0;
+      
+      while (low < high) {
+        const mid = Math.floor((low + high + 1) / 2);
+        const trialHtml = text.substring(0, mid);
+        measureDiv.innerHTML = `<p style="margin:0;padding:0;text-align:${textAlign};text-indent:1.5em;text-justify:inter-word;">${trialHtml}</p>`;
+        
+        if (measureDiv.offsetHeight <= maxHeight) {
+          fitLength = mid;
+          low = mid;
+        } else {
+          high = mid - 1;
+        }
+      }
+      
+      if (fitLength === 0) {
+        lines.push(remainingHtml);
+        break;
+      }
+      
+      const lastSpace = text.substring(0, fitLength).lastIndexOf(' ');
+      const breakPoint = lastSpace > fitLength * 0.5 ? lastSpace : fitLength;
+      
+      lines.push(text.substring(0, breakPoint));
+      remainingHtml = text.substring(breakPoint);
+      
+      if (remainingHtml) {
+        remainingHtml = `<p style="margin:0;padding:0;text-align:${textAlign};text-indent:0;text-justify:inter-word;">${remainingHtml}</p>`;
+      }
+    }
+    
+    return lines;
+  };
 
   useEffect(() => {
     if (!safeBookData?.chapters?.length || !measureRef.current) {
@@ -36,30 +109,45 @@ function Preview() {
     const contentWidth = pageWidthPx - marginLeft - marginRight;
     const contentHeight = pageHeightPx - marginTop - marginBottom;
 
+    const baseFontSize = safeConfig.fontSize || bookConfig.fontSize;
+    const baseLineHeight = safeConfig.lineHeight || bookConfig.lineHeight;
+    const textAlign = safeConfig.paragraph?.align || 'justify';
+    
     measureDiv.style.width = `${contentWidth}px`;
     measureDiv.style.fontFamily = safeConfig.fontFamily || bookConfig.fontFamily;
-    measureDiv.style.fontSize = `${safeConfig.fontSize || bookConfig.fontSize}pt`;
-    measureDiv.style.lineHeight = safeConfig.lineHeight || bookConfig.lineHeight;
-    measureDiv.style.textAlign = 'justify';
-    measureDiv.style.textIndent = '1.5em';
+    measureDiv.style.fontSize = `${baseFontSize}pt`;
+    measureDiv.style.lineHeight = baseLineHeight;
+    measureDiv.style.textAlign = textAlign;
     measureDiv.style.textJustify = 'inter-word';
     measureDiv.style.padding = '0';
+
+    measureDiv.innerHTML = 'Ag';
+    const lineHeightPx = measureDiv.offsetHeight;
+    const minOrphanLines = safeConfig.pagination?.minOrphanLines || 2;
+    const minWidowLines = safeConfig.pagination?.minWidowLines || 2;
+    const splitLongParagraphs = safeConfig.pagination?.splitLongParagraphs !== false;
 
     const generatedPages = [];
     
     safeBookData.chapters.forEach((chapter, chapterIndex) => {
       const isSection = chapter.type === 'section';
       
-      if (chapterIndex > 0 && !isSection) {
+      const shouldStartOnRight = isSection 
+        ? false 
+        : (safeConfig.chapterTitle?.startOnRightPage !== false);
+      
+      if (shouldStartOnRight && chapterIndex > 0) {
         if (generatedPages.length % 2 === 1) {
           generatedPages.push({ html: '', pageNumber: generatedPages.length + 1, isBlank: true });
         }
       }
       
-      const titleSize = Math.round((safeConfig.fontSize || bookConfig.fontSize) * 1.8);
-      const titleHtml = isSection
-        ? `<div style="font-size:${Math.round((safeConfig.fontSize || bookConfig.fontSize) * 1.35)}pt;font-weight:bold;font-style:italic;text-align:center;margin:0.25em 0 1em 0;">${chapter.title}</div>`
-        : `<div style="font-size:${titleSize}pt;font-weight:bold;text-align:center;margin:0.5em 0 1.5em 0;">${chapter.title}</div>`;
+      const ctConfig = safeConfig.chapterTitle || { align: 'center', bold: true, sizeMultiplier: 1.8, marginTop: 2, marginBottom: 1 };
+      const titleSize = Math.round(baseFontSize * ctConfig.sizeMultiplier);
+      const titleMarginTop = ctConfig.marginTop * lineHeightPx;
+      const titleMarginBottom = ctConfig.marginBottom * lineHeightPx;
+      
+      const titleHtml = `<div style="font-size:${titleSize}pt;font-weight:${ctConfig.bold ? 'bold' : 'normal'};font-style:${isSection ? 'italic' : 'normal'};text-align:${ctConfig.align};margin:${titleMarginTop}px 0 ${titleMarginBottom}px 0;">${chapter.title}</div>`;
       
       measureDiv.innerHTML = titleHtml;
       const titleHeight = measureDiv.offsetHeight;
@@ -83,34 +171,163 @@ function Preview() {
       
       children.forEach(el => {
         const tag = el.tagName;
+        const tagLower = tag.toLowerCase();
         let elHtml = '';
         
-        if (tag === 'P') {
-          paragraphCount++;
+        if (tag === 'P' || tag === 'DIV') {
           const isFirstParagraph = paragraphCount === 1;
-          elHtml = `<p style="margin:0;padding:0;text-align:justify;text-indent:${isFirstParagraph ? '0' : '1.5em'};text-justify:inter-word;line-height:${safeConfig.lineHeight || bookConfig.lineHeight};">${el.innerHTML}</p>`;
+          const indent = safeConfig.paragraph?.firstLineIndent || 1.5;
+          
+          const parentBlockquote = el.closest('blockquote');
+          if (parentBlockquote && safeConfig.quote?.enabled) {
+            const qConfig = safeConfig.quote;
+            elHtml = `<p style="margin:${qConfig.marginTop}em 0 ${qConfig.marginBottom}em ${qConfig.indentLeft}em;padding:0;padding-right:${qConfig.indentRight}em;text-align:${textAlign};text-indent:${isFirstParagraph ? '0' : indent + 'em'};text-justify:inter-word;line-height:${baseLineHeight};font-style:${qConfig.italic ? 'italic' : 'normal'};font-size:${baseFontSize * qConfig.sizeMultiplier}pt;${qConfig.showLine ? 'border-left:3px solid #444;padding-left:0.75em;' : ''}">${el.innerHTML}</p>`;
+          } else {
+            const spacingBetween = safeConfig.paragraph?.spacingBetween || 0;
+            elHtml = `<p style="margin:${spacingBetween > 0 ? spacingBetween + 'em' : '0'} 0;padding:0;text-align:${textAlign};text-indent:${isFirstParagraph ? '0' : indent + 'em'};text-justify:inter-word;line-height:${baseLineHeight};">${el.innerHTML}</p>`;
+          }
+          paragraphCount++;
         } else if (tag.match(/^H[1-6]$/i)) {
-          const sz = Math.round((safeConfig.fontSize || bookConfig.fontSize) * 1.25);
-          elHtml = `<h${el.tagName.slice(1)} style="font-size:${sz}pt;font-weight:bold;margin:1em 0 0.5em 0;text-align:center;line-height:1.3;">${el.innerHTML}</h${el.tagName.slice(1)}>`;
+          const level = tag.slice(1).toLowerCase();
+          const subConfig = safeConfig.subheaders?.[level] || safeConfig.subheaders?.h2 || { align: 'center', bold: true, sizeMultiplier: 1.25, marginTop: 1, marginBottom: 0.5, minLinesAfter: 2 };
+          const subSize = Math.round(baseFontSize * subConfig.sizeMultiplier);
+          const subMarginTop = subConfig.marginTop * lineHeightPx;
+          const subMarginBottom = subConfig.marginBottom * lineHeightPx;
+          elHtml = `<h${level} style="font-size:${subSize}pt;font-weight:${subConfig.bold ? 'bold' : 'normal'};margin:${subMarginTop}px 0 ${subMarginBottom}px 0;text-align:${subConfig.align};line-height:1.3;">${el.innerHTML}</h${level}>`;
+        } else if (tag === 'BLOCKQUOTE' && safeConfig.quote?.enabled) {
+          const qConfig = safeConfig.quote;
+          elHtml = `<blockquote style="margin:${qConfig.marginTop}em ${qConfig.indentRight}em ${qConfig.marginBottom}em ${qConfig.indentLeft}em;padding:0.5em 1em;border-left:${qConfig.showLine ? '3px solid #444' : 'none'};font-style:${qConfig.italic ? 'italic' : 'normal'};font-size:${baseFontSize * qConfig.sizeMultiplier}pt;line-height:${baseLineHeight};">${el.innerHTML}</blockquote>`;
         } else if (tag === 'UL' || tag === 'OL') {
-          elHtml = `<${tag.toLowerCase()} style="margin:0.5em 0;padding-left:1.5em;line-height:${safeConfig.lineHeight || bookConfig.lineHeight};">${el.innerHTML}</${tag.toLowerCase()}>`;
+          elHtml = `<${tagLower} style="margin:0.5em 0;padding-left:1.5em;line-height:${baseLineHeight};">${el.innerHTML}</${tagLower}>`;
         } else if (tag === 'HR') {
           elHtml = '<hr style="border:none;border-top:1px solid #999;margin:1em 0;">';
-        } else if (tag === 'DIV' || tag === 'BR') {
-          elHtml = `<p style="margin:0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;line-height:${safeConfig.lineHeight || bookConfig.lineHeight};">${el.innerHTML || '<br>'}</p>`;
+        } else if (tag === 'BR') {
+          elHtml = `<br>`;
         } else {
-          elHtml = `<p style="margin:0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;line-height:${safeConfig.lineHeight || bookConfig.lineHeight};">${el.innerHTML}</p>`;
+          elHtml = `<p style="margin:0;padding:0;text-align:${textAlign};text-indent:1.5em;text-justify:inter-word;line-height:${baseLineHeight};">${el.innerHTML}</p>`;
+        }
+        
+        measureDiv.innerHTML = elHtml;
+        const elHeight = measureDiv.offsetHeight;
+        const isHeader = tag.match(/^H[1-6]$/i);
+        const headerLevel = isHeader ? tag.slice(1).toLowerCase() : null;
+        const subheaderConfig = headerLevel ? (safeConfig.subheaders?.[headerLevel] || safeConfig.subheaders?.h2) : null;
+        const minLinesAfterHeader = subheaderConfig?.minLinesAfter || 2;
+        
+        if (elHeight > contentHeight) {
+          if (currentHtml) {
+            generatedPages.push({ html: currentHtml, pageNumber: generatedPages.length + 1, chapterTitle: chapter.title, isBlank: false });
+            currentHtml = '';
+            currentHeight = 0;
+          }
+          
+          if (splitLongParagraphs) {
+            const lines = splitParagraphByLines(elHtml, measureDiv, contentHeight, textAlign);
+            
+            let lineHtml = '';
+            
+            lines.forEach((line, idx) => {
+              const isLastLine = idx === lines.length - 1;
+              
+              if (isLastLine) {
+                lineHtml += line;
+                generatedPages.push({ html: lineHtml, pageNumber: generatedPages.length + 1, chapterTitle: chapter.title, isBlank: false });
+                lineHtml = '';
+              } else {
+                const testHtml = lineHtml + line;
+                measureDiv.innerHTML = testHtml;
+                
+                if (measureDiv.offsetHeight > contentHeight) {
+                  if (lineHtml) {
+                    generatedPages.push({ html: lineHtml, pageNumber: generatedPages.length + 1, chapterTitle: chapter.title, isBlank: false });
+                  }
+                  lineHtml = line;
+                  measureDiv.innerHTML = line;
+                } else {
+                  lineHtml = testHtml;
+                }
+              }
+            });
+            
+            if (lineHtml) {
+              generatedPages.push({ html: lineHtml, pageNumber: generatedPages.length + 1, chapterTitle: chapter.title, isBlank: false });
+              lineHtml = '';
+            }
+          } else {
+            generatedPages.push({ html: elHtml, pageNumber: generatedPages.length + 1, chapterTitle: chapter.title, isBlank: false });
+          }
+          return;
         }
         
         const candidateHtml = currentHtml + elHtml;
         measureDiv.innerHTML = candidateHtml;
         const candidateHeight = measureDiv.offsetHeight;
         
-        if (candidateHeight > contentHeight && currentHtml) {
-          generatedPages.push({ html: currentHtml, pageNumber: generatedPages.length + 1, chapterTitle: chapter.title, isBlank: false });
-          currentHtml = elHtml;
-          measureDiv.innerHTML = elHtml;
-          currentHeight = measureDiv.offsetHeight;
+        if (candidateHeight > contentHeight) {
+          const remainingLinesOnPage = Math.round((contentHeight - currentHeight) / lineHeightPx);
+          
+          if (isHeader && remainingLinesOnPage < minLinesAfterHeader) {
+            generatedPages.push({ html: currentHtml, pageNumber: generatedPages.length + 1, chapterTitle: chapter.title, isBlank: false });
+            currentHtml = elHtml;
+            measureDiv.innerHTML = elHtml;
+            currentHeight = measureDiv.offsetHeight;
+            return;
+          }
+          
+          if (remainingLinesOnPage < minOrphanLines) {
+            generatedPages.push({ html: currentHtml, pageNumber: generatedPages.length + 1, chapterTitle: chapter.title, isBlank: false });
+            currentHtml = elHtml;
+            measureDiv.innerHTML = elHtml;
+            currentHeight = measureDiv.offsetHeight;
+            return;
+          }
+          
+          if (splitLongParagraphs) {
+            const elLinesArr = splitParagraphByLines(elHtml, measureDiv, contentHeight, textAlign);
+            
+            let pageContent = currentHtml;
+            let pageH = currentHeight;
+            
+            for (let i = 0; i < elLinesArr.length; i++) {
+              const line = elLinesArr[i];
+              const isLastLineOfParagraph = i === elLinesArr.length - 1;
+              
+              const testContent = pageContent + line;
+              measureDiv.innerHTML = testContent;
+              const testH = measureDiv.offsetHeight;
+              
+              if (testH > contentHeight) {
+                generatedPages.push({ html: pageContent, pageNumber: generatedPages.length + 1, chapterTitle: chapter.title, isBlank: false });
+                
+                const remainingElLines = elLinesArr.slice(i);
+                const isShortRest = remainingElLines.length <= minWidowLines;
+                
+                if (isShortRest) {
+                  currentHtml = remainingElLines.join('');
+                  measureDiv.innerHTML = currentHtml;
+                  currentHeight = measureDiv.offsetHeight;
+                  break;
+                } else {
+                  pageContent = line;
+                  measureDiv.innerHTML = line;
+                  pageH = measureDiv.offsetHeight;
+                }
+              } else {
+                pageContent = testContent;
+                pageH = testH;
+                
+                if (isLastLineOfParagraph) {
+                  currentHtml = pageContent;
+                  currentHeight = pageH;
+                }
+              }
+            }
+          } else {
+            generatedPages.push({ html: currentHtml, pageNumber: generatedPages.length + 1, chapterTitle: chapter.title, isBlank: false });
+            currentHtml = elHtml;
+            measureDiv.innerHTML = elHtml;
+            currentHeight = measureDiv.offsetHeight;
+          }
         } else {
           currentHtml = candidateHtml;
           currentHeight = candidateHeight;
@@ -124,7 +341,7 @@ function Preview() {
     
     setPages(generatedPages);
     setCurrentPage(0);
-  }, [safeBookData?.chapters, safeBookData?.bookType, safeConfig.pageFormat, safeConfig.fontSize, safeConfig.lineHeight, safeConfig.fontFamily]);
+  }, [safeBookData?.chapters, safeBookData?.bookType, safeConfig]);
 
   const totalPages = pages.length;
 

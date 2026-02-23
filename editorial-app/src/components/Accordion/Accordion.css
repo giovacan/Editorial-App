@@ -1,0 +1,224 @@
+.accordion {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.accordion-item {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+  transition: border-color 0.2s ease;
+}
+
+.accordion-item:hover {
+  border-color: #b0b0b0;
+}
+
+.accordion-item.open {
+  border-color: #4a90d9;
+  box-shadow: 0 2px 8px rgba(74, 144, 217, 0.15);
+}
+
+.accordion-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  background: linear-gradient(to bottom, #fafafa, #f5f5f5);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+  transition: all 0.2s ease;
+}
+
+.accordion-header:hover {
+  background: linear-gradient(to bottom, #f0f0f0, #e8e8e8);
+}
+
+.accordion-item.open .accordion-header {
+  background: linear-gradient(to bottom, #eef6fc, #e5f1fa);
+  color: #2c5282;
+}
+
+.accordion-icon {
+  font-size: 16px;
+  width: 24px;
+  text-align: center;
+}
+
+.accordion-title {
+  flex: 1;
+}
+
+.accordion-arrow {
+  font-size: 10px;
+  color: #888;
+  transition: transform 0.25s ease;
+}
+
+.accordion-item.open .accordion-arrow {
+  transform: rotate(180deg);
+  color: #4a90d9;
+}
+
+.accordion-content {
+  padding: 14px;
+  background: #fff;
+  border-top: 1px solid #eee;
+  animation: slideDown 0.25s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.accordion-content .config-group {
+  margin-bottom: 16px;
+}
+
+.accordion-content .config-group:last-child {
+  margin-bottom: 0;
+}
+
+.accordion-content .config-group legend {
+  font-size: 11px;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #eee;
+}
+
+.accordion-content select,
+.accordion-content input[type="number"],
+.accordion-content input[type="text"] {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fafafa;
+  transition: all 0.2s ease;
+}
+
+.accordion-content select:focus,
+.accordion-content input:focus {
+  outline: none;
+  border-color: #4a90d9;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.15);
+}
+
+.accordion-content .checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 13px;
+  color: #444;
+  cursor: pointer;
+}
+
+.accordion-content .checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #4a90d9;
+  cursor: pointer;
+}
+
+.accordion-content .select-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #555;
+  margin-bottom: 10px;
+}
+
+.accordion-content .number-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.accordion-content .number-row label {
+  font-size: 12px;
+  color: #555;
+}
+
+.accordion-content .number-row input {
+  width: 70px;
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.accordion-content .radio-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.accordion-content .radio-group label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #444;
+  cursor: pointer;
+}
+
+.accordion-content .radio-group input {
+  accent-color: #4a90d9;
+}
+
+.accordion-content .divider {
+  height: 1px;
+  background: #eee;
+  margin: 12px 0;
+}
+
+.accordion-content .level-selector {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.accordion-content .level-btn {
+  padding: 6px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #f5f5f5;
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.accordion-content .level-btn:hover {
+  background: #e8e8e8;
+}
+
+.accordion-content .level-btn.active {
+  background: #4a90d9;
+  border-color: #4a90d9;
+  color: #fff;
+}

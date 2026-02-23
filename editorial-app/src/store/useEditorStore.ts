@@ -58,7 +58,43 @@ const initialState = {
     showHeaders: false,
     headerContent: 'both' as const,
     headerPosition: 'top' as const,
-    headerLine: true
+    headerLine: true,
+    chapterTitle: {
+      align: 'center' as const,
+      bold: true,
+      sizeMultiplier: 1.8,
+      marginTop: 2,
+      marginBottom: 1,
+      startOnRightPage: true
+    },
+    subheaders: {
+      h1: { align: 'center' as const, bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBottom: 0.5, minLinesAfter: 2 },
+      h2: { align: 'center' as const, bold: true, sizeMultiplier: 1.35, marginTop: 1.25, marginBottom: 0.5, minLinesAfter: 2 },
+      h3: { align: 'center' as const, bold: true, sizeMultiplier: 1.25, marginTop: 1, marginBottom: 0.5, minLinesAfter: 1 },
+      h4: { align: 'left' as const, bold: true, sizeMultiplier: 1.15, marginTop: 1, marginBottom: 0.5, minLinesAfter: 1 },
+      h5: { align: 'left' as const, bold: true, sizeMultiplier: 1.1, marginTop: 0.75, marginBottom: 0.25, minLinesAfter: 1 },
+      h6: { align: 'left' as const, bold: false, sizeMultiplier: 1.0, marginTop: 0.5, marginBottom: 0.25, minLinesAfter: 1 }
+    },
+    paragraph: {
+      firstLineIndent: 1.5,
+      align: 'justify' as const,
+      spacingBetween: 0
+    },
+    quote: {
+      enabled: true,
+      indentLeft: 2,
+      indentRight: 2,
+      showLine: true,
+      italic: true,
+      sizeMultiplier: 0.95,
+      marginTop: 1,
+      marginBottom: 1
+    },
+    pagination: {
+      minOrphanLines: 2,
+      minWidowLines: 2,
+      splitLongParagraphs: true
+    }
   },
   ui: {
     showPreview: false,
