@@ -493,13 +493,14 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
 
   const PX_PER_MM = 3.7795;
   const scale = zoom / 100;
-  const pageWidth = pageFormat.width * PX_PER_MM * scale;
-  const pageHeight = pageFormat.height * PX_PER_MM * scale;
-  const marginTop = bookConfig.marginTop * 96 * scale;
-  const marginBottom = bookConfig.marginBottom * 96 * scale;
-  const marginLeft = (bookConfig.marginLeft + (bookConfig.gutter || 0)) * 96 * scale;
-  const marginRight = bookConfig.marginRight * 96 * scale;
-  const fontSize = (safeConfig.fontSize || bookConfig.fontSize) * (96 / 72) * scale;
+  // Dimensiones SIN zoom - el reflow del contenido siempre es el mismo
+  const pageWidth = pageFormat.width * PX_PER_MM;
+  const pageHeight = pageFormat.height * PX_PER_MM;
+  const marginTop = bookConfig.marginTop * 96;
+  const marginBottom = bookConfig.marginBottom * 96;
+  const marginLeft = (bookConfig.marginLeft + (bookConfig.gutter || 0)) * 96;
+  const marginRight = bookConfig.marginRight * 96;
+  const fontSize = (safeConfig.fontSize || bookConfig.fontSize) * (96 / 72);
   const fontFamily = safeConfig.fontFamily || bookConfig.fontFamily;
   const lineHeight = safeConfig.lineHeight || bookConfig.lineHeight;
   const textAlign = safeConfig.paragraph?.align || 'justify';
@@ -535,7 +536,7 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
   const headerTopPx = Math.round(marginTop * 0.3);
   const headerBottomPx = Math.round(marginBottom * 0.3);
   const PT2PX = 96 / 72;
-  const headerFontSize = Math.max(7, Math.round(8 * PT2PX * scale));
+  const headerFontSize = Math.max(7, Math.round(8 * PT2PX));
 
   const headerHtml = (showHeaders && headerText) ? (
     <div className="preview-header" style={{ position: 'absolute', ...(headerPos === 'top' ? { top: headerTopPx } : { bottom: headerBottomPx }), left: marginLeft, width: contentW, fontSize: headerFontSize, color: '#666', fontStyle: 'italic', textAlign: 'center' }}>
@@ -599,7 +600,9 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
             textAlign: textAlign,
             textJustify: 'inter-word',
             hyphens: 'auto',
-            wordBreak: 'break-word'
+            wordBreak: 'break-word',
+            transform: `scale(${scale})`,
+            transformOrigin: 'top center'
           }}
           onMouseEnter={(e) => {
             isOverPreview.current = true;
