@@ -595,15 +595,13 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
           onMouseMove={(e) => {
             if (previewPageRef.current) {
               const rect = previewPageRef.current.getBoundingClientRect();
-              const x = ((e.clientX - rect.left) / rect.width) * 100;
-              const y = ((e.clientY - rect.top) / rect.height) * 100;
+              const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+              const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
               mousePosRef.current = { x, y };
               
               if (magnifierPanelRef.current) {
-                const offsetX = (x - 50) * 3;
-                const offsetY = (y - 50) * 3;
-                magnifierPanelRef.current.style.transform = 
-                  `translate(${-offsetX}px, ${-offsetY}px)`;
+                magnifierPanelRef.current.style.setProperty('--magnifier-x', `${x}%`);
+                magnifierPanelRef.current.style.setProperty('--magnifier-y', `${y}%`);
               }
             }
           }}
@@ -634,12 +632,9 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
             <span>Vista 150%</span>
           </div>
           <div className="magnifier-panel-content">
-            <div 
-              ref={magnifierPanelRef}
-              className="magnifier-page-wrapper"
-            >
+            <div className="magnifier-page-wrapper">
               <div
-                className="preview-page"
+                className="preview-page magnifier-page"
                 lang="es"
                 style={{
                   width: pageWidth,
@@ -652,17 +647,18 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
                   textJustify: 'inter-word',
                   hyphens: 'auto',
                   wordBreak: 'break-word',
-                  transform: 'scale(1.5)',
-                  transformOrigin: 'top left',
                   background: 'white',
                   boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
                 }}
+                ref={magnifierPanelRef}
               >
                 <div 
                   className="preview-content"
                   style={{ height: '100%', overflow: 'hidden' }}
                   dangerouslySetInnerHTML={{ __html: currentPageData.isBlank ? '' : currentPageData.html }}
                 />
+                {pageNumHtml}
+                {headerHtml}
               </div>
             </div>
           </div>

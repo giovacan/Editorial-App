@@ -189,14 +189,22 @@
 
 .magnifier-panel-content {
   padding: 1rem;
-  overflow: hidden;
+  overflow: auto;
   max-height: calc(80vh - 40px);
   background: #f3f4f6;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
 }
 
 .magnifier-page-wrapper {
-  transition: transform 0.05s linear;
-  will-change: transform;
+  position: relative;
+}
+
+.magnifier-page {
+  transform: scale(1.5);
+  transform-origin: var(--magnifier-x, 50%) var(--magnifier-y, 50%);
+  transition: transform-origin 0.05s ease-out;
 }
 
 .magnifier-panel-content .preview-page {
