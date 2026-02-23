@@ -370,12 +370,12 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
           const isList = firstEl.tagName === 'UL' || firstEl.tagName === 'OL';
 
           const firstElOuter = firstEl.outerHTML;
-          measureDiv.innerHTML = firstElOuter;
-          const firstElHeight = measureDiv.offsetHeight;
-
           let moved = false;
 
-          if (firstElHeight <= remainingSpace) {
+          // Medir la combinación directamente para que los márgenes CSS se calculen en contexto
+          measureDiv.innerHTML = page.html + firstElOuter;
+          if (measureDiv.offsetHeight <= contentHeight) {
+            // El elemento cabe completo — verificar restricción de viuda
             firstEl.remove();
             const restHtml = tmp.innerHTML;
             measureDiv.innerHTML = restHtml;
@@ -387,6 +387,7 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
               moved = true;
             }
           } else if (!isHeader && !isList && splitLongParagraphs) {
+            // El elemento no cabe completo — intentar dividir el párrafo
             const fillSpace = remainingLines * lineHeightPx;
             const splitArr = splitParagraphByLines(firstElOuter, measureDiv, fillSpace, textAlign);
 
@@ -394,20 +395,24 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
               const chunk = splitArr[0];
               const rest = splitArr.slice(1).join('');
 
-              measureDiv.innerHTML = chunk;
-              const chunkLines = Math.round(measureDiv.offsetHeight / lineHeightPx);
+              // Verificar que el chunk realmente cabe (medición directa)
+              measureDiv.innerHTML = page.html + chunk;
+              if (measureDiv.offsetHeight <= contentHeight) {
+                measureDiv.innerHTML = chunk;
+                const chunkLines = Math.round(measureDiv.offsetHeight / lineHeightPx);
 
-              // Widow: medir solo el fragmento restante del párrafo dividido
-              measureDiv.innerHTML = rest;
-              const widowLines = rest.trim() ? Math.round(measureDiv.offsetHeight / lineHeightPx) : Infinity;
+                // Widow: medir solo el fragmento restante del párrafo dividido
+                measureDiv.innerHTML = rest;
+                const widowLines = rest.trim() ? Math.round(measureDiv.offsetHeight / lineHeightPx) : Infinity;
 
-              firstEl.remove();
-              const restPageHtml = rest + tmp.innerHTML;
+                firstEl.remove();
+                const restPageHtml = rest + tmp.innerHTML;
 
-              if (chunkLines >= minOrphanLines && (!rest.trim() || widowLines >= minWidowLines)) {
-                generatedPages[pageIdx] = { ...page, html: page.html + chunk };
-                generatedPages[nextIdx] = { ...nextPage, html: restPageHtml };
-                moved = true;
+                if (chunkLines >= minOrphanLines && (!rest.trim() || widowLines >= minWidowLines)) {
+                  generatedPages[pageIdx] = { ...page, html: page.html + chunk };
+                  generatedPages[nextIdx] = { ...nextPage, html: restPageHtml };
+                  moved = true;
+                }
               }
             }
           }
