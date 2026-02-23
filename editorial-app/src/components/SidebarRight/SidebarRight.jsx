@@ -5,11 +5,9 @@ import './SidebarRight.css';
 
 function SidebarRight({ onExportPdf, onExportEpub, onExportHtml }) {
   const [activeTab, setActiveTab] = useState('preview');
-  const ui = useEditorStore((state) => state.ui);
   const bookData = useEditorStore((state) => state.bookData);
   
   const safeBookData = bookData || { chapters: [] };
-  const safeUi = ui || { showPreview: false, showUpload: true };
 
   return (
     <aside className="sidebar sidebar-right" role="complementary" aria-label="Panel de vista previa y exportación">

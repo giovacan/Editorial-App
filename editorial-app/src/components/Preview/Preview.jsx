@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import useEditorStore from '../../store/useEditorStore';
 import './Preview.css';
@@ -13,12 +13,10 @@ function Preview() {
   const navigatedChapterRef = useRef(null);
   
   const [showMagnifier, setShowMagnifier] = useState(false);
-  const magnifierTimeoutRef = useRef(null);
   const previewPageRef = useRef(null);
   const magnifierPanelRef = useRef(null);
   
   const mousePosRef = useRef({ x: 50, y: 50 });
-  const transformRef = useRef({ x: 0, y: 0 });
   
   const safeBookData = bookData || { bookType: 'novela', chapters: [], title: '' };
   const safeConfig = config || { 
@@ -223,10 +221,6 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
 
         measureDiv.innerHTML = elHtml;
         const elHeight = measureDiv.offsetHeight;
-        const isHeader = tag.match(/^H[1-6]$/i);
-        const headerLevel = isHeader ? tag.slice(1).toLowerCase() : null;
-        const subheaderConfig = headerLevel ? (safeConfig.subheaders?.[headerLevel] || safeConfig.subheaders?.h2) : null;
-        const minLinesAfterHeader = subheaderConfig?.minLinesAfter || 1;
 
         if (elHeight > contentHeight) {
           if (currentHtml) {
@@ -495,28 +489,9 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
   const lineHeight = safeConfig.lineHeight || bookConfig.lineHeight;
   const textAlign = safeConfig.paragraph?.align || 'justify';
 
-  const PT2PX = 96 / 72;
-  const numSize = Math.max(8, Math.round(9 * PT2PX * scale));
-
   const numPos = safeConfig.pageNumberPos || 'bottom';
   const numAlign = safeConfig.pageNumberAlign || 'center';
   const contentW = pageWidth - marginLeft - marginRight;
-
-  let numCss = '';
-  if (numPos === 'bottom') {
-    numCss += `bottom:${Math.round(marginBottom * 0.45)}px;`;
-  } else {
-    numCss += `top:${Math.round(marginTop * 0.3)}px;`;
-  }
-  if (numAlign === 'left') {
-    numCss += `left:${marginLeft}px;`;
-  } else if (numAlign === 'right') {
-    numCss += `right:${marginRight}px;`;
-  } else if (numAlign === 'outer') {
-    numCss += currentPage % 2 === 0 ? `left:${marginLeft}px;` : `right:${marginRight}px;`;
-  } else {
-    numCss += `left:${marginLeft}px;width:${contentW}px;text-align:center;`;
-  }
 
   const showNums = safeConfig.showPageNumbers !== false;
   const pageNumHtml = (showNums && !currentPageData.isBlank) ? (

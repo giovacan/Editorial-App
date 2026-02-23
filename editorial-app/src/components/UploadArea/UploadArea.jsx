@@ -4,14 +4,11 @@ import './UploadArea.css';
 function UploadArea({ onContentLoaded }) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [pasteText, setPasteText] = useState('');
-  const [mammothReady, setMammothReady] = useState(false);
+  const [mammothReady, setMammothReady] = useState(() => !!window.mammoth);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
-    if (window.mammoth) {
-      setMammothReady(true);
-      return;
-    }
+    if (mammothReady) return;
     
     const script = window.document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js';
@@ -24,7 +21,7 @@ function UploadArea({ onContentLoaded }) {
       alert('Error al cargar la librería DOCX. Por favor intenta de nuevo.');
     };
     document.head.appendChild(script);
-  }, []);
+  }, [mammothReady]);
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -104,7 +101,7 @@ function UploadArea({ onContentLoaded }) {
     parseAndLoadContent(pasteText, 'pasted-content');
   };
 
-  const parseAndLoadContent = (content, sourceName) => {
+  const parseAndLoadContent = (content) => {
     const lines = content.split('\n').filter(line => line.trim());
     const chapters = [];
     let currentChapter = null;
@@ -143,7 +140,6 @@ function UploadArea({ onContentLoaded }) {
       if (trimmed.startsWith('### ')) return true;
       if (/^#{3,}\s+/.test(trimmed)) return true;
       
-      const lower = trimmed.toLowerCase();
       if (/^subtítulo|^subtitle/i.test(trimmed)) return true;
       if (/^nota\s+/i.test(trimmed)) return true;
       if (/^\d+\.\d+/.test(trimmed)) return true;
@@ -217,7 +213,7 @@ function UploadArea({ onContentLoaded }) {
     onContentLoaded(chapters);
   };
 
-  const parseAndLoadContentFromHtml = (htmlContent, sourceName) => {
+  const parseAndLoadContentFromHtml = (htmlContent) => {
     const tempDiv = window.document.createElement('div');
     tempDiv.innerHTML = htmlContent;
     
@@ -226,8 +222,6 @@ function UploadArea({ onContentLoaded }) {
     const isChapterHeading = (el) => {
       const tag = el.tagName?.toLowerCase();
       const text = el.textContent?.trim() || '';
-      const style = el.style || {};
-      const computedStyle = el.ownerDocument.defaultView?.getComputedStyle(el) || {};
       
       if (tag === 'h1' || tag === 'h2') return true;
       
@@ -266,8 +260,6 @@ function UploadArea({ onContentLoaded }) {
       if (tag === 'h3' || tag === 'h4') return true;
       
       if (tag === 'p' || tag === 'div') {
-        const lowerText = text.toLowerCase();
-        
         if (/^subtítulo|subtitle/i.test(text)) return true;
         if (/^nota\s+/i.test(text)) return true;
         if (/^reseña/i.test(text)) return true;
@@ -279,20 +271,13 @@ function UploadArea({ onContentLoaded }) {
           if (fontWeight && (fontWeight >= 700 || fontWeight === 'bold')) {
             return true;
           }
-        } catch (e) {}
+        } catch { /* ignore computedStyle errors */ }
         
         const style = el.getAttribute('style') || '';
         if (style.includes('font-weight: bold') || style.includes('font-weight:700') || style.includes('font-weight:bold')) {
           return true;
         }
       }
-      return false;
-    };
-    
-    const isSection = (el) => {
-      const tag = el.tagName?.toLowerCase();
-      
-      if (tag === 'h4' || tag === 'h5' || tag === 'h6') return true;
       return false;
     };
     
