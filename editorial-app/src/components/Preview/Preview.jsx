@@ -586,23 +586,28 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
             hyphens: 'auto',
             wordBreak: 'break-word'
           }}
-          onMouseEnter={() => {
+          onMouseEnter={(e) => {
             setShowMagnifier(true);
+            if (previewPageRef.current && magnifierPanelRef.current) {
+              const rect = previewPageRef.current.getBoundingClientRect();
+              const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+              const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+              mousePosRef.current = { x, y };
+              magnifierPanelRef.current.style.setProperty('--magnifier-x', `${x}%`);
+              magnifierPanelRef.current.style.setProperty('--magnifier-y', `${y}%`);
+            }
           }}
           onMouseLeave={() => {
             setShowMagnifier(false);
           }}
           onMouseMove={(e) => {
-            if (previewPageRef.current) {
+            if (previewPageRef.current && magnifierPanelRef.current) {
               const rect = previewPageRef.current.getBoundingClientRect();
               const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
               const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
               mousePosRef.current = { x, y };
-              
-              if (magnifierPanelRef.current) {
-                magnifierPanelRef.current.style.setProperty('--magnifier-x', `${x}%`);
-                magnifierPanelRef.current.style.setProperty('--magnifier-y', `${y}%`);
-              }
+              magnifierPanelRef.current.style.setProperty('--magnifier-x', `${x}%`);
+              magnifierPanelRef.current.style.setProperty('--magnifier-y', `${y}%`);
             }
           }}
         >
@@ -610,13 +615,16 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
             className="preview-content"
             style={{
               height: '100%',
-              overflow: 'hidden'
+              overflow: 'hidden',
+              pointerEvents: 'none'
             }}
-            dangerouslySetInnerHTML={{ __html: currentPageData.isBlank ? '' : currentPageData.html }}
+          dangerouslySetInnerHTML={{ __html: currentPageData.isBlank ? '' : currentPageData.html }}
           />
           
-          {pageNumHtml}
-          {headerHtml}
+          <div style={{ pointerEvents: 'none' }}>
+            {pageNumHtml}
+            {headerHtml}
+          </div>
         </div>
       </div>
 
