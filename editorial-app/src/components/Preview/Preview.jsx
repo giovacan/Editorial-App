@@ -519,14 +519,28 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
         const page = generatedPages[pageIdx];
         if (page.isBlank) continue;
 
-        // Check if page ends with a header (last DOM element must be header)
+        // Check if page ends with a header (actual <h*> tag or pseudo-header like bold <p>)
         const lastEl = getLastElement(page.html);
-        if (!lastEl || !/^H[1-6]$/i.test(lastEl.tagName)) {
-          continue; // No header at end
+        if (!lastEl) {
+          continue;
+        }
+
+        // Check if it's a real header or a pseudo-header (bold paragraph that looks like header)
+        const isRealHeader = /^H[1-6]$/i.test(lastEl.tagName);
+        const isBoldShort = lastEl.tagName === 'P' || lastEl.tagName === 'DIV';
+        const text = lastEl.textContent?.trim() || '';
+        const isBold = lastEl.style.fontWeight === 'bold' ||
+                       lastEl.style.fontWeight >= '700' ||
+                       lastEl.innerHTML.includes('font-weight');
+        const isShortText = text.length > 0 && text.length < 100 && !text.includes('\n');
+        const isPseudoHeader = isBoldShort && isBold && isShortText;
+
+        if (!isRealHeader && !isPseudoHeader) {
+          continue; // No header-like element at end
         }
 
         const headerHtml = lastEl.outerHTML;
-        const headerLevel = lastEl.tagName.slice(1); // '1'-'6'
+        const headerLevel = isRealHeader ? lastEl.tagName.slice(1) : '3'; // Treat pseudo-headers as h3 equivalent
 
         const nextPage = generatedPages[pageIdx + 1];
         if (!nextPage || nextPage.isBlank) {
