@@ -49,7 +49,7 @@ function SidebarLeft() {
     const bookType = e.target.value;
     const bookConfig = KDP_STANDARDS.getBookTypeConfig(bookType);
     store.setBookData({ bookType });
-    store.store.setConfig({
+    store.setConfig({
       pageFormat: bookConfig.recommendedFormat,
       fontSize: bookConfig.fontSize,
       lineHeight: bookConfig.lineHeight
@@ -69,11 +69,11 @@ function SidebarLeft() {
   };
 
   const updateChapterTitle = (key, value) => {
-    store.store.setConfig({ chapterTitle: { ...safeConfig.chapterTitle, [key]: value } });
+    store.setConfig({ chapterTitle: { ...safeConfig.chapterTitle, [key]: value } });
   };
 
   const updateSubheader = (key, value) => {
-    store.store.setConfig({
+    store.setConfig({
       subheaders: {
         ...safeConfig.subheaders,
         [selectedSubheaderLevel]: { ...safeConfig.subheaders[selectedSubheaderLevel], [key]: value }
@@ -82,15 +82,15 @@ function SidebarLeft() {
   };
 
   const updateParagraph = (key, value) => {
-    store.store.setConfig({ paragraph: { ...safeConfig.paragraph, [key]: value } });
+    store.setConfig({ paragraph: { ...safeConfig.paragraph, [key]: value } });
   };
 
   const updateQuote = (key, value) => {
-    store.store.setConfig({ quote: { ...safeConfig.quote, [key]: value } });
+    store.setConfig({ quote: { ...safeConfig.quote, [key]: value } });
   };
 
   const updatePagination = (key, value) => {
-    store.store.setConfig({ pagination: { ...safeConfig.pagination, [key]: value } });
+    store.setConfig({ pagination: { ...safeConfig.pagination, [key]: value } });
   };
 
   const accordionItems = useMemo(() => [
@@ -118,7 +118,7 @@ function SidebarLeft() {
             <legend>Formato de página</legend>
             <select 
               value={safeConfig.pageFormat} 
-              onChange={(e) => store.store.setConfig({ pageFormat: e.target.value })}
+              onChange={(e) => store.setConfig({ pageFormat: e.target.value })}
             >
               <option value="a5">A5 (14.8 × 21 cm)</option>
               <option value="a4">A4 (21 × 29.7 cm)</option>
