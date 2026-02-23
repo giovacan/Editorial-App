@@ -519,6 +519,7 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
 
   const headerTopPx = Math.round(marginTop * 0.3);
   const headerBottomPx = Math.round(marginBottom * 0.3);
+  const PT2PX = 96 / 72;
   const headerFontSize = Math.max(7, Math.round(8 * PT2PX * scale));
 
   const headerHtml = (showHeaders && headerText) ? (
