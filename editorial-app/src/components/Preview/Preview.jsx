@@ -13,13 +13,12 @@ function Preview() {
   const navigatedChapterRef = useRef(null);
   
   const [showMagnifier, setShowMagnifier] = useState(false);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [scrollPos, setScrollPos] = useState({ x: 0, y: 0 });
   const magnifierTimeoutRef = useRef(null);
   const previewPageRef = useRef(null);
-  const magnifierContentRef = useRef(null);
+  const magnifierPanelRef = useRef(null);
+  
+  const mousePosRef = useRef({ x: 50, y: 50 });
+  const transformRef = useRef({ x: 0, y: 0 });
   
   const safeBookData = bookData || { bookType: 'novela', chapters: [], title: '' };
   const safeConfig = config || { 
@@ -609,7 +608,6 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
           onMouseEnter={(e) => {
             magnifierTimeoutRef.current = setTimeout(() => {
               setShowMagnifier(true);
-              setScrollPos({ x: 0, y: 0 });
             }, 300);
           }}
           onMouseLeave={() => {
@@ -617,14 +615,20 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
               clearTimeout(magnifierTimeoutRef.current);
             }
             setShowMagnifier(false);
-            setIsDragging(false);
           }}
           onMouseMove={(e) => {
-            if (showMagnifier && previewPageRef.current) {
+            if (previewPageRef.current) {
               const rect = previewPageRef.current.getBoundingClientRect();
               const x = ((e.clientX - rect.left) / rect.width) * 100;
               const y = ((e.clientY - rect.top) / rect.height) * 100;
-              setMousePos({ x, y });
+              mousePosRef.current = { x, y };
+              
+              if (magnifierPanelRef.current) {
+                const offsetX = (x - 50) * 2;
+                const offsetY = (y - 50) * 2;
+                magnifierPanelRef.current.style.transform = 
+                  `translate(${-offsetX}px, ${-offsetY}px)`;
+              }
             }
           }}
         >
@@ -649,74 +653,39 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
       </div>
 
       {showMagnifier && (
-        <div 
-          className="magnifier-overlay"
-          onClick={() => setShowMagnifier(false)}
-        >
+        <div className="magnifier-panel">
+          <div className="magnifier-panel-header">
+            <span>Vista 150%</span>
+          </div>
           <div 
-            className="magnifier-modal"
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => {
-              setIsDragging(true);
-              setDragStart({ x: e.clientX - scrollPos.x, y: e.clientY - scrollPos.y });
-            }}
-            onMouseMove={(e) => {
-              if (isDragging) {
-                setScrollPos({ 
-                  x: e.clientX - dragStart.x, 
-                  y: e.clientY - dragStart.y 
-                });
-              }
-            }}
-            onMouseUp={() => setIsDragging(false)}
-            onMouseLeave={() => setIsDragging(false)}
+            ref={magnifierPanelRef}
+            className="magnifier-panel-content"
           >
-            <div className="magnifier-header">
-              <span className="magnifier-title">Vista Ampliada (150%)</span>
-              <button 
-                className="magnifier-close"
-                onClick={() => setShowMagnifier(false)}
-              >
-                ✕
-              </button>
-            </div>
-            <div 
-              ref={magnifierContentRef}
-              className="magnifier-content"
+            <div
+              className="preview-page"
+              lang="es"
               style={{
-                transform: `scale(1.5) translate(${-scrollPos.x}px, ${-scrollPos.y}px)`,
-                transformOrigin: `${mousePos.x}% ${mousePos.y}%`,
-                cursor: isDragging ? 'grabbing' : 'grab'
+                width: pageWidth,
+                height: pageHeight,
+                padding: `${marginTop}px ${marginRight}px ${marginBottom}px ${marginLeft}px`,
+                fontSize: fontSize,
+                fontFamily: fontFamily,
+                lineHeight: lineHeight,
+                textAlign: textAlign,
+                textJustify: 'inter-word',
+                hyphens: 'auto',
+                wordBreak: 'break-word',
+                transform: 'scale(1.5)',
+                transformOrigin: 'top left',
+                background: 'white',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
               }}
             >
-              <div
-                className="preview-page"
-                lang="es"
-                style={{
-                  width: pageWidth,
-                  height: pageHeight,
-                  padding: `${marginTop}px ${marginRight}px ${marginBottom}px ${marginLeft}px`,
-                  fontSize: fontSize,
-                  fontFamily: fontFamily,
-                  lineHeight: lineHeight,
-                  textAlign: textAlign,
-                  textJustify: 'inter-word',
-                  hyphens: 'auto',
-                  wordBreak: 'break-word',
-                  boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
-                }}
-              >
-                <div 
-                  className="preview-content"
-                  style={{ height: '100%', overflow: 'hidden' }}
-                  dangerouslySetInnerHTML={{ __html: currentPageData.isBlank ? '' : currentPageData.html }}
-                />
-                {pageNumHtml}
-                {headerHtml}
-              </div>
-            </div>
-            <div className="magnifier-hint">
-              Arrastra para mover la vista
+              <div 
+                className="preview-content"
+                style={{ height: '100%', overflow: 'hidden' }}
+                dangerouslySetInnerHTML={{ __html: currentPageData.isBlank ? '' : currentPageData.html }}
+              />
             </div>
           </div>
         </div>
