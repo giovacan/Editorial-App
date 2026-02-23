@@ -1,6 +1,6 @@
 import './Header.css';
 
-function Header({ onNewProject, onSaveProject }) {
+function Header({ onNewProject, onSaveProject, onOpenProject }) {
   return (
     <header className="app-header" role="banner">
       <div className="header-content">
@@ -15,7 +15,7 @@ function Header({ onNewProject, onSaveProject }) {
           <button className="btn btn-primary" onClick={onNewProject} aria-label="Crear nuevo proyecto">
             + Nuevo
           </button>
-          <button className="btn btn-secondary" aria-label="Abrir proyecto existente">
+          <button className="btn btn-secondary" onClick={onOpenProject} aria-label="Abrir proyecto existente">
             Abrir
           </button>
           <button className="btn btn-secondary" onClick={onSaveProject} aria-label="Guardar proyecto actual">

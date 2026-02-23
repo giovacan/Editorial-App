@@ -1,7 +1,10 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import type { EditorState, Chapter } from '../types';
 
-const useEditorStore = create<EditorState>((set, get) => ({
+const useEditorStore = create<EditorState>()(
+  persist(
+    (set, get) => ({
   document: {
     title: '',
     author: '',
@@ -133,7 +136,14 @@ const useEditorStore = create<EditorState>((set, get) => ({
       pages: estimatedPages,
       readingTime
     };
+  })),
+  {
+    name: 'editorial-app-storage',
+    partialize: (state) => ({
+      document: state.document,
+      config: state.config
+    })
   }
-}));
+);
 
 export default useEditorStore;

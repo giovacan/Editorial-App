@@ -1,10 +1,18 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import './UploadArea.css';
 
 function UploadArea({ onContentLoaded }) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [pasteText, setPasteText] = useState('');
+  const [mammothReady, setMammothReady] = useState(false);
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js';
+    script.onload = () => setMammothReady(true);
+    document.head.appendChild(script);
+  }, []);
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -36,11 +44,23 @@ function UploadArea({ onContentLoaded }) {
     }
   };
 
-  const handleFile = (file) => {
+  const handleFile = async (file) => {
     const ext = file.name.split('.').pop()?.toLowerCase();
     
     if (ext === 'docx') {
-      alert('DOCX no soportado aún en React. Usa texto plano o Markdown.');
+      if (!mammothReady || !window.mammoth) {
+        alert('Cargando librería para DOCX... intenta de nuevo en un momento.');
+        return;
+      }
+      
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await window.mammoth.convertToHtml({ arrayBuffer });
+        const html = result.value;
+        parseAndLoadContentFromHtml(html, file.name);
+      } catch (error) {
+        alert('Error al leer el archivo DOCX: ' + error.message);
+      }
       return;
     }
 
@@ -108,6 +128,52 @@ function UploadArea({ onContentLoaded }) {
     onContentLoaded(chapters);
   };
 
+  const parseAndLoadContentFromHtml = (htmlContent, sourceName) => {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = htmlContent;
+    
+    const chapters = [];
+    const headings = tempDiv.querySelectorAll('h1, h2, h3');
+    
+    if (headings.length > 0) {
+      let lastIndex = 0;
+      headings.forEach((heading, index) => {
+        const title = heading.textContent;
+        const nextHeading = headings[index + 1];
+        const start = heading.nextSibling;
+        
+        let chapterHtml = '';
+        let node = start;
+        while (node && node !== nextHeading) {
+          if (node.nodeType === 1) {
+            chapterHtml += node.outerHTML;
+          } else if (node.nodeType === 3 && node.textContent.trim()) {
+            chapterHtml += `<p>${node.textContent}</p>`;
+          }
+          node = node.nextSibling;
+        }
+        
+        chapters.push({
+          id: `chapter-${Date.now()}-${index}`,
+          type: heading.tagName === 'H1' ? 'chapter' : 'section',
+          title: title,
+          html: chapterHtml,
+          wordCount: chapterHtml.replace(/<[^>]*>/g, '').split(/\s+/).filter(w => w.length > 0).length
+        });
+      });
+    } else {
+      chapters.push({
+        id: `chapter-${Date.now()}`,
+        type: 'chapter',
+        title: 'Capítulo 1',
+        html: htmlContent,
+        wordCount: htmlContent.replace(/<[^>]*>/g, '').split(/\s+/).filter(w => w.length > 0).length
+      });
+    }
+
+    onContentLoaded(chapters);
+  };
+
   return (
     <div className="upload-area" role="region" aria-label="Área de carga de archivos">
       <div className="upload-column">
@@ -127,7 +193,7 @@ function UploadArea({ onContentLoaded }) {
           <input 
             ref={fileInputRef}
             type="file" 
-            accept=".txt,.md,.html" 
+            accept=".txt,.md,.html,.docx" 
             onChange={handleFileChange} 
             hidden 
             aria-label="Seleccionar archivo"
@@ -135,14 +201,13 @@ function UploadArea({ onContentLoaded }) {
           <button className="btn btn-primary" onClick={handleFileSelect}>
             Seleccionar archivo
           </button>
-          <p className="upload-formats">Formatos soportados: <strong>TXT, Markdown, HTML</strong></p>
+          <p className="upload-formats">Formatos: <strong>TXT, MD, HTML, DOCX</strong></p>
         </div>
         <div className="upload-info">
           <h3>Requisitos de archivo</h3>
           <ul>
             <li>Máximo 50 MB</li>
-            <li>Formato: TXT, MD, HTML</li>
-            <li>Codificación: UTF-8</li>
+            <li>Formato: TXT, MD, HTML, DOCX</li>
             <li>Usa "# Título" para capítulos</li>
           </ul>
         </div>
@@ -171,7 +236,6 @@ function UploadArea({ onContentLoaded }) {
             <li>Usa "# Capítulo 1" para marcar capítulos</li>
             <li>Usa "## Sección" para subsecciones</li>
             <li>Los párrafos se separan con línea en blanco</li>
-            <li>**Texto** para negrita, *Texto* para cursiva</li>
           </ul>
         </div>
       </div>
