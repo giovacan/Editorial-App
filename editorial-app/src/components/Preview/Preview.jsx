@@ -250,7 +250,8 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
         currentHeight = titleHeight;
       }
 
-      children.forEach(el => {
+      for (let childIdx = 0; childIdx < children.length; childIdx++) {
+        const el = children[childIdx];
         const tag = el.tagName;
         const tagLower = tag.toLowerCase();
         let elHtml = '';
@@ -394,10 +395,37 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
             currentHeight = measureDiv.offsetHeight;
           }
         } else {
+          // No overflow — element fits. For headers, check if there are enough lines after it for minLinesAfter
+          const isHeader = tag.match(/^H[1-6]$/i);
+          if (isHeader) {
+            const level = tag.slice(1).toLowerCase();
+            const subConfig = safeConfig.subheaders?.[level] || safeConfig.subheaders?.h2 || { align: 'center', bold: true, sizeMultiplier: 1.25, marginTop: 1, marginBottom: 0.5, minLinesAfter: 2 };
+            const minLinesNeeded = subConfig.minLinesAfter ?? 2;
+
+            // Lookahead: check if the next element is a paragraph
+            const nextEl = children[childIdx + 1];
+            const nextIsParagraph = nextEl && (nextEl.tagName === 'P' || nextEl.tagName === 'DIV');
+
+            if (nextIsParagraph) {
+              // Calculate remaining space after placing this header
+              const remainingAfterHeader = contentHeight - (currentHeight + elHeight);
+              const linesAfterHeader = Math.floor(remainingAfterHeader / lineHeightPx);
+
+              // If not enough lines for minLinesAfter, force page break
+              if (linesAfterHeader < minLinesNeeded) {
+                generatedPages.push({ html: currentHtml, pageNumber: generatedPages.length + 1, chapterTitle: chapter.title, isBlank: false });
+                currentHtml = elHtml;
+                currentHeight = elHeight;
+                continue; // Skip to next iteration
+              }
+            }
+          }
+
+          // Normal placement
           currentHtml = candidateHtml;
           currentHeight = candidateHeight;
         }
-      });
+      }
 
       if (currentHtml) {
         generatedPages.push({ html: currentHtml, pageNumber: generatedPages.length + 1, chapterTitle: chapter.title, isBlank: false });

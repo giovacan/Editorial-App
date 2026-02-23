@@ -77,10 +77,10 @@ const initialState = {
     subheaders: {
       h1: { align: 'center' as const, bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBottom: 0.5, minLinesAfter: 2 },
       h2: { align: 'center' as const, bold: true, sizeMultiplier: 1.35, marginTop: 1.25, marginBottom: 0.5, minLinesAfter: 2 },
-      h3: { align: 'center' as const, bold: true, sizeMultiplier: 1.25, marginTop: 1, marginBottom: 0.5, minLinesAfter: 1 },
-      h4: { align: 'left' as const, bold: true, sizeMultiplier: 1.15, marginTop: 1, marginBottom: 0.5, minLinesAfter: 1 },
-      h5: { align: 'left' as const, bold: true, sizeMultiplier: 1.1, marginTop: 0.75, marginBottom: 0.25, minLinesAfter: 1 },
-      h6: { align: 'left' as const, bold: false, sizeMultiplier: 1.0, marginTop: 0.5, marginBottom: 0.25, minLinesAfter: 1 }
+      h3: { align: 'center' as const, bold: true, sizeMultiplier: 1.25, marginTop: 1, marginBottom: 0.5, minLinesAfter: 2 },
+      h4: { align: 'left' as const, bold: true, sizeMultiplier: 1.15, marginTop: 1, marginBottom: 0.5, minLinesAfter: 2 },
+      h5: { align: 'left' as const, bold: true, sizeMultiplier: 1.1, marginTop: 0.75, marginBottom: 0.25, minLinesAfter: 2 },
+      h6: { align: 'left' as const, bold: false, sizeMultiplier: 1.0, marginTop: 0.5, marginBottom: 0.25, minLinesAfter: 2 }
     },
     paragraph: {
       firstLineIndent: 1.5,
