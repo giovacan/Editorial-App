@@ -6,6 +6,7 @@ export type PageNumberPos = 'top' | 'bottom';
 export type PageNumberAlign = 'left' | 'center' | 'right' | 'outer';
 export type HeaderContent = 'title' | 'chapter' | 'both';
 export type TextAlign = 'left' | 'center' | 'right' | 'justify';
+export type ChapterLayout = 'continuous' | 'withFirstParagraph' | 'titleOnly';
 
 export interface SubheaderLevelConfig {
   align: TextAlign;
@@ -23,6 +24,7 @@ export interface ChapterTitleConfig {
   marginTop: number;
   marginBottom: number;
   startOnRightPage: boolean;
+  layout: ChapterLayout;
 }
 
 export interface ParagraphConfig {

@@ -186,6 +186,13 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
 
       const titleBaseStyle = `font-size:${titleSize}pt;font-weight:${ctConfig.bold ? 'bold' : 'normal'};font-style:${isSection ? 'italic' : 'normal'};text-align:${ctConfig.align};`;
 
+      // Measure base title height for layouts that need it
+      let baseTitleHeight = 0;
+      if (layout === 'halfPage' || layout === 'fullPage') {
+        measureDiv.innerHTML = `<div style="${titleBaseStyle}">${chapter.title}</div>`;
+        baseTitleHeight = measureDiv.offsetHeight;
+      }
+
       switch (layout) {
         case 'spaced': {
           // Title centered at ~1/3 of page height
@@ -195,24 +202,21 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
         }
         case 'halfPage': {
           // Title in upper half, text in lower half
-          measureDiv.innerHTML = `<div style="${titleBaseStyle}">${chapter.title}</div>`;
-          const baseTitleHeight = measureDiv.offsetHeight;
           const halfTop = Math.round((contentHeight * 0.5) - baseTitleHeight - titleMarginBottom);
           titleHtml = `<div style="${titleBaseStyle}margin:${Math.max(0, halfTop)}px 0 ${titleMarginBottom}px 0;">${chapter.title}</div>`;
           break;
         }
         case 'fullPage': {
           // Title centered on its own page
-          measureDiv.innerHTML = `<div style="${titleBaseStyle}">${chapter.title}</div>`;
-          const baseTitleHeight = measureDiv.offsetHeight;
           const fullTop = Math.round((contentHeight - baseTitleHeight) / 2);
           titleHtml = `<div style="${titleBaseStyle}margin:${Math.max(0, fullTop)}px 0 0 0;">${chapter.title}</div>`;
           break;
         }
         case 'ruled': {
           // Title with decorative lines
-          const hr = `<hr style="border:none;border-top:1px solid #333;margin:${titleMarginBottom / 2}px 0;" />`;
-          titleHtml = `<div style="margin:${titleMarginTop}px 0 ${titleMarginBottom}px 0;">${hr}<div style="${titleBaseStyle}padding:${titleMarginBottom / 2}px 0;">${chapter.title}</div>${hr}</div>`;
+          const hrMargin = Math.round(titleMarginBottom / 2);
+          const hrStyle = `border:none;border-top:1px solid #333;margin:${hrMargin}px 0;`;
+          titleHtml = `<div style="margin:${titleMarginTop}px 0 ${titleMarginBottom}px 0;"><div style="${hrStyle}"></div><div style="${titleBaseStyle}padding:${hrMargin}px 0;">${chapter.title}</div><div style="${hrStyle}"></div></div>`;
           break;
         }
         default: {

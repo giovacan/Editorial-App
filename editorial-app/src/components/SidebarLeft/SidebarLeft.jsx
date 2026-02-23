@@ -93,17 +93,6 @@ function SidebarLeft() {
     }
   }, [store.addSection]);
 
-  const handleBookTypeChange = (e) => {
-    const bookType = e.target.value;
-    const bookConfig = KDP_STANDARDS.getBookTypeConfig(bookType);
-    store.setBookData({ bookType });
-    store.setConfig({
-      pageFormat: bookConfig.recommendedFormat,
-      fontSize: bookConfig.fontSize,
-      lineHeight: bookConfig.lineHeight
-    });
-  };
-
   const handleTitleChange = useCallback((chapterId, newTitle) => {
     store.updateChapter(chapterId, { title: newTitle });
   }, [store.updateChapter]);
