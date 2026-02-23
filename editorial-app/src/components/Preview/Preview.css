@@ -15,6 +15,7 @@
 
 .preview-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem;
@@ -31,7 +32,6 @@
 }
 
 .zoom-select {
-  margin-left: auto;
   padding: 0.25rem 0.5rem;
   border: 1px solid #d1d5db;
   border-radius: 4px;

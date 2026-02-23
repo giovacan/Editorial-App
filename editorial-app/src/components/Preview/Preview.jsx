@@ -121,20 +121,23 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
     }
 
     const measureDiv = measureRef.current;
-    
+
     const PX_PER_MM = 3.7795;
-    const pageWidthPx = pageFormat.width * PX_PER_MM;
-    const pageHeightPx = pageFormat.height * PX_PER_MM;
-    
-    const marginTop = bookConfig.marginTop * 96;
-    const marginBottom = bookConfig.marginBottom * 96;
-    const marginLeft = (bookConfig.marginLeft + (bookConfig.gutter || 0)) * 96;
-    const marginRight = bookConfig.marginRight * 96;
+    // Usar la misma escala que el preview
+    const previewScale = Math.min(0.55, 300 / (pageFormat.width * PX_PER_MM));
+
+    const pageWidthPx = pageFormat.width * PX_PER_MM * previewScale;
+    const pageHeightPx = pageFormat.height * PX_PER_MM * previewScale;
+
+    const marginTop = bookConfig.marginTop * 96 * previewScale;
+    const marginBottom = bookConfig.marginBottom * 96 * previewScale;
+    const marginLeft = (bookConfig.marginLeft + (bookConfig.gutter || 0)) * 96 * previewScale;
+    const marginRight = bookConfig.marginRight * 96 * previewScale;
     
     const contentWidth = pageWidthPx - marginLeft - marginRight;
     const contentHeight = pageHeightPx - marginTop - marginBottom;
 
-    const baseFontSize = safeConfig.fontSize || bookConfig.fontSize;
+    const baseFontSize = (safeConfig.fontSize || bookConfig.fontSize) * previewScale;
     const baseLineHeight = safeConfig.lineHeight || bookConfig.lineHeight;
     const textAlign = safeConfig.paragraph?.align || 'justify';
     
@@ -649,7 +652,7 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
       </div>
 
       {showMagnifier && (
-        <div className="magnifier-panel">
+        <div className="magnifier-panel" ref={magnifierPanelRef}>
           <div className="magnifier-panel-header">
             <span>Vista {magnifierZoom}%</span>
           </div>
@@ -676,7 +679,6 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
                   ['--magnifier-x']: `${magnifierPos.x}%`,
                   ['--magnifier-y']: `${magnifierPos.y}%`
                 }}
-                ref={magnifierPanelRef}
               >
                 <div 
                   className="preview-content"
