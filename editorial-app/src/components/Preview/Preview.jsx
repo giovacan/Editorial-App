@@ -174,15 +174,55 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
         }
       }
 
-      const ctConfig = safeConfig.chapterTitle || { align: 'center', bold: true, sizeMultiplier: 1.8, marginTop: 2, marginBottom: 1 };
+      const ctConfig = safeConfig.chapterTitle || { align: 'center', bold: true, sizeMultiplier: 1.8, marginTop: 2, marginBottom: 1, layout: 'continuous' };
       const titleSize = Math.round(baseFontSize * ctConfig.sizeMultiplier);
       const titleMarginTop = ctConfig.marginTop * lineHeightPx;
       const titleMarginBottom = ctConfig.marginBottom * lineHeightPx;
 
-      const titleHtml = `<div style="font-size:${titleSize}pt;font-weight:${ctConfig.bold ? 'bold' : 'normal'};font-style:${isSection ? 'italic' : 'normal'};text-align:${ctConfig.align};margin:${titleMarginTop}px 0 ${titleMarginBottom}px 0;">${chapter.title}</div>`;
+      // Build title HTML based on layout
+      const layout = ctConfig.layout || 'continuous';
+      let titleHtml;
+      let titleHeight;
+
+      const titleBaseStyle = `font-size:${titleSize}pt;font-weight:${ctConfig.bold ? 'bold' : 'normal'};font-style:${isSection ? 'italic' : 'normal'};text-align:${ctConfig.align};`;
+
+      switch (layout) {
+        case 'spaced': {
+          // Title centered at ~1/3 of page height
+          const spacedTop = Math.round(contentHeight * 0.25);
+          titleHtml = `<div style="${titleBaseStyle}margin:${spacedTop}px 0 ${titleMarginBottom}px 0;">${chapter.title}</div>`;
+          break;
+        }
+        case 'halfPage': {
+          // Title in upper half, text in lower half
+          measureDiv.innerHTML = `<div style="${titleBaseStyle}">${chapter.title}</div>`;
+          const baseTitleHeight = measureDiv.offsetHeight;
+          const halfTop = Math.round((contentHeight * 0.5) - baseTitleHeight - titleMarginBottom);
+          titleHtml = `<div style="${titleBaseStyle}margin:${Math.max(0, halfTop)}px 0 ${titleMarginBottom}px 0;">${chapter.title}</div>`;
+          break;
+        }
+        case 'fullPage': {
+          // Title centered on its own page
+          measureDiv.innerHTML = `<div style="${titleBaseStyle}">${chapter.title}</div>`;
+          const baseTitleHeight = measureDiv.offsetHeight;
+          const fullTop = Math.round((contentHeight - baseTitleHeight) / 2);
+          titleHtml = `<div style="${titleBaseStyle}margin:${Math.max(0, fullTop)}px 0 0 0;">${chapter.title}</div>`;
+          break;
+        }
+        case 'ruled': {
+          // Title with decorative lines
+          const hr = `<hr style="border:none;border-top:1px solid #333;margin:${titleMarginBottom / 2}px 0;" />`;
+          titleHtml = `<div style="margin:${titleMarginTop}px 0 ${titleMarginBottom}px 0;">${hr}<div style="${titleBaseStyle}padding:${titleMarginBottom / 2}px 0;">${chapter.title}</div>${hr}</div>`;
+          break;
+        }
+        default: {
+          // 'continuous' - title at top with normal margins
+          titleHtml = `<div style="${titleBaseStyle}margin:${titleMarginTop}px 0 ${titleMarginBottom}px 0;">${chapter.title}</div>`;
+        }
+      }
 
       measureDiv.innerHTML = titleHtml;
-      const titleHeight = measureDiv.offsetHeight;
+      titleHeight = measureDiv.offsetHeight;
 
       const tmp = window.document.createElement('div');
       tmp.innerHTML = chapter.html || '<p></p>';
@@ -192,7 +232,12 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
       let currentHeight;
       let paragraphCount = 0;
 
-      if (titleHeight > contentHeight) {
+      if (layout === 'fullPage') {
+        // Full page title stands alone, text starts on next page
+        generatedPages.push({ html: titleHtml, pageNumber: generatedPages.length + 1, chapterTitle: chapter.title, isBlank: false });
+        currentHtml = '';
+        currentHeight = 0;
+      } else if (titleHeight > contentHeight) {
         generatedPages.push({ html: titleHtml, pageNumber: generatedPages.length + 1, chapterTitle: chapter.title, isBlank: false });
         currentHtml = '';
         currentHeight = 0;

@@ -71,7 +71,8 @@ const initialState = {
       sizeMultiplier: 1.8,
       marginTop: 2,
       marginBottom: 1,
-      startOnRightPage: true
+      startOnRightPage: true,
+      layout: 'continuous' as 'continuous' | 'spaced' | 'halfPage' | 'fullPage' | 'ruled'
     },
     subheaders: {
       h1: { align: 'center' as const, bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBottom: 0.5, minLinesAfter: 2 },

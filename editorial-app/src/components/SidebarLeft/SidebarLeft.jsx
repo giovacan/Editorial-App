@@ -4,6 +4,54 @@ import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import Accordion from '../Accordion/Accordion';
 import './SidebarLeft.css';
 
+// Layout icons as inline components
+const ContinuousIcon = () => (
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', width: '20px' }}>
+    <div style={{ width: '16px', height: '3px', background: '#1f2937', borderRadius: '1px' }}></div>
+    <div style={{ width: '16px', height: '2px', background: '#e5e7eb', borderRadius: '1px' }}></div>
+    <div style={{ width: '16px', height: '2px', background: '#e5e7eb', borderRadius: '1px' }}></div>
+  </div>
+);
+
+const SpacedIcon = () => (
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', width: '20px' }}>
+    <div style={{ width: '14px', height: '2px', background: '#1f2937', borderRadius: '1px' }}></div>
+    <div style={{ height: '6px' }}></div>
+    <div style={{ width: '14px', height: '2px', background: '#d1d5db', borderRadius: '1px' }}></div>
+  </div>
+);
+
+const HalfPageIcon = () => (
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px', width: '20px' }}>
+    <div style={{ width: '16px', height: '3px', background: '#1f2937', borderRadius: '1px' }}></div>
+    <div style={{ width: '16px', height: '2px', background: '#e5e7eb', borderRadius: '1px' }}></div>
+    <div style={{ height: '4px', borderTop: '1px solid #6b7280' }}></div>
+    <div style={{ width: '16px', height: '2px', background: '#e5e7eb', borderRadius: '1px' }}></div>
+  </div>
+);
+
+const FullPageIcon = () => (
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', width: '20px', height: '32px' }}>
+    <div style={{ width: '16px', height: '3px', background: '#1f2937', borderRadius: '1px' }}></div>
+  </div>
+);
+
+const RuledIcon = () => (
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', width: '20px' }}>
+    <div style={{ width: '12px', height: '1px', background: '#1f2937' }}></div>
+    <div style={{ width: '16px', height: '2px', background: '#1f2937', borderRadius: '1px' }}></div>
+    <div style={{ width: '12px', height: '1px', background: '#1f2937' }}></div>
+  </div>
+);
+
+const CHAPTER_LAYOUTS = [
+  { id: 'continuous', label: 'Seguido', icon: ContinuousIcon },
+  { id: 'spaced', label: 'Con espacio', icon: SpacedIcon },
+  { id: 'halfPage', label: 'Media página', icon: HalfPageIcon },
+  { id: 'fullPage', label: 'Página completa', icon: FullPageIcon },
+  { id: 'ruled', label: 'Con líneas', icon: RuledIcon },
+];
+
 function SidebarLeft() {
   const [activeTab, setActiveTab] = useState('structure');
   const [selectedSubheaderLevel, setSelectedSubheaderLevel] = useState('h1');
@@ -15,7 +63,7 @@ function SidebarLeft() {
     pageFormat: 'a5', 
     fontSize: 12, 
     lineHeight: 1.6,
-    chapterTitle: { align: 'center', bold: true, sizeMultiplier: 1.8, marginTop: 2, marginBottom: 1, startOnRightPage: true },
+    chapterTitle: { align: 'center', bold: true, sizeMultiplier: 1.8, marginTop: 2, marginBottom: 1, startOnRightPage: true, layout: 'continuous' },
     subheaders: {
       h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBottom: 0.5, minLinesAfter: 2 },
       h2: { align: 'center', bold: true, sizeMultiplier: 1.35, marginTop: 1.25, marginBottom: 0.5, minLinesAfter: 2 },
@@ -70,6 +118,10 @@ function SidebarLeft() {
 
   const updateChapterTitle = (key, value) => {
     store.setConfig({ chapterTitle: { ...safeConfig.chapterTitle, [key]: value } });
+  };
+
+  const updateChapterLayout = (layout) => {
+    store.setConfig({ chapterTitle: { ...safeConfig.chapterTitle, layout } });
   };
 
   const updateSubheader = (key, value) => {
@@ -197,56 +249,31 @@ function SidebarLeft() {
       )
     },
     {
-      id: 'capitulos',
-      title: 'Títulos de Capítulo',
-      icon: '📖',
+      id: 'formato-capitulo',
+      title: 'Formato de Títulos',
+      icon: '📄',
       content: (
         <>
           <fieldset className="config-group">
-            <legend>Alineación</legend>
-            <div className="radio-group">
-              <label><input type="radio" name="chapterAlign" value="left" checked={safeConfig.chapterTitle.align === 'left'} onChange={(e) => updateChapterTitle('align', e.target.value)} /> Izquierda</label>
-              <label><input type="radio" name="chapterAlign" value="center" checked={safeConfig.chapterTitle.align === 'center'} onChange={(e) => updateChapterTitle('align', e.target.value)} /> Centro</label>
-              <label><input type="radio" name="chapterAlign" value="right" checked={safeConfig.chapterTitle.align === 'right'} onChange={(e) => updateChapterTitle('align', e.target.value)} /> Derecha</label>
+            <legend>Estilo de título de capítulo</legend>
+            <div className="layout-selector">
+              {CHAPTER_LAYOUTS.map(layout => {
+                const IconComponent = layout.icon;
+                return (
+                  <button
+                    key={layout.id}
+                    className={`layout-card ${safeConfig.chapterTitle.layout === layout.id ? 'active' : ''}`}
+                    onClick={() => updateChapterLayout(layout.id)}
+                    title={layout.label}
+                  >
+                    <div className="layout-card-preview">
+                      <IconComponent />
+                    </div>
+                    <span className="layout-card-label">{layout.label}</span>
+                  </button>
+                );
+              })}
             </div>
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Estilo</legend>
-            <label className="checkbox-label">
-              <input type="checkbox" checked={safeConfig.chapterTitle.bold} onChange={(e) => updateChapterTitle('bold', e.target.checked)} />
-              Negrita
-            </label>
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Tamaño relativo</legend>
-            <div className="number-row">
-              <input type="number" min="1.0" max="3.0" step="0.1" value={safeConfig.chapterTitle.sizeMultiplier} onChange={(e) => updateChapterTitle('sizeMultiplier', parseFloat(e.target.value))} />
-              <span>({safeConfig.fontSize * safeConfig.chapterTitle.sizeMultiplier}pt)</span>
-            </div>
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Espaciado</legend>
-            <div className="number-row">
-              <label>Antes:</label>
-              <input type="number" min="0" max="4" step="0.25" value={safeConfig.chapterTitle.marginTop} onChange={(e) => updateChapterTitle('marginTop', parseFloat(e.target.value))} />
-              <span>líneas</span>
-            </div>
-            <div className="number-row">
-              <label>Después:</label>
-              <input type="number" min="0" max="3" step="0.25" value={safeConfig.chapterTitle.marginBottom} onChange={(e) => updateChapterTitle('marginBottom', parseFloat(e.target.value))} />
-              <span>líneas</span>
-            </div>
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Posición</legend>
-            <label className="checkbox-label">
-              <input type="checkbox" checked={safeConfig.chapterTitle.startOnRightPage} onChange={(e) => updateChapterTitle('startOnRightPage', e.target.checked)} />
-              Iniciar capítulo en página derecha
-            </label>
           </fieldset>
         </>
       )
