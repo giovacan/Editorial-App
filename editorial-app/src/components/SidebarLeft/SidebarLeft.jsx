@@ -124,10 +124,11 @@ function SidebarLeft() {
   };
 
   const updateSubheader = (key, value) => {
+    const currentSubheader = safeConfig.subheaders?.[selectedSubheaderLevel] || {};
     store.setConfig({
       subheaders: {
         ...safeConfig.subheaders,
-        [selectedSubheaderLevel]: { ...safeConfig.subheaders[selectedSubheaderLevel], [key]: value }
+        [selectedSubheaderLevel]: { ...currentSubheader, [key]: value }
       }
     });
   };
@@ -143,6 +144,19 @@ function SidebarLeft() {
   const updatePagination = (key, value) => {
     store.setConfig({ pagination: { ...safeConfig.pagination, [key]: value } });
   };
+
+  // Helper for safe access to current subheader config
+  const currentSubheaderConfig = useMemo(() =>
+    safeConfig.subheaders?.[selectedSubheaderLevel] || {
+      align: 'center',
+      bold: true,
+      sizeMultiplier: 1.5,
+      marginTop: 1.5,
+      marginBottom: 0.5,
+      minLinesAfter: 2
+    },
+    [safeConfig.subheaders, selectedSubheaderLevel]
+  );
 
   const accordionItems = useMemo(() => [
     {
@@ -298,16 +312,16 @@ function SidebarLeft() {
           <fieldset className="config-group">
             <legend>Alineación</legend>
             <div className="radio-group">
-              <label><input type="radio" name="subAlign" value="left" checked={safeConfig.subheaders[selectedSubheaderLevel].align === 'left'} onChange={(e) => updateSubheader('align', e.target.value)} /> Izquierda</label>
-              <label><input type="radio" name="subAlign" value="center" checked={safeConfig.subheaders[selectedSubheaderLevel].align === 'center'} onChange={(e) => updateSubheader('align', e.target.value)} /> Centro</label>
-              <label><input type="radio" name="subAlign" value="right" checked={safeConfig.subheaders[selectedSubheaderLevel].align === 'right'} onChange={(e) => updateSubheader('align', e.target.value)} /> Derecha</label>
+              <label><input type="radio" name="subAlign" value="left" checked={currentSubheaderConfig.align === 'left'} onChange={(e) => updateSubheader('align', e.target.value)} /> Izquierda</label>
+              <label><input type="radio" name="subAlign" value="center" checked={currentSubheaderConfig.align === 'center'} onChange={(e) => updateSubheader('align', e.target.value)} /> Centro</label>
+              <label><input type="radio" name="subAlign" value="right" checked={currentSubheaderConfig.align === 'right'} onChange={(e) => updateSubheader('align', e.target.value)} /> Derecha</label>
             </div>
           </fieldset>
 
           <fieldset className="config-group">
             <legend>Estilo</legend>
             <label className="checkbox-label">
-              <input type="checkbox" checked={safeConfig.subheaders[selectedSubheaderLevel].bold} onChange={(e) => updateSubheader('bold', e.target.checked)} />
+              <input type="checkbox" checked={currentSubheaderConfig.bold} onChange={(e) => updateSubheader('bold', e.target.checked)} />
               Negrita
             </label>
           </fieldset>
@@ -315,8 +329,8 @@ function SidebarLeft() {
           <fieldset className="config-group">
             <legend>Tamaño relativo</legend>
             <div className="number-row">
-              <input type="number" min="0.8" max="2.0" step="0.05" value={safeConfig.subheaders[selectedSubheaderLevel].sizeMultiplier} onChange={(e) => updateSubheader('sizeMultiplier', parseFloat(e.target.value))} />
-              <span>({Math.round(safeConfig.fontSize * safeConfig.subheaders[selectedSubheaderLevel].sizeMultiplier)}pt)</span>
+              <input type="number" min="0.8" max="2.0" step="0.05" value={currentSubheaderConfig.sizeMultiplier} onChange={(e) => updateSubheader('sizeMultiplier', parseFloat(e.target.value))} />
+              <span>({Math.round(safeConfig.fontSize * currentSubheaderConfig.sizeMultiplier)}pt)</span>
             </div>
           </fieldset>
 
@@ -324,12 +338,12 @@ function SidebarLeft() {
             <legend>Espaciado</legend>
             <div className="number-row">
               <label>Antes:</label>
-              <input type="number" min="0" max="3" step="0.25" value={safeConfig.subheaders[selectedSubheaderLevel].marginTop} onChange={(e) => updateSubheader('marginTop', parseFloat(e.target.value))} />
+              <input type="number" min="0" max="3" step="0.25" value={currentSubheaderConfig.marginTop} onChange={(e) => updateSubheader('marginTop', parseFloat(e.target.value))} />
               <span>líneas</span>
             </div>
             <div className="number-row">
               <label>Después:</label>
-              <input type="number" min="0" max="2" step="0.25" value={safeConfig.subheaders[selectedSubheaderLevel].marginBottom} onChange={(e) => updateSubheader('marginBottom', parseFloat(e.target.value))} />
+              <input type="number" min="0" max="2" step="0.25" value={currentSubheaderConfig.marginBottom} onChange={(e) => updateSubheader('marginBottom', parseFloat(e.target.value))} />
               <span>líneas</span>
             </div>
           </fieldset>
@@ -338,7 +352,7 @@ function SidebarLeft() {
             <legend>Paginación</legend>
             <div className="number-row">
               <label>Mín. líneas después:</label>
-              <input type="number" min="1" max="4" value={safeConfig.subheaders[selectedSubheaderLevel].minLinesAfter} onChange={(e) => updateSubheader('minLinesAfter', parseInt(e.target.value))} />
+              <input type="number" min="1" max="4" value={currentSubheaderConfig.minLinesAfter} onChange={(e) => updateSubheader('minLinesAfter', parseInt(e.target.value))} />
             </div>
           </fieldset>
         </>
@@ -555,7 +569,7 @@ function SidebarLeft() {
         </>
       )
     }
-  ], [selectedSubheaderLevel, safeConfig, safeBookData?.bookType, handleBookTypeChange, store.setConfig]);
+  ], [selectedSubheaderLevel, safeConfig, safeBookData?.bookType, handleBookTypeChange, store.setConfig, currentSubheaderConfig]);
 
   return (
     <aside className="sidebar sidebar-left" role="complementary" aria-label="Panel de estructura y configuración">
