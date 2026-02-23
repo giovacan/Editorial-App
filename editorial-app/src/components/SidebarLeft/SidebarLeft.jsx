@@ -105,6 +105,16 @@ function SidebarLeft() {
     store.setBookData({ author: e.target.value });
   };
 
+  const handleBookTypeChange = (e) => {
+    const bookConfig = KDP_STANDARDS.getBookTypeConfig(e.target.value);
+    store.setBookData({ bookType: e.target.value });
+    store.setConfig({
+      pageFormat: bookConfig.recommendedFormat,
+      fontSize: bookConfig.fontSize,
+      lineHeight: bookConfig.lineHeight
+    });
+  };
+
   const updateChapterTitle = (key, value) => {
     store.setConfig({ chapterTitle: { ...safeConfig.chapterTitle, [key]: value } });
   };
