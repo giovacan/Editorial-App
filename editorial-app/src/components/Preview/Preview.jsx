@@ -511,7 +511,7 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
 
   const showNums = safeConfig.showPageNumbers !== false;
   const pageNumHtml = (showNums && !currentPageData.isBlank) ? (
-    <div className="page-number" style={{ position: 'absolute', ...(numPos === 'bottom' ? { bottom: Math.round(marginBottom * 0.45) } : { top: Math.round(marginTop * 0.3) }), ...(numAlign === 'center' ? { left: marginLeft, width: contentW, textAlign: 'center' } : {}) }}>
+    <div className="page-number" style={{ position: 'absolute', ...(numPos === 'bottom' ? { bottom: `${Math.round(marginBottom * 0.45)}px` } : { top: `${Math.round(marginTop * 0.3)}px` }), ...(numAlign === 'center' ? { left: `${marginLeft}px`, width: `${contentW}px`, textAlign: 'center' } : {}) }}>
       {currentPageData.pageNumber}
     </div>
   ) : null;
@@ -539,7 +539,7 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
   const headerFontSize = Math.max(7, Math.round(8 * PT2PX));
 
   const headerHtml = (showHeaders && headerText) ? (
-    <div className="preview-header" style={{ position: 'absolute', ...(headerPos === 'top' ? { top: headerTopPx } : { bottom: headerBottomPx }), left: marginLeft, width: contentW, fontSize: headerFontSize, color: '#666', fontStyle: 'italic', textAlign: 'center' }}>
+    <div className="preview-header" style={{ position: 'absolute', ...(headerPos === 'top' ? { top: `${headerTopPx}px` } : { bottom: `${headerBottomPx}px` }), left: `${marginLeft}px`, width: `${contentW}px`, fontSize: `${headerFontSize}px`, color: '#666', fontStyle: 'italic', textAlign: 'center' }}>
       {headerText}
       {headerLine && <div style={{ borderTop: '1px solid #ccc', marginTop: 3 }}></div>}
     </div>
@@ -591,10 +591,10 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
           className="preview-page"
           lang="es"
           style={{
-            width: pageWidth,
-            height: pageHeight,
+            width: `${pageWidth}px`,
+            height: `${pageHeight}px`,
             padding: `${marginTop}px ${marginRight}px ${marginBottom}px ${marginLeft}px`,
-            fontSize: fontSize,
+            fontSize: `${fontSize}px`,
             fontFamily: fontFamily,
             lineHeight: lineHeight,
             textAlign: textAlign,
@@ -666,10 +666,10 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
                 className="preview-page magnifier-page"
                 lang="es"
                 style={{
-                  width: pageWidth,
-                  height: pageHeight,
+                  width: `${pageWidth}px`,
+                  height: `${pageHeight}px`,
                   padding: `${marginTop}px ${marginRight}px ${marginBottom}px ${marginLeft}px`,
-                  fontSize: fontSize,
+                  fontSize: `${fontSize}px`,
                   fontFamily: fontFamily,
                   lineHeight: lineHeight,
                   textAlign: textAlign,
