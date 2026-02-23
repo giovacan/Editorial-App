@@ -334,7 +334,7 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
           } else {
             generatedPages.push({ html: elHtml, pageNumber: generatedPages.length + 1, chapterTitle: chapter.title, isBlank: false });
           }
-          return;
+          continue;
         }
 
         const candidateHtml = currentHtml + elHtml;
@@ -358,7 +358,7 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
             generatedPages.push({ html: currentHtml, pageNumber: generatedPages.length + 1, chapterTitle: chapter.title, isBlank: false });
             currentHtml = elHtml;
             currentHeight = elHeight;
-            return;
+            continue;
           }
 
           if (splitLongParagraphs) {
@@ -519,14 +519,14 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
         const page = generatedPages[pageIdx];
         if (page.isBlank) continue;
 
-        // Check if page ends with a header - use regex to find last header tag
-        const headerMatch = page.html.match(/(<h[1-6][^>]*>[\s\S]*?<\/h[1-6]>)(?![\s\S]*<h[1-6])/i);
-        if (!headerMatch) {
-          continue; // No header found or not at the end
+        // Check if page ends with a header (last DOM element must be header)
+        const lastEl = getLastElement(page.html);
+        if (!lastEl || !/^H[1-6]$/i.test(lastEl.tagName)) {
+          continue; // No header at end
         }
 
-        const headerHtml = headerMatch[1];
-        const headerLevel = headerHtml.match(/<h(\d)/i)?.[1] || '2';
+        const headerHtml = lastEl.outerHTML;
+        const headerLevel = lastEl.tagName.slice(1); // '1'-'6'
 
         const nextPage = generatedPages[pageIdx + 1];
         if (!nextPage || nextPage.isBlank) {
@@ -544,14 +544,9 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
         const subConfig = safeConfig.subheaders?.[level] || { minLinesAfter: 2 };
         const minLinesNeeded = subConfig.minLinesAfter ?? 2;
 
-        console.log(`[OrphanFix] Page ${pageIdx}: header h${headerLevel}, lines=${linesRemaining}, need=${minLinesNeeded}, remaining=${remainingSpace}px`);
-
         if (linesRemaining >= minLinesNeeded) {
-          console.log(`[OrphanFix] Page ${pageIdx}: NOT orphaned, skipping`);
           continue; // Not orphaned
         }
-
-        console.log(`[OrphanFix] Page ${pageIdx}: ORPHANED! Moving to next page`);
 
         // Calculate scores for each strategy
         const strategies = {};
