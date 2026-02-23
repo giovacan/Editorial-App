@@ -7,7 +7,7 @@ function Preview() {
   const { bookData, config } = useEditorStore();
   const activeChapterId = useEditorStore((state) => state.editing?.activeChapterId);
   const [currentPage, setCurrentPage] = useState(0);
-  const [zoom, setZoom] = useState(50);
+  const [magnifierZoom, setMagnifierZoom] = useState(200);
   const measureRef = useRef(null);
   const [pages, setPages] = useState([]);
   const navigatedChapterRef = useRef(null);
@@ -494,15 +494,16 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
   const currentPageData = pages[currentPage] || { html: '', pageNumber: 1, isBlank: true };
 
   const PX_PER_MM = 3.7795;
-  const scale = zoom / 100;
-  // Dimensiones CON zoom aplicado para que las páginas aparezcan del tamaño correcto
-  const pageWidth = pageFormat.width * PX_PER_MM * scale;
-  const pageHeight = pageFormat.height * PX_PER_MM * scale;
-  const marginTop = bookConfig.marginTop * 96 * scale;
-  const marginBottom = bookConfig.marginBottom * 96 * scale;
-  const marginLeft = (bookConfig.marginLeft + (bookConfig.gutter || 0)) * 96 * scale;
-  const marginRight = bookConfig.marginRight * 96 * scale;
-  const fontSize = (safeConfig.fontSize || bookConfig.fontSize) * (96 / 72) * scale;
+  // Escala fija para que la página quepa en el panel (~300px de ancho objetivo)
+  const previewScale = Math.min(0.55, 300 / (pageFormat.width * PX_PER_MM));
+  // Dimensiones del preview con la escala fija
+  const pageWidth = pageFormat.width * PX_PER_MM * previewScale;
+  const pageHeight = pageFormat.height * PX_PER_MM * previewScale;
+  const marginTop = bookConfig.marginTop * 96 * previewScale;
+  const marginBottom = bookConfig.marginBottom * 96 * previewScale;
+  const marginLeft = (bookConfig.marginLeft + (bookConfig.gutter || 0)) * 96 * previewScale;
+  const marginRight = bookConfig.marginRight * 96 * previewScale;
+  const fontSize = (safeConfig.fontSize || bookConfig.fontSize) * (96 / 72) * previewScale;
   const fontFamily = safeConfig.fontFamily || bookConfig.fontFamily;
   const lineHeight = safeConfig.lineHeight || bookConfig.lineHeight;
   const textAlign = safeConfig.paragraph?.align || 'justify';
@@ -579,11 +580,11 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
         >
           →
         </button>
-        <select value={zoom} onChange={(e) => setZoom(parseInt(e.target.value))} className="zoom-select">
-          <option value="40">40%</option>
-          <option value="50">50%</option>
-          <option value="75">75%</option>
-          <option value="100">100%</option>
+        <select value={magnifierZoom} onChange={(e) => setMagnifierZoom(parseInt(e.target.value))} className="zoom-select" title="Zoom de lupa">
+          <option value="150">🔍 150%</option>
+          <option value="200">🔍 200%</option>
+          <option value="250">🔍 250%</option>
+          <option value="300">🔍 300%</option>
         </select>
       </div>
 
@@ -650,7 +651,7 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
       {showMagnifier && (
         <div className="magnifier-panel">
           <div className="magnifier-panel-header">
-            <span>Vista 150%</span>
+            <span>Vista {magnifierZoom}%</span>
           </div>
           <div className="magnifier-panel-content">
             <div className="magnifier-page-wrapper">
@@ -670,6 +671,8 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
                   wordBreak: 'break-word',
                   background: 'white',
                   boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+                  transform: `scale(${magnifierZoom / 100})`,
+                  transformOrigin: `${magnifierPos.x}% ${magnifierPos.y}%`,
                   ['--magnifier-x']: `${magnifierPos.x}%`,
                   ['--magnifier-y']: `${magnifierPos.y}%`
                 }}

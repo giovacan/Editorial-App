@@ -202,8 +202,6 @@
 }
 
 .magnifier-page {
-  transform: scale(1.5);
-  transform-origin: var(--magnifier-x, 50%) var(--magnifier-y, 50%);
   transition: transform-origin 0.05s ease-out;
 }
 
