@@ -1,0 +1,244 @@
+.sidebar {
+  background: #fff;
+  border-right: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-left {
+  width: 300px;
+  min-width: 280px;
+}
+
+.sidebar-right {
+  border-right: none;
+  border-left: 1px solid #e5e7eb;
+}
+
+.sidebar-tabs {
+  display: flex;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.sidebar-tab {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  background: none;
+  border: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #6b7280;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.2s;
+}
+
+.sidebar-tab:hover {
+  color: #374151;
+}
+
+.sidebar-tab.active {
+  color: #2563eb;
+}
+
+.sidebar-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #2563eb;
+}
+
+.sidebar-section {
+  padding: 1rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.sidebar-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 1rem 0;
+}
+
+.structure-controls {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.btn-small {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8125rem;
+}
+
+.chapters-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.chapter-item {
+  padding: 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.chapter-item:hover {
+  background: #f3f4f6;
+}
+
+.chapter-item.active {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+
+.chapter-item-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.item-type-badge {
+  font-size: 0.6875rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.chapter-badge {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.section-badge {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.chapter-item-title {
+  flex: 1;
+  font-size: 0.875rem;
+  color: #1f2937;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-delete-item {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+.btn-delete-item:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.chapter-item-meta {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  margin-left: 2rem;
+}
+
+.empty-state {
+  text-align: center;
+  color: #9ca3af;
+  font-size: 0.875rem;
+  padding: 1rem;
+}
+
+.document-stats {
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: auto;
+}
+
+.stats-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+  margin: 0 0 0.75rem 0;
+}
+
+.stats-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.5rem;
+  font-size: 0.8125rem;
+  margin: 0;
+}
+
+.stats-list dt {
+  color: #6b7280;
+}
+
+.stats-list dd {
+  color: #1f2937;
+  font-weight: 500;
+  margin: 0;
+  text-align: right;
+}
+
+.config-group {
+  border: none;
+  padding: 0;
+  margin-bottom: 1rem;
+}
+
+.config-group legend {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0.5rem;
+}
+
+.config-group select,
+.config-group input[type="number"] {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  background: white;
+}
+
+.config-group select:focus,
+.config-group input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: #374151;
+  cursor: pointer;
+  margin-bottom: 0.5rem;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #2563eb;
+}

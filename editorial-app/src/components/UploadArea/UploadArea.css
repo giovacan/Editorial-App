@@ -1,0 +1,129 @@
+.upload-area {
+  display: flex;
+  gap: 2rem;
+  padding: 2rem;
+  max-width: 1000px;
+  margin: 0 auto;
+  height: 100%;
+  align-items: flex-start;
+}
+
+.upload-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.upload-box {
+  border: 2px dashed #d1d5db;
+  border-radius: 12px;
+  padding: 2rem;
+  text-align: center;
+  transition: all 0.2s;
+  background: #fafafa;
+}
+
+.upload-box:hover,
+.upload-box.drag-over {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.upload-icon {
+  color: #9ca3af;
+  margin-bottom: 1rem;
+}
+
+.upload-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 0.5rem 0;
+}
+
+.upload-subtitle {
+  color: #6b7280;
+  margin: 0 0 1.5rem 0;
+}
+
+.upload-formats {
+  font-size: 0.8125rem;
+  color: #9ca3af;
+  margin: 1rem 0 0 0;
+}
+
+.upload-info,
+.upload-tips {
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.upload-info h3,
+.upload-tips h3 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+  margin: 0 0 0.5rem 0;
+}
+
+.upload-info ul,
+.upload-tips ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 0.8125rem;
+  color: #6b7280;
+}
+
+.upload-info li,
+.upload-tips li {
+  margin-bottom: 0.25rem;
+}
+
+.upload-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+  font-size: 0.875rem;
+  padding: 0 1rem;
+}
+
+.paste-box {
+  background: #fafafa;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+
+.paste-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 0.5rem 0;
+}
+
+.paste-subtitle {
+  color: #6b7280;
+  font-size: 0.875rem;
+  margin: 0 0 1rem 0;
+}
+
+.textarea-paste {
+  width: 100%;
+  min-height: 200px;
+  padding: 1rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  resize: vertical;
+  margin-bottom: 1rem;
+}
+
+.textarea-paste:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
