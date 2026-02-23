@@ -9,10 +9,14 @@ import html2pdf from 'html2pdf.js';
 import './Layout.css';
 
 function Layout() {
-  const { ui, document, config, loadContent, newProject } = useEditorStore();
+  const { ui, bookData, config, loadContent, newProject } = useEditorStore();
+  
+  const safeBookData = bookData || { title: '', author: '', chapters: [], bookType: 'novela', pageFormat: '6x9', margins: {} };
+  const safeConfig = config || { pageFormat: 'a5', fontSize: 12, lineHeight: 1.6 };
+  const safeUi = ui || { showPreview: false, showUpload: true, activeTab: 'structure' };
 
   const handleNewProject = () => {
-    if (document.chapters.length > 0) {
+    if (safeBookData?.chapters?.length > 0) {
       if (confirm('¿Crear nuevo proyecto? Se perderán los cambios sin guardar.')) {
         newProject();
       }
@@ -22,7 +26,7 @@ function Layout() {
   };
 
   const handleOpenProject = () => {
-    const input = document.createElement('input');
+    const input = window.document.createElement('input');
     input.type = 'file';
     input.accept = '.json';
     input.onchange = async (e) => {
@@ -33,12 +37,12 @@ function Layout() {
         const text = await file.text();
         const projectData = JSON.parse(text);
         
-        if (projectData.document && projectData.config) {
+        if (projectData.safeBookData && projectData.safeBookData.chapters && projectData.safeConfig) {
           useEditorStore.setState({
-            document: projectData.document,
-            config: projectData.config,
-            ui: { showUpload: false, showPreview: true, activeTab: 'structure' },
-            editing: { activeChapterId: projectData.document.chapters[0]?.id || null, isDirty: false }
+            safeBookData: projectData.safeBookData,
+            safeConfig: projectData.safeConfig,
+            safeUi: { showUpload: false, showPreview: true, activeTab: 'structure' },
+            editing: { activeChapterId: projectData.safeBookData.chapters[0]?.id || null, isDirty: false }
           });
         } else {
           alert('Archivo de proyecto no válido');
@@ -53,14 +57,14 @@ function Layout() {
   const handleSaveProject = () => {
     const projectData = {
       timestamp: Date.now(),
-      document: useEditorStore.getState().document,
-      config: useEditorStore.getState().config
+      safeBookData: useEditorStore.getState().safeBookData,
+      safeConfig: useEditorStore.getState().safeConfig
     };
 
     const json = JSON.stringify(projectData, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = window.document.createElement('a');
     a.href = url;
     a.download = `libro-${Date.now()}.json`;
     a.click();
@@ -73,10 +77,10 @@ function Layout() {
   };
 
   const handleExportPdf = async () => {
-    const { document, config } = useEditorStore.getState();
+    const { safeBookData, safeConfig } = useEditorStore.getState();
     
-    const bookConfig = KDP_STANDARDS.getBookTypeConfig(document.bookType);
-    const pageFormat = KDP_STANDARDS.getPageFormat(config.pageFormat || bookConfig.recommendedFormat);
+    const bookConfig = KDP_STANDARDS.getBookTypeConfig(safeBookData.bookType);
+    const pageFormat = KDP_STANDARDS.getPageFormat(safeConfig.pageFormat || bookConfig.recommendedFormat);
     
     const marginMM = {
       top: bookConfig.marginTop * 25.4,
@@ -89,7 +93,7 @@ function Layout() {
       <div style="font-family: ${bookConfig.fontFamily}; font-size: ${bookConfig.fontSize}pt; line-height: ${bookConfig.lineHeight};">
     `;
 
-    document.chapters.forEach((chapter, index) => {
+    safeBookData.chapters.forEach((chapter, index) => {
       contentHtml += `
         <div style="page-break-before: ${index === 0 ? 'avoid' : 'always'}; margin-top: 1em;">
           <h2 style="text-align: center; font-size: 1.3em; margin-bottom: 1em;">${chapter.title}</h2>
@@ -100,15 +104,15 @@ function Layout() {
 
     contentHtml += '</div>';
 
-    const container = document.createElement('div');
+    const container = window.document.createElement('div');
     container.innerHTML = contentHtml;
     container.style.width = `${pageFormat.width * 10}mm`;
     container.style.padding = `${marginMM.top}mm ${marginMM.right}mm ${marginMM.bottom}mm ${marginMM.left}mm`;
-    document.body.appendChild(container);
+    window.document.body.appendChild(container);
 
     const opt = {
       margin: [marginMM.top / 25.4, marginMM.right / 25.4, marginMM.bottom / 25.4, marginMM.left / 25.4],
-      filename: `${document.title || 'libro'}.pdf`,
+      filename: `${safeBookData.title || 'libro'}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: { scale: 2, useCORS: true },
       jsPDF: { unit: 'mm', format: [pageFormat.width * 10, pageFormat.height * 10], orientation: 'portrait' }
@@ -120,25 +124,25 @@ function Layout() {
       alert('Error al generar PDF: ' + error.message);
     }
     
-    document.body.removeChild(container);
+    window.document.body.removeChild(container);
   };
 
   const handleExportEpub = async () => {
-    const { document } = useEditorStore.getState();
+    const { safeBookData } = useEditorStore.getState();
     
-    const title = document.title || 'Sin título';
-    const author = document.author || 'Autor desconocido';
-    const uuid = 'urn:uuid:' + Date.now();
+    const title = safeBookData.title || 'Sin título';
+    const author = safeBookData.author || 'Autor desconocido';
+    const usafeUid = 'urn:usafeUid:' + Date.now();
     
-    const chaptersHtml = document.chapters.map((ch, i) => {
+    const chaptersHtml = safeBookData.chapters.map((ch, i) => {
       return `    <item id="chapter${i}" href="chapter${i}.xhtml" media-type="application/xhtml+xml"/>`;
     }).join('\n');
     
-    const spineHtml = document.chapters.map((ch, i) => {
+    const spineHtml = safeBookData.chapters.map((ch, i) => {
       return `    <itemref idref="chapter${i}"/>`;
     }).join('\n');
 
-    const chaptersContent = document.chapters.map((ch, i) => {
+    const chaptersContent = safeBookData.chapters.map((ch, i) => {
       return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
@@ -160,7 +164,7 @@ function Layout() {
     <dc:title>${title}</dc:title>
     <dc:creator>${author}</dc:creator>
     <dc:language>es</dc:language>
-    <dc:identifier id="bookid">${uuid}</dc:identifier>
+    <dc:identifier id="bookid">${usafeUid}</dc:identifier>
     <meta property="dcterms:modified">${new Date().toISOString().split('T')[0]}T00:00:00Z</meta>
   </metadata>
   <manifest>
@@ -183,7 +187,7 @@ ${spineHtml}
   <nav epub:type="toc">
     <h1>Tabla de contenidos</h1>
     <ol>
-${document.chapters.map((ch, i) => `      <li><a href="chapter${i}.xhtml">${ch.title}</a></li>`).join('\n')}
+${safeBookData.chapters.map((ch, i) => `      <li><a href="chapter${i}.xhtml">${ch.title}</a></li>`).join('\n')}
     </ol>
   </nav>
 </body>
@@ -209,7 +213,7 @@ ${document.chapters.map((ch, i) => `      <li><a href="chapter${i}.xhtml">${ch.t
       { name: 'OEBPS/toc.xhtml', content: tocXhtml }
     ];
 
-    document.chapters.forEach((ch, i) => {
+    safeBookData.chapters.forEach((ch, i) => {
       files.push({ 
         name: `OEBPS/chapter${i}.xhtml`, 
         content: chaptersContent.split('<!-- -->')[i] 
@@ -220,7 +224,7 @@ ${document.chapters.map((ch, i) => `      <li><a href="chapter${i}.xhtml">${ch.t
       const zip = createSimpleZip(files);
       const blob = new Blob([zip], { type: 'application/epub+zip' });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = window.document.createElement('a');
       a.href = url;
       a.download = `${title.replace(/[^a-z0-9]/gi, '_')}.epub`;
       a.click();
@@ -338,20 +342,20 @@ ${document.chapters.map((ch, i) => `      <li><a href="chapter${i}.xhtml">${ch.t
   };
 
   const handleExportHtml = () => {
-    const { document } = useEditorStore.getState();
+    const { safeBookData } = useEditorStore.getState();
     
     let html = `<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${document.title || 'Sin título'}</title>
+    <title>${safeBookData.title || 'Sin título'}</title>
 </head>
 <body>
-    <h1>${document.title || 'Sin título'}</h1>
+    <h1>${safeBookData.title || 'Sin título'}</h1>
 `;
 
-    document.chapters.forEach(chapter => {
+    safeBookData.chapters.forEach(chapter => {
       html += `
     <section>
         <h2>${chapter.title}</h2>
@@ -366,7 +370,7 @@ ${document.chapters.map((ch, i) => `      <li><a href="chapter${i}.xhtml">${ch.t
 
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = window.document.createElement('a');
     a.href = url;
     a.download = `libro-${Date.now()}.html`;
     a.click();
@@ -384,7 +388,7 @@ ${document.chapters.map((ch, i) => `      <li><a href="chapter${i}.xhtml">${ch.t
       <main className="app-main">
         <SidebarLeft />
         
-        {ui.showUpload ? (
+        {safeUi?.showUpload ? (
           <UploadArea onContentLoaded={handleContentLoaded} />
         ) : (
           <Editor />

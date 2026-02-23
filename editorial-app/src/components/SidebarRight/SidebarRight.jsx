@@ -5,7 +5,10 @@ import './SidebarRight.css';
 
 function SidebarRight({ onExportPdf, onExportEpub, onExportHtml }) {
   const [activeTab, setActiveTab] = useState('preview');
-  const { ui, setUi, document } = useEditorStore();
+  const { ui, setUi, bookData } = useEditorStore();
+  
+  const safeBookData = bookData || { chapters: [] };
+  const safeUi = ui || { showPreview: false, showUpload: true };
 
   return (
     <aside className="sidebar sidebar-right" role="complementary" aria-label="Panel de vista previa y exportación">
@@ -30,7 +33,7 @@ function SidebarRight({ onExportPdf, onExportEpub, onExportHtml }) {
         <section className="sidebar-section preview-section">
           <h2 className="sidebar-title">Vista Previa del Libro</h2>
           
-          {document.chapters.length === 0 ? (
+          {safeBookData?.chapters?.length === 0 ? (
             <div className="preview-placeholder">
               <p>Sube contenido para ver la vista previa</p>
             </div>
@@ -51,7 +54,7 @@ function SidebarRight({ onExportPdf, onExportEpub, onExportHtml }) {
               <button 
                 className="btn btn-secondary btn-block" 
                 onClick={onExportPdf}
-                disabled={document.chapters.length === 0}
+                disabled={safeBookData?.chapters?.length === 0}
               >
                 📄 PDF (Impresión)
               </button>
@@ -59,7 +62,7 @@ function SidebarRight({ onExportPdf, onExportEpub, onExportHtml }) {
               <button 
                 className="btn btn-secondary btn-block" 
                 onClick={onExportEpub}
-                disabled={document.chapters.length === 0}
+                disabled={safeBookData?.chapters?.length === 0}
               >
                 📚 EPUB (E-reader)
               </button>
@@ -67,7 +70,7 @@ function SidebarRight({ onExportPdf, onExportEpub, onExportHtml }) {
               <button 
                 className="btn btn-secondary btn-block" 
                 onClick={onExportHtml}
-                disabled={document.chapters.length === 0}
+                disabled={safeBookData?.chapters?.length === 0}
               >
                 🌐 HTML (Web)
               </button>

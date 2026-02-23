@@ -269,8 +269,9 @@ export const KDP_STANDARDS: KDPStandards = {
 
   typography: {
     fonts: {
-      serif: ['Georgia', 'Times New Roman', 'Garamond', 'Merriweather'],
-      sansSerif: ['Arial', 'Helvetica', 'Trebuchet MS', 'Verdana']
+      serif: ['Georgia', 'Times New Roman', 'Garamond', 'Merriweather', 'Palatino', 'Book Antiqua', 'Cambria', 'Baskerville'],
+      sansSerif: ['Arial', 'Helvetica', 'Trebuchet MS', 'Verdana', 'Calibri', 'Segoe UI', 'Tahoma', 'Gill Sans'],
+      display: ['Courier New', 'Consolas', 'Lucida Console']
     },
     fontSizes: {
       body: { min: 10, max: 14, recommended: 12 },
@@ -281,7 +282,7 @@ export const KDP_STANDARDS: KDPStandards = {
     lineHeight: {
       min: 1.4,
       recommended: 1.5,
-      max: 1.8
+      max: 2.0
     }
   },
 

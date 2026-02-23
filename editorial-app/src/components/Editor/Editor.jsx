@@ -4,15 +4,15 @@ import './Editor.css';
 
 function Editor() {
   const editorRef = useRef(null);
-  const { document, editing, updateChapter, setActiveChapter } = useEditorStore();
+  const { bookData, editing, updateChapter, setActiveChapter } = useEditorStore();
   
-  const activeChapter = document.chapters.find(ch => ch.id === editing.activeChapterId);
+  const activeChapter = bookData?.chapters?.find(ch => ch.id === editing?.activeChapterId);
 
   useEffect(() => {
     if (editorRef.current && activeChapter) {
       editorRef.current.innerHTML = activeChapter.html;
     }
-  }, [editing.activeChapterId]);
+  }, [editing?.activeChapterId, bookData]);
 
   const handleInput = () => {
     if (activeChapter && editorRef.current) {
@@ -24,7 +24,7 @@ function Editor() {
   };
 
   const applyFormat = (command) => {
-    document.execCommand(command, false, null);
+    window.document.execCommand(command, false, null);
     editorRef.current?.focus();
   };
 

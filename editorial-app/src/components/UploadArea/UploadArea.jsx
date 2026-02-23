@@ -8,9 +8,21 @@ function UploadArea({ onContentLoaded }) {
   const fileInputRef = useRef(null);
 
   useEffect(() => {
-    const script = document.createElement('script');
+    if (window.mammoth) {
+      setMammothReady(true);
+      return;
+    }
+    
+    const script = window.document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js';
-    script.onload = () => setMammothReady(true);
+    script.onload = () => {
+      console.log('Mammoth loaded successfully');
+      setMammothReady(true);
+    };
+    script.onerror = () => {
+      console.error('Failed to load mammoth');
+      alert('Error al cargar la librería DOCX. Por favor intenta de nuevo.');
+    };
     document.head.appendChild(script);
   }, []);
 
@@ -57,8 +69,15 @@ function UploadArea({ onContentLoaded }) {
         const arrayBuffer = await file.arrayBuffer();
         const result = await window.mammoth.convertToHtml({ arrayBuffer });
         const html = result.value;
+        
+        if (!html || html.trim() === '') {
+          alert('El documento DOCX está vacío o no se pudo leer.');
+          return;
+        }
+        
         parseAndLoadContentFromHtml(html, file.name);
       } catch (error) {
+        console.error('Error loading DOCX:', error);
         alert('Error al leer el archivo DOCX: ' + error.message);
       }
       return;
@@ -70,6 +89,9 @@ function UploadArea({ onContentLoaded }) {
       if (typeof content === 'string') {
         parseAndLoadContent(content, file.name);
       }
+    };
+    reader.onerror = () => {
+      alert('Error al leer el archivo');
     };
     reader.readAsText(file, 'UTF-8');
   };
@@ -86,25 +108,92 @@ function UploadArea({ onContentLoaded }) {
     const lines = content.split('\n').filter(line => line.trim());
     const chapters = [];
     let currentChapter = null;
+    let currentSection = null;
+
+    const isChapterHeader = (line) => {
+      const trimmed = line.trim();
+      
+      if (trimmed.startsWith('# ')) return true;
+      
+      if (/^(capítulo|chapter|cap\.?)\s*#?\d+/i.test(trimmed)) return true;
+      if (/^(capítulo|chapter|cap\.?)\s*#?\d+\s*[-–—:]\s*/i.test(trimmed)) return true;
+      if (/^(capítulo|chapter|cap\.?)\s+[ivxlcdm]+/i.test(trimmed)) return true;
+      if (/^(capítulo|chapter|cap\.?)\s+(primero|segundo|tercero|cuarto|quinto|sexto|séptimo|octavo|noveno|décimo)/i.test(trimmed)) return true;
+      
+      if (/^(parte|part|book)\s+\d+/i.test(trimmed)) return true;
+      if (/^(parte|part|book)\s+[ivxlcdm]+/i.test(trimmed)) return true;
+      if (/^(parte|part|book)\s+(primera|segunda|tercera|cuarta|quinta)/i.test(trimmed)) return true;
+      
+      if (/^libro\s+\d+/i.test(trimmed)) return true;
+      
+      if (/^CAPÍTULO\s+/i.test(trimmed)) return true;
+      if (/^CAPITULO\s+/i.test(trimmed)) return true;
+      if (/^CHAPTER\s+/i.test(trimmed)) return true;
+      
+      const lower = trimmed.toLowerCase();
+      const specialChapters = ['prólogo', 'prologo', 'epílogo', 'epilogo', 'introducción', 'introduccion', 'conclusión', 'conclusion', 'dedicatoria', 'agradecimientos', 'bibliografía', 'bibliografia', 'prefacio'];
+      if (specialChapters.includes(lower)) return true;
+      
+      return false;
+    };
+
+    const isSectionHeader = (line) => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('## ')) return true;
+      if (trimmed.startsWith('### ')) return true;
+      if (/^#{3,}\s+/.test(trimmed)) return true;
+      
+      const lower = trimmed.toLowerCase();
+      if (/^subtítulo|^subtitle/i.test(trimmed)) return true;
+      if (/^nota\s+/i.test(trimmed)) return true;
+      if (/^\d+\.\d+/.test(trimmed)) return true;
+      
+      return false;
+    };
 
     lines.forEach((line) => {
       const trimmed = line.trim();
       
-      if (trimmed.startsWith('# ') || /^[A-Z][A-Z\s]+$/.test(trimmed)) {
+      if (isChapterHeader(trimmed)) {
+        if (currentSection && currentChapter) {
+          currentChapter.html += `<div class="section">${currentSection.html}</div>`;
+          currentSection = null;
+        }
         if (currentChapter) {
           chapters.push(currentChapter);
         }
         currentChapter = {
           id: `chapter-${Date.now()}-${chapters.length}`,
           type: 'chapter',
-          title: trimmed.replace(/^#\s*/, ''),
+          title: trimmed.replace(/^#+\s*/, ''),
           html: '',
           wordCount: 0
         };
+        currentSection = null;
+      } else if (isSectionHeader(trimmed)) {
+        if (currentChapter) {
+          if (currentSection) {
+            currentChapter.html += `<div class="section">${currentSection.html}</div>`;
+          }
+          currentSection = {
+            id: `section-${Date.now()}-${chapters.length}-${Math.random()}`,
+            type: 'section',
+            title: trimmed.replace(/^#+\s*/, ''),
+            html: ''
+          };
+        }
       } else if (currentChapter) {
-        currentChapter.html += `<p>${trimmed}</p>`;
+        if (currentSection) {
+          currentSection.html += `<p>${trimmed}</p>`;
+        } else {
+          currentChapter.html += `<p>${trimmed}</p>`;
+        }
       }
     });
+
+    if (currentSection && currentChapter) {
+      currentChapter.html += `<div class="section">${currentSection.html}</div>`;
+    }
 
     if (currentChapter) {
       chapters.push(currentChapter);
@@ -129,39 +218,139 @@ function UploadArea({ onContentLoaded }) {
   };
 
   const parseAndLoadContentFromHtml = (htmlContent, sourceName) => {
-    const tempDiv = document.createElement('div');
+    const tempDiv = window.document.createElement('div');
     tempDiv.innerHTML = htmlContent;
     
     const chapters = [];
-    const headings = tempDiv.querySelectorAll('h1, h2, h3');
     
-    if (headings.length > 0) {
-      let lastIndex = 0;
-      headings.forEach((heading, index) => {
-        const title = heading.textContent;
-        const nextHeading = headings[index + 1];
-        const start = heading.nextSibling;
+    const isChapterHeading = (el) => {
+      const tag = el.tagName?.toLowerCase();
+      const text = el.textContent?.trim() || '';
+      const style = el.style || {};
+      const computedStyle = el.ownerDocument.defaultView?.getComputedStyle(el) || {};
+      
+      if (tag === 'h1' || tag === 'h2') return true;
+      
+      if (tag === 'p' || tag === 'div') {
+        const lowerText = text.toLowerCase();
         
-        let chapterHtml = '';
-        let node = start;
-        while (node && node !== nextHeading) {
-          if (node.nodeType === 1) {
-            chapterHtml += node.outerHTML;
-          } else if (node.nodeType === 3 && node.textContent.trim()) {
-            chapterHtml += `<p>${node.textContent}</p>`;
+        if (/^(capítulo|chapter|cap\.?)\s*#?\d+/i.test(text)) return true;
+        if (/^(capítulo|chapter|cap\.?)\s*#?\d+\s*[-–—:]\s*/i.test(text)) return true;
+        if (/^(capítulo|chapter|cap\.?)\s+[ivxlcdm]+/i.test(text)) return true;
+        if (/^(capítulo|chapter|cap\.?)\s+(primero|segundo|tercero|cuarto|quinto|sexto|séptimo|octavo|noveno|décimo|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)/i.test(text)) return true;
+        
+        if (/^(parte|part|book)\s+\d+/i.test(text)) return true;
+        if (/^(parte|part|book)\s+[ivxlcdm]+/i.test(text)) return true;
+        if (/^(parte|part|book)\s+(primera|segunda|tercera|cuarta|quinta|sexta|séptima|octava|novena|décima|first|second|third|fourth|fifth)/i.test(text)) return true;
+        
+        if (/^libro\s+\d+/i.test(text)) return true;
+        
+        if (/^capítulo\s+\d+/i.test(text)) return true;
+        
+        if (/^capitulo\s+\d+/i.test(text)) return true;
+        
+        if (/^CAPÍTULO\s+/i.test(text)) return true;
+        if (/^CAPITULO\s+/i.test(text)) return true;
+        if (/^CHAPTER\s+/i.test(text)) return true;
+        
+        const specialChapters = ['prólogo', 'prologo', 'epílogo', 'epilogo', 'introducción', 'introduccion', 'conclusión', 'conclusion', 'dedicatoria', 'agradecimientos', 'bibliografía', 'bibliografia', 'prefacio', 'colofón', 'colofon'];
+        if (specialChapters.includes(lowerText)) return true;
+      }
+      return false;
+    };
+    
+    const isSubtitle = (el) => {
+      const tag = el.tagName?.toLowerCase();
+      const text = el.textContent?.trim() || '';
+      
+      if (tag === 'h3' || tag === 'h4') return true;
+      
+      if (tag === 'p' || tag === 'div') {
+        const lowerText = text.toLowerCase();
+        
+        if (/^subtítulo|subtitle/i.test(text)) return true;
+        if (/^nota\s+/i.test(text)) return true;
+        if (/^reseña/i.test(text)) return true;
+        if (/^\d+\.\d+/.test(text)) return true;
+        
+        try {
+          const computedStyle = el.ownerDocument.defaultView?.getComputedStyle(el);
+          const fontWeight = computedStyle?.fontWeight;
+          if (fontWeight && (fontWeight >= 700 || fontWeight === 'bold')) {
+            return true;
           }
-          node = node.nextSibling;
-        }
+        } catch (e) {}
         
-        chapters.push({
-          id: `chapter-${Date.now()}-${index}`,
-          type: heading.tagName === 'H1' ? 'chapter' : 'section',
-          title: title,
-          html: chapterHtml,
-          wordCount: chapterHtml.replace(/<[^>]*>/g, '').split(/\s+/).filter(w => w.length > 0).length
-        });
-      });
-    } else {
+        const style = el.getAttribute('style') || '';
+        if (style.includes('font-weight: bold') || style.includes('font-weight:700') || style.includes('font-weight:bold')) {
+          return true;
+        }
+      }
+      return false;
+    };
+    
+    const isSection = (el) => {
+      const tag = el.tagName?.toLowerCase();
+      
+      if (tag === 'h4' || tag === 'h5' || tag === 'h6') return true;
+      return false;
+    };
+    
+    const allElements = tempDiv.querySelectorAll('p, h1, h2, h3, h4, h5, h6');
+    
+    let currentChapter = null;
+    let currentSection = null;
+    
+    allElements.forEach((el, index) => {
+      const text = el.textContent?.trim() || '';
+      if (!text) return;
+      
+      if (isChapterHeading(el)) {
+        if (currentChapter) {
+          if (currentSection) {
+            currentChapter.html += `<div class="section">${currentSection.html}</div>`;
+            currentSection = null;
+          }
+          chapters.push(currentChapter);
+        }
+        currentChapter = {
+          id: `chapter-${Date.now()}-${chapters.length}`,
+          type: 'chapter',
+          title: text,
+          html: '',
+          wordCount: 0
+        };
+        currentSection = null;
+      } else if (isSubtitle(el)) {
+        if (currentChapter) {
+          if (currentSection) {
+            currentChapter.html += `<div class="section">${currentSection.html}</div>`;
+          }
+          currentSection = {
+            id: `section-${Date.now()}-${index}`,
+            type: 'section',
+            title: text,
+            html: ''
+          };
+        }
+      } else if (currentChapter) {
+        if (currentSection) {
+          currentSection.html += el.outerHTML;
+        } else {
+          currentChapter.html += el.outerHTML;
+        }
+      }
+    });
+    
+    if (currentSection && currentChapter) {
+      currentChapter.html += `<div class="section">${currentSection.html}</div>`;
+    }
+    
+    if (currentChapter) {
+      chapters.push(currentChapter);
+    }
+    
+    if (chapters.length === 0) {
       chapters.push({
         id: `chapter-${Date.now()}`,
         type: 'chapter',
@@ -170,6 +359,12 @@ function UploadArea({ onContentLoaded }) {
         wordCount: htmlContent.replace(/<[^>]*>/g, '').split(/\s+/).filter(w => w.length > 0).length
       });
     }
+    
+    chapters.forEach(ch => {
+      const html = ch.html || '';
+      const text = html.replace(/<[^>]*>/g, '');
+      ch.wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
+    });
 
     onContentLoaded(chapters);
   };
@@ -204,11 +399,15 @@ function UploadArea({ onContentLoaded }) {
           <p className="upload-formats">Formatos: <strong>TXT, MD, HTML, DOCX</strong></p>
         </div>
         <div className="upload-info">
-          <h3>Requisitos de archivo</h3>
+          <h3>Formatos detectados como capítulos</h3>
           <ul>
-            <li>Máximo 50 MB</li>
-            <li>Formato: TXT, MD, HTML, DOCX</li>
-            <li>Usa "# Título" para capítulos</li>
+            <li><strong>CAPÍTULO #1 – NEPSIS</strong></li>
+            <li><strong>Capítulo 1</strong>, <strong>Capítulo III</strong>, <strong>Capítulo Primero</strong></li>
+            <li><strong>Chapter 1</strong>, <strong>Chapter Ten</strong></li>
+            <li><strong>Parte I</strong>, <strong>Parte Primera</strong></li>
+            <li><strong>Libro 1</strong></li>
+            <li><strong>Prólogo</strong>, <strong>Introducción</strong>, <strong>Epílogo</strong></li>
+            <li>Encabezados <strong>H1</strong>, <strong>H2</strong> en Word</li>
           </ul>
         </div>
       </div>
@@ -231,11 +430,12 @@ function UploadArea({ onContentLoaded }) {
           </button>
         </div>
         <div className="upload-tips">
-          <h3>Tips para mejor resultado</h3>
+          <h3>Ejemplos de formato</h3>
           <ul>
-            <li>Usa "# Capítulo 1" para marcar capítulos</li>
-            <li>Usa "## Sección" para subsecciones</li>
-            <li>Los párrafos se separan con línea en blanco</li>
+            <li><code># Capítulo 1</code> o <code>## Subtítulo</code> (Markdown)</li>
+            <li><code>Capítulo 1: Título</code></li>
+            <li><code>Parte I</code> o <code>Parte Primera</code></li>
+            <li>Encabezados en Word se detectan automáticamente</li>
           </ul>
         </div>
       </div>

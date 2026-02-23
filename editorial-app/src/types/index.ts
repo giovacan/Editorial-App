@@ -36,6 +36,7 @@ export interface Editing {
 export interface Config {
   pageFormat: PageFormat;
   fontSize: number;
+  fontFamily: string;
   lineHeight: number;
   chaptersOnRight: boolean;
   showPageNumbers: boolean;
@@ -62,11 +63,11 @@ export interface Stats {
 }
 
 export interface EditorState {
-  document: Document;
+  bookData: Document;
   editing: Editing;
   config: Config;
   ui: UI;
-  setDocument: (doc: Partial<Document>) => void;
+  setBookData: (doc: Partial<Document>) => void;
   setConfig: (config: Partial<Config>) => void;
   setUi: (ui: Partial<UI>) => void;
   addChapter: (title?: string) => Chapter;

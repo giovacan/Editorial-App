@@ -31,26 +31,10 @@
   display: none;
 }
 
-.preview-content {
-  display: flex;
-  justify-content: center;
-}
-
 .preview-placeholder {
   text-align: center;
   color: #9ca3af;
   padding: 2rem;
-}
-
-.preview-page {
-  background: white;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  padding: 1.5rem;
-  max-width: 300px;
-  aspect-ratio: 1 / 1.414;
-  overflow: hidden;
-  font-size: 0.75rem;
-  line-height: 1.6;
 }
 
 .export-section {
