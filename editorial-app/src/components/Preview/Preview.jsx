@@ -395,10 +395,12 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
             currentHeight = measureDiv.offsetHeight;
           }
         } else {
-          // No overflow — element fits. For headers, check if there are enough lines after it for minLinesAfter
-          const isHeader = tag.match(/^H[1-6]$/i);
-          if (isHeader) {
-            const level = tag.slice(1).toLowerCase();
+          // No overflow — element fits. For headers/pseudo-headers, check if there are enough lines after
+          const isRealHeader = tag.match(/^H[1-6]$/i);
+          const isPseudoHeader = !isRealHeader && isHeaderLike(el);
+
+          if (isRealHeader || isPseudoHeader) {
+            const level = isRealHeader ? tag.slice(1).toLowerCase() : '3'; // Treat pseudo-headers as h3
             const subConfig = safeConfig.subheaders?.[level] || safeConfig.subheaders?.h2 || { align: 'center', bold: true, sizeMultiplier: 1.25, marginTop: 1, marginBottom: 0.5, minLinesAfter: 2 };
             const minLinesNeeded = subConfig.minLinesAfter ?? 2;
 
@@ -640,6 +642,26 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
       tmp.innerHTML = html;
       const children = Array.from(tmp.children);
       return children.length > 0 ? children[0] : null;
+    };
+
+    // Check if an element is a real header OR pseudo-header (bold short text)
+    const isHeaderLike = (el) => {
+      if (!el) return false;
+
+      // Real header
+      if (/^H[1-6]$/i.test(el.tagName)) return true;
+
+      // Pseudo-header: bold paragraph
+      if (el.tagName === 'P' || el.tagName === 'DIV') {
+        const text = el.textContent?.trim() || '';
+        const isBold = el.style.fontWeight === 'bold' ||
+                       el.style.fontWeight >= '700' ||
+                       el.innerHTML.includes('font-weight');
+        const isShortText = text.length > 0 && text.length < 100 && !text.includes('\n');
+        return isBold && isShortText;
+      }
+
+      return false;
     };
 
     const finalize = () => {
