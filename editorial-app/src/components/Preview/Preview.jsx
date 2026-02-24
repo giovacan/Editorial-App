@@ -400,6 +400,7 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
           const isPseudoHeader = !isRealHeader && isHeaderLike(el);
 
           if (isRealHeader || isPseudoHeader) {
+            console.log(`[FORWARD] ${isPseudoHeader ? 'PSEUDO' : 'REAL'} header: ${tag}, text="${el.textContent?.substring(0,30)}", checking minLines...`);
             const level = isRealHeader ? tag.slice(1).toLowerCase() : '3'; // Treat pseudo-headers as h3
             const subConfig = safeConfig.subheaders?.[level] || safeConfig.subheaders?.h2 || { align: 'center', bold: true, sizeMultiplier: 1.25, marginTop: 1, marginBottom: 0.5, minLinesAfter: 2 };
             const minLinesNeeded = subConfig.minLinesAfter ?? 2;
@@ -408,16 +409,61 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
             const nextEl = children[childIdx + 1];
             const nextIsParagraph = nextEl && (nextEl.tagName === 'P' || nextEl.tagName === 'DIV');
 
+            console.log(`[FORWARD] nextIsParagraph=${nextIsParagraph}, minLinesNeeded=${minLinesNeeded}`);
+
             if (nextIsParagraph) {
               // Calculate remaining space after placing this header
               const remainingAfterHeader = contentHeight - (currentHeight + elHeight);
               const linesAfterHeader = Math.floor(remainingAfterHeader / lineHeightPx);
 
+              console.log(`[FORWARD] remainingAfterHeader=${remainingAfterHeader}px, linesAfterHeader=${linesAfterHeader}, minNeeded=${minLinesNeeded}`);
+
               // If not enough lines for minLinesAfter, force page break
               if (linesAfterHeader < minLinesNeeded) {
-                generatedPages.push({ html: currentHtml, pageNumber: generatedPages.length + 1, chapterTitle: chapter.title, isBlank: false });
+                console.log(`[FORWARD] ORPHAN DETECTED! Moving to next page. Lines ${linesAfterHeader} < ${minLinesNeeded}`);
+
+                // Calculate the space that will be freed by removing this header
+                const spaceFreed = elHeight;
+
+                // Professional redistribution: expand line-height to fill the gap
+                // This makes the page look fuller without leaving whitespace
+                const expandedHtml = currentHtml.replace(
+                  /line-height:[^;]*;/g,
+                  (match) => {
+                    // Increase line-height by distributing the freed space
+                    const expansionFactor = 1 + (spaceFreed / (currentHeight * 1.5));
+                    const newLineHeight = Math.min(2.0, baseLineHeight * expansionFactor);
+                    return `line-height:${newLineHeight};`;
+                  }
+                );
+
+                generatedPages.push({ html: expandedHtml, pageNumber: generatedPages.length + 1, chapterTitle: chapter.title, isBlank: false });
                 currentHtml = elHtml;
                 currentHeight = elHeight;
+
+                // Also include the next paragraph if it exists
+                if (nextEl) {
+                  childIdx++; // Skip next element in loop so it's not processed twice
+                  let nextElHtml = '';
+                  const nextTag = nextEl.tagName;
+
+                  if (nextTag === 'P' || nextTag === 'DIV') {
+                    const indent = safeConfig.paragraph?.firstLineIndent || 1.5;
+                    nextElHtml = `<p style="margin:0 0;padding:0;text-align:${textAlign};text-indent:0;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;line-height:${baseLineHeight};">${nextEl.innerHTML}</p>`;
+                    paragraphCount++;
+                  }
+
+                  if (nextElHtml) {
+                    const combined = currentHtml + nextElHtml;
+                    measureDiv.innerHTML = combined;
+                    const combinedHeight = measureDiv.offsetHeight;
+
+                    if (combinedHeight <= contentHeight) {
+                      currentHtml = combined;
+                      currentHeight = combinedHeight;
+                    }
+                  }
+                }
                 continue; // Skip to next iteration
               }
             }
@@ -461,6 +507,12 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
 
           const isHeader = /^H[1-6]$/i.test(firstEl.tagName);
           const isList = firstEl.tagName === 'UL' || firstEl.tagName === 'OL';
+          const isPseudoHeader = isHeaderLike(firstEl);
+
+          // NEVER move headers or pseudo-headers back - they were separated to prevent orphans!
+          if (isHeader || isList || isPseudoHeader) {
+            break;
+          }
 
           const firstElOuter = firstEl.outerHTML;
           let moved = false;
@@ -654,11 +706,25 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
       // Pseudo-header: bold paragraph
       if (el.tagName === 'P' || el.tagName === 'DIV') {
         const text = el.textContent?.trim() || '';
+        const innerHTML = el.innerHTML || '';
+
+        // Check for bold via: CSS font-weight, <strong>, <b>, or bold class
         const isBold = el.style.fontWeight === 'bold' ||
                        el.style.fontWeight >= '700' ||
-                       el.innerHTML.includes('font-weight');
+                       innerHTML.includes('font-weight') ||
+                       innerHTML.includes('<strong>') ||
+                       innerHTML.includes('<b>') ||
+                       innerHTML.includes('class="bold"') ||
+                       innerHTML.includes('bold');
+
         const isShortText = text.length > 0 && text.length < 100 && !text.includes('\n');
-        return isBold && isShortText;
+        const hasContent = text.length > 5; // At least 5 chars
+
+        const result = isBold && isShortText && hasContent;
+        if (result) {
+          console.log(`[PSEUDO-HEADER] Detected: text="${text.substring(0,40)}", isBold=${isBold}, isShort=${isShortText}`);
+        }
+        return result;
       }
 
       return false;
