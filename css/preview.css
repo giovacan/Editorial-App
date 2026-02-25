@@ -6,6 +6,7 @@
     display: flex;
     gap: var(--space-md);
     margin-bottom: var(--space-lg);
+    align-items: center;
 }
 
 .preview-controls button,
@@ -17,23 +18,76 @@
     width: auto;
 }
 
+.zoom-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 2px;
+}
+
+.zoom-controls .btn {
+    background: transparent;
+    border: none;
+    color: var(--color-text);
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.15s;
+}
+
+.zoom-controls .btn:hover {
+    background: var(--color-border);
+}
+
+.zoom-controls select {
+    background: transparent;
+    border: none;
+    color: var(--color-text);
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    min-width: 60px;
+    outline: none;
+}
+
+.zoom-controls select:focus {
+    background: var(--color-border);
+}
+
 .preview-container {
     flex: 1;
     background-color: var(--color-bg);
     border: var(--border-width) solid var(--color-border);
     border-radius: var(--border-radius-md);
-    overflow: auto;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
+    position: relative;
+}
+
+.preview-zoom-wrapper {
+    flex: 1;
+    overflow: auto;
+    padding: var(--space-lg);
+    transition: transform 0.2s ease;
+    transform-origin: top left;
 }
 
 .preview-content {
-    flex: 1;
-    overflow-y: auto;
-    padding: var(--space-lg);
     font-family: var(--font-serif);
     font-size: var(--font-size-base);
     line-height: var(--line-height-base);
+    min-height: 100%;
 }
 
 .preview-placeholder {

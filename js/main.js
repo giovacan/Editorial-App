@@ -103,8 +103,11 @@ class EditorialApp {
         // Preview
         this.elements.previewContainer = document.getElementById('preview-container');
         this.elements.previewContent = document.getElementById('preview-content');
+        this.elements.previewZoomWrapper = document.getElementById('preview-container')?.querySelector('.preview-zoom-wrapper');
         this.elements.btnTogglePreview = document.getElementById('btn-toggle-preview');
         this.elements.previewZoom = document.getElementById('preview-zoom');
+        this.elements.btnZoomOut = document.getElementById('btn-zoom-out');
+        this.elements.btnZoomIn = document.getElementById('btn-zoom-in');
         this.elements.btnPrevPage = document.getElementById('btn-prev-page');
         this.elements.btnNextPage = document.getElementById('btn-next-page');
         this.elements.btnFullscreen = document.getElementById('btn-fullscreen-preview');
@@ -243,6 +246,8 @@ class EditorialApp {
         // Preview
         if (this.elements.btnTogglePreview) this.elements.btnTogglePreview.addEventListener('click', () => this.togglePreview());
         if (this.elements.previewZoom) this.elements.previewZoom.addEventListener('change', (e) => this.setPreviewZoom(e.target.value));
+        if (this.elements.btnZoomOut) this.elements.btnZoomOut.addEventListener('click', () => this.adjustZoom(-25));
+        if (this.elements.btnZoomIn) this.elements.btnZoomIn.addEventListener('click', () => this.adjustZoom(25));
         if (this.elements.btnPrevPage) this.elements.btnPrevPage.addEventListener('click', () => this.previewRenderer?.previousPage());
         if (this.elements.btnNextPage) this.elements.btnNextPage.addEventListener('click', () => this.previewRenderer?.nextPage());
         if (this.elements.btnFullscreen) this.elements.btnFullscreen.addEventListener('click', () => this.openFullscreen());
@@ -881,9 +886,53 @@ showUploadArea() {
      * PREVIEW: Zoom
      */
     setPreviewZoom(level) {
+        const zoomLevel = parseInt(level);
+        this.currentZoom = zoomLevel;
+        
         if (this.previewRenderer) {
-            this.previewRenderer.applyZoom(parseInt(level));
+            this.previewRenderer.applyZoom(zoomLevel);
         }
+        
+        // Aplicar transformación CSS al contenedor de zoom
+        this.applyZoomTransform(zoomLevel);
+    }
+
+    /**
+     * PREVIEW: Ajustar zoom (in/out buttons)
+     */
+    adjustZoom(delta) {
+        const current = this.currentZoom || 50;
+        const options = [25, 40, 50, 75, 100, 125, 150, 200];
+        let newIndex = options.indexOf(current);
+        
+        if (newIndex === -1) {
+            // Si el valor actual no está en las opciones, usar el más cercano
+            newIndex = options.findIndex(opt => opt >= current);
+            if (newIndex === -1) newIndex = options.length - 1;
+        }
+        
+        newIndex = Math.max(0, Math.min(options.length - 1, newIndex + (delta > 0 ? 1 : -1)));
+        const newZoom = options[newIndex];
+        
+        if (this.elements.previewZoom) {
+            this.elements.previewZoom.value = newZoom;
+        }
+        this.setPreviewZoom(newZoom);
+    }
+
+    /**
+     * PREVIEW: Aplicar transformación CSS de zoom
+     */
+    applyZoomTransform(zoomLevel) {
+        if (!this.elements.previewZoomWrapper) return;
+        
+        const scale = zoomLevel / 100;
+        this.elements.previewZoomWrapper.style.transform = `scale(${scale})`;
+        
+        // Ajustar el padding para compensar el scale
+        const basePadding = 16; // var(--space-lg) en px
+        const scaledPadding = basePadding / scale;
+        this.elements.previewZoomWrapper.style.padding = `${scaledPadding}px`;
     }
 
     // ================================================================

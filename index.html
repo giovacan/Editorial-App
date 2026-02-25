@@ -408,22 +408,31 @@
                         <button id="btn-toggle-preview" class="btn btn-secondary btn-small" aria-label="Alternar vista previa">
                             👁 Mostrar preview
                         </button>
-                        <select id="preview-zoom" aria-label="Nivel de zoom del preview">
-                            <option value="40">40%</option>
-                            <option value="50" selected>50%</option>
-                            <option value="75">75%</option>
-                            <option value="100">100%</option>
-                            <option value="125">125%</option>
-                        </select>
+                        <div class="zoom-controls">
+                            <button id="btn-zoom-out" class="btn btn-icon" aria-label="Zoom menos">−</button>
+                            <select id="preview-zoom" aria-label="Nivel de zoom del preview">
+                                <option value="25">25%</option>
+                                <option value="40">40%</option>
+                                <option value="50" selected>50%</option>
+                                <option value="75">75%</option>
+                                <option value="100">100%</option>
+                                <option value="125">125%</option>
+                                <option value="150">150%</option>
+                                <option value="200">200%</option>
+                            </select>
+                            <button id="btn-zoom-in" class="btn btn-icon" aria-label="Zoom más">+</button>
+                        </div>
                         <button id="btn-fullscreen-preview" class="btn btn-icon" title="Pantalla completa" aria-label="Ver preview en pantalla completa">
                             ⛶
                         </button>
                     </div>
 
                     <div id="preview-container" class="preview-container" hidden role="region" aria-label="Vista previa paginada del libro">
-                        <div id="preview-content" class="preview-content">
-                            <div class="preview-placeholder">
-                                <p>Procesa un documento para ver la vista previa aquí</p>
+                        <div class="preview-zoom-wrapper">
+                            <div id="preview-content" class="preview-content">
+                                <div class="preview-placeholder">
+                                    <p>Procesa un documento para ver la vista previa aquí</p>
+                                </div>
                             </div>
                         </div>
                     </div>

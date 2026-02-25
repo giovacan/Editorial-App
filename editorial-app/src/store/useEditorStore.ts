@@ -65,6 +65,39 @@ const initialState = {
     headerContent: 'both' as const,
     headerPosition: 'top' as const,
     headerLine: true,
+    header: {
+      enabled: false,
+      template: 'classic' as const,
+      displayMode: 'alternate' as const,
+      evenPage: {
+        leftContent: 'title' as const,
+        centerContent: 'none' as const,
+        rightContent: 'none' as const
+      },
+      oddPage: {
+        leftContent: 'none' as const,
+        centerContent: 'none' as const,
+        rightContent: 'chapter' as const
+      },
+      trackSubheaders: false,
+      trackPseudoHeaders: false,
+      subtopicBehavior: 'none' as const,
+      subtopicSeparator: ' | ',
+      subtopicMaxLength: 60,
+      subheaderLevels: ['h1', 'h2'],
+      subheaderFormat: 'full' as const,
+      fontFamily: 'same' as const,
+      fontSize: 70,
+      showLine: true,
+      lineStyle: 'solid' as const,
+      lineWidth: 0.5,
+      lineColor: 'black' as const,
+      marginTop: 0,
+      marginBottom: 0.5,
+      distanceFromPageNumber: 0.5,
+      whenPaginationSamePosition: 'merge' as const,
+      skipFirstChapterPage: true
+    },
     chapterTitle: {
       align: 'center' as const,
       bold: true,

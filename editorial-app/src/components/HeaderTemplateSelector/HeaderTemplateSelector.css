@@ -1,0 +1,407 @@
+/**
+ * Header Template Selector Styles
+ * Modal-based template selection for professional headers
+ */
+
+/* ============================================
+   COMPACT BUTTON (for sidebar)
+   ============================================ */
+
+.header-template-selector {
+  width: 100%;
+}
+
+.header-template-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.header-template-button:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.header-template-button:active {
+  background: #e2e8f0;
+}
+
+.template-button-icon {
+  font-size: 18px;
+}
+
+.template-button-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: #334155;
+}
+
+.template-button-arrow {
+  font-size: 16px;
+  color: #94a3b8;
+}
+
+/* ============================================
+   MODAL OVERLAY
+   ============================================ */
+
+.header-template-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ============================================
+   MODAL CONTAINER
+   ============================================ */
+
+.header-template-modal {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  width: 90%;
+  max-width: 700px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from { 
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.modal-close-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  font-size: 24px;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.modal-close-btn:hover {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.modal-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 0 0 12px 12px;
+}
+
+/* ============================================
+   TEMPLATE GRID (in modal)
+   ============================================ */
+
+.template-grid-large {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.template-card-large {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: #f8fafc;
+  border: 2px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.template-card-large:hover {
+  border-color: #93c5fd;
+  background: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.template-card-large.selected {
+  border-color: #3b82f6;
+  background: #eff6ff;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.template-selected-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 24px;
+  height: 24px;
+  background: #3b82f6;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+/* ============================================
+   LARGE PREVIEW (in modal) - SINGLE ROW
+   ============================================ */
+
+.template-preview-large-container {
+  background: white;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.template-preview-spread-large {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.preview-page-large {
+  width: 160px;
+  height: 100px;
+  background: #fafafa;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  font-size: 7px;
+  line-height: 1.2;
+  position: relative;
+}
+
+/* Single row header - full width */
+.preview-header-large {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 7px;
+  color: #374151;
+  min-height: 10px;
+  width: 100%;
+  white-space: nowrap;
+}
+
+.preview-header-left,
+.preview-header-center,
+.preview-header-right {
+  white-space: nowrap;
+}
+
+.preview-header-left {
+  text-align: left;
+  flex: 1;
+}
+
+.preview-header-center {
+  text-align: center;
+  flex: 1;
+  margin: 0 4px;
+}
+
+.preview-header-right {
+  text-align: right;
+  flex: 1;
+}
+
+/* Header line with proper spacing from content */
+.preview-line-large {
+  height: 1px;
+  margin: 8px 0;
+  background: #9ca3af;
+}
+
+.preview-line-large.preview-line-double {
+  height: 3px;
+  border-bottom: 1px solid #9ca3af;
+  margin: 6px 0;
+}
+
+.preview-line-large.preview-line-dashed {
+  background: repeating-linear-gradient(
+    to right,
+    #9ca3af 0,
+    #9ca3af 3px,
+    transparent 3px,
+    transparent 6px
+  );
+}
+
+.preview-line-large.preview-line-dotted {
+  background: repeating-linear-gradient(
+    to right,
+    #9ca3af 0,
+    #9ca3af 2px,
+    transparent 2px,
+    transparent 4px
+  );
+}
+
+.preview-content-large {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-top: 8px;
+}
+
+.preview-line-text {
+  height: 4px;
+  background: #e5e7eb;
+  border-radius: 1px;
+}
+
+.preview-line-text.short {
+  width: 70%;
+}
+
+/* ============================================
+   TEMPLATE INFO (in modal card)
+   ============================================ */
+
+.template-info-large {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.template-icon-large {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.template-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.template-name-large {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.template-description {
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+/* ============================================
+   BUTTONS
+   ============================================ */
+
+.btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: none;
+}
+
+.btn-primary {
+  background: #3b82f6;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #2563eb;
+}
+
+.btn-secondary {
+  background: white;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+
+.btn-secondary:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+
+@media (max-width: 500px) {
+  .header-template-modal {
+    width: 95%;
+    max-height: 90vh;
+  }
+  
+  .template-grid-large {
+    grid-template-columns: 1fr;
+  }
+  
+  .preview-page-large {
+    width: 100px;
+    height: 60px;
+  }
+}

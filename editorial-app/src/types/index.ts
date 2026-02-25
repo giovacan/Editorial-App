@@ -8,6 +8,15 @@ export type HeaderContent = 'title' | 'chapter' | 'both';
 export type TextAlign = 'left' | 'center' | 'right' | 'justify';
 export type ChapterLayout = 'continuous' | 'withFirstParagraph' | 'titleOnly';
 
+// Header Template Types
+export type HeaderTemplateId = 'classic' | 'modern' | 'minimal' | 'academic' | 'literary' | 'custom';
+export type HeaderCellContent = 'title' | 'chapter' | 'subheader' | 'page' | 'none';
+export type HeaderLineStyle = 'solid' | 'dashed' | 'dotted' | 'double';
+export type HeaderFontStyle = 'same' | 'sans' | 'small-caps';
+export type SubheaderFormat = 'full' | 'short' | 'numbered';
+export type PaginationConflictResolution = 'stack' | 'merge' | 'separate';
+export type HeaderDisplayMode = 'alternate' | 'both' | 'even-only' | 'odd-only';
+
 export interface SubheaderLevelConfig {
   align: TextAlign;
   bold: boolean;
@@ -50,6 +59,42 @@ export interface PaginationRules {
   splitLongParagraphs: boolean;
 }
 
+// Header Configuration Interfaces
+export interface HeaderPageConfig {
+  leftContent: HeaderCellContent;
+  centerContent: HeaderCellContent;
+  rightContent: HeaderCellContent;
+}
+
+// Subtopic behavior type
+export type SubtopicBehavior = 'none' | 'replace' | 'combine' | 'odd-only' | 'even-only';
+
+export interface HeaderConfig {
+  enabled: boolean;
+  template: HeaderTemplateId;
+  displayMode: HeaderDisplayMode;
+  evenPage: HeaderPageConfig;
+  oddPage: HeaderPageConfig;
+  trackSubheaders: boolean;
+  trackPseudoHeaders: boolean;
+  subtopicBehavior: SubtopicBehavior;
+  subtopicSeparator: string;
+  subtopicMaxLength: number;
+  subheaderLevels: string[];
+  subheaderFormat: SubheaderFormat;
+  fontFamily: HeaderFontStyle;
+  fontSize: number;
+  showLine: boolean;
+  lineStyle: HeaderLineStyle;
+  lineWidth: number;
+  lineColor: 'black' | 'gray' | 'light-gray';
+  marginTop: number;
+  marginBottom: number;
+  distanceFromPageNumber: number;
+  whenPaginationSamePosition: PaginationConflictResolution;
+  skipFirstChapterPage: boolean;
+}
+
 export interface Chapter {
   id: string;
   type: ChapterType;
@@ -90,6 +135,7 @@ export interface Config {
   headerContent: HeaderContent;
   headerPosition: 'top';
   headerLine: boolean;
+  header: HeaderConfig;
   chapterTitle: ChapterTitleConfig;
   subheaders: {
     h1: SubheaderLevelConfig;
