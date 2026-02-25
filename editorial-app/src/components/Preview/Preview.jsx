@@ -1373,39 +1373,65 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
       <div ref={measureRef} lang="es" style={{ position: 'fixed', left: -99999, top: 0, visibility: 'hidden' }}></div>
       
       <div className="preview-controls">
-        <button 
-          className="btn btn-icon" 
-          onClick={goToPrevPage}
-          disabled={currentPage === 0}
-          title="Página anterior"
-        >
-          ←
-        </button>
-        <span className="page-info">
-          <input 
-            type="number" 
-            min="1" 
-            max={totalPages}
-            value={currentPage + 1}
-            onChange={(e) => goToPage(parseInt(e.target.value) || 1)}
-            className="page-input"
-          /> 
-          / {totalPages}
-        </span>
-        <button 
-          className="btn btn-icon" 
-          onClick={goToNextPage}
-          disabled={currentPage >= totalPages - 1}
-          title="Página siguiente"
-        >
-          →
-        </button>
-        <select value={magnifierZoom} onChange={(e) => setMagnifierZoom(parseInt(e.target.value))} className="zoom-select" title="Zoom de lupa">
-          <option value="150">🔍 150%</option>
-          <option value="200">🔍 200%</option>
-          <option value="250">🔍 250%</option>
-          <option value="300">🔍 300%</option>
-        </select>
+        <div className="preview-controls-left">
+          <button 
+            className="btn btn-icon" 
+            onClick={goToPrevPage}
+            disabled={currentPage === 0}
+            title="Página anterior"
+          >
+            ←
+          </button>
+          <span className="page-info">
+            <input 
+              type="number" 
+              min="1" 
+              max={totalPages}
+              value={currentPage + 1}
+              onChange={(e) => goToPage(parseInt(e.target.value) || 1)}
+              className="page-input"
+            /> 
+            / {totalPages}
+          </span>
+          <button 
+            className="btn btn-icon" 
+            onClick={goToNextPage}
+            disabled={currentPage >= totalPages - 1}
+            title="Página siguiente"
+          >
+            →
+          </button>
+        </div>
+        <div className="preview-controls-right">
+          <button 
+            className={`zoom-btn ${magnifierZoom === 150 ? 'active' : ''}`}
+            onClick={() => setMagnifierZoom(150)}
+            title="Zoom 150%"
+          >
+            150%
+          </button>
+          <button 
+            className={`zoom-btn ${magnifierZoom === 200 ? 'active' : ''}`}
+            onClick={() => setMagnifierZoom(200)}
+            title="Zoom 200%"
+          >
+            200%
+          </button>
+          <button 
+            className={`zoom-btn ${magnifierZoom === 250 ? 'active' : ''}`}
+            onClick={() => setMagnifierZoom(250)}
+            title="Zoom 250%"
+          >
+            250%
+          </button>
+          <button 
+            className={`zoom-btn ${magnifierZoom === 300 ? 'active' : ''}`}
+            onClick={() => setMagnifierZoom(300)}
+            title="Zoom 300%"
+          >
+            300%
+          </button>
+        </div>
       </div>
 
       <div className="preview-scroll">
