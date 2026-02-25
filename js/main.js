@@ -38,6 +38,9 @@ class EditorialApp {
             }
         };
 
+        // Estado del zoom
+        this.currentZoom = 50; // Valor inicial de zoom
+
         // DOM Elements
         this.elements = {};
         this.cacheElements();
@@ -103,7 +106,7 @@ class EditorialApp {
         // Preview
         this.elements.previewContainer = document.getElementById('preview-container');
         this.elements.previewContent = document.getElementById('preview-content');
-        this.elements.previewZoomWrapper = document.getElementById('preview-container')?.querySelector('.preview-zoom-wrapper');
+        this.elements.previewZoomWrapper = document.querySelector('.preview-zoom-wrapper');
         this.elements.btnTogglePreview = document.getElementById('btn-toggle-preview');
         this.elements.previewZoom = document.getElementById('preview-zoom');
         this.elements.btnZoomOut = document.getElementById('btn-zoom-out');
@@ -878,6 +881,9 @@ showUploadArea() {
             this.state
         );
 
+        // Establecer zoom inicial al cargar el preview
+        this.setPreviewZoom(this.currentZoom || 50);
+
         const info = this.previewRenderer.getBookInfo();
         console.log('Preview Info:', info);
     }
@@ -888,6 +894,11 @@ showUploadArea() {
     setPreviewZoom(level) {
         const zoomLevel = parseInt(level);
         this.currentZoom = zoomLevel;
+        
+        // Sincronizar el select con el valor actual
+        if (this.elements.previewZoom) {
+            this.elements.previewZoom.value = zoomLevel;
+        }
         
         if (this.previewRenderer) {
             this.previewRenderer.applyZoom(zoomLevel);
@@ -914,9 +925,6 @@ showUploadArea() {
         newIndex = Math.max(0, Math.min(options.length - 1, newIndex + (delta > 0 ? 1 : -1)));
         const newZoom = options[newIndex];
         
-        if (this.elements.previewZoom) {
-            this.elements.previewZoom.value = newZoom;
-        }
         this.setPreviewZoom(newZoom);
     }
 
