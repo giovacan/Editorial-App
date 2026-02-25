@@ -1409,7 +1409,7 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
       </div>
 
       <div className="preview-scroll">
-        <div
+          <div
           ref={previewPageRef}
           className="preview-page"
           lang="es"
@@ -1423,9 +1423,7 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
             textAlign: textAlign,
             textJustify: 'inter-word',
             hyphens: 'auto',
-            wordBreak: 'break-word',
-            transform: `scale(${previewZoom / 100})`,
-            transformOrigin: 'top left'
+            wordBreak: 'break-word'
           }}
           onMouseEnter={(e) => {
             isOverPreview.current = true;
