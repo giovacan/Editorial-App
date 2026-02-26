@@ -105,7 +105,12 @@ const initialState = {
       marginTop: 2,
       marginBottom: 1,
       startOnRightPage: true,
-      layout: 'continuous' as 'continuous' | 'spaced' | 'halfPage' | 'fullPage' | 'ruled'
+      layout: 'continuous' as 'continuous' | 'spaced' | 'halfPage' | 'fullPage',
+      showLines: false,
+      lineWidth: 0.5,
+      lineStyle: 'solid',
+      lineColor: '#333333',
+      lineWidthTitle: false
     },
     subheaders: {
       h1: { align: 'center' as const, bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBottom: 0.5, minLinesAfter: 2 },
@@ -145,6 +150,27 @@ const initialState = {
 
 const savedState = loadFromStorage();
 
+const mergeDeep = (target: any, source: any): any => {
+  if (source && typeof source === 'object') {
+    for (const key of Object.keys(source)) {
+      if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+        target[key] = mergeDeep(target[key] || {}, source[key]);
+      } else {
+        target[key] = source[key];
+      }
+    }
+  }
+  return target;
+};
+
+const mergedInitialState = savedState 
+  ? { 
+      ...initialState, 
+      bookData: { ...initialState.bookData, ...savedState.bookData },
+      config: mergeDeep({ ...initialState.config }, savedState.config)
+    }
+  : initialState;
+
 let cachedStats: { chapters: number; words: number; characters: number; pages: number; readingTime: number } | null = null;
 let cachedChaptersLength = 0;
 
@@ -179,7 +205,7 @@ const calculateStats = (chapters: Chapter[]) => {
 const useEditorStore = create<EditorState>()(
   subscribeWithSelector(
     (set, get) => ({
-    ...(savedState || initialState),
+    ...mergedInitialState,
 
     setBookData: (bookData) => {
       set((state) => {

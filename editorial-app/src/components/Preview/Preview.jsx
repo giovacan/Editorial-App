@@ -59,7 +59,7 @@ function Preview() {
     pageFormat: 'a5', 
     fontSize: 12, 
     lineHeight: 1.6,
-    chapterTitle: { align: 'center', bold: true, sizeMultiplier: 1.8, marginTop: 2, marginBottom: 1, startOnRightPage: true },
+    chapterTitle: { align: 'center', bold: true, sizeMultiplier: 1.8, marginTop: 2, marginBottom: 1, startOnRightPage: true, showLines: false, lineWidth: 0.5, lineStyle: 'solid', lineColor: '#333333', lineWidthTitle: false },
     subheaders: {
 h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBottom: 0.5, minLinesAfter: 1 },
       h2: { align: 'center', bold: true, sizeMultiplier: 1.35, marginTop: 1.25, marginBottom: 0.5, minLinesAfter: 1 },
@@ -214,7 +214,7 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
         }
       }
 
-      const ctConfig = safeConfig.chapterTitle || { align: 'center', bold: true, sizeMultiplier: 1.8, marginTop: 2, marginBottom: 1, layout: 'continuous' };
+      const ctConfig = safeConfig.chapterTitle || { align: 'center', bold: true, sizeMultiplier: 1.8, marginTop: 2, marginBottom: 1, layout: 'continuous', showLines: false, lineWidth: 0.5, lineStyle: 'solid', lineColor: '#333333', lineWidthTitle: false };
       const titleSize = Math.round(baseFontSize * ctConfig.sizeMultiplier);
       const titleMarginTop = ctConfig.marginTop * lineHeightPx;
       const titleMarginBottom = ctConfig.marginBottom * lineHeightPx;
@@ -233,35 +233,66 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
         baseTitleHeight = measureDiv.offsetHeight;
       }
 
+      // Line styles
+      const lineWidth = ctConfig.lineWidth || 0.5;
+      const lineStyle = ctConfig.lineStyle || 'solid';
+      const lineColor = ctConfig.lineColor || '#333';
+      const lineWidthTitle = ctConfig.lineWidthTitle || false;
+
+      // Helper function for hr styles
+      const getHrStyle = (isDouble = false, widthMult = 1) => {
+        const w = lineWidth * widthMult;
+        const thickness = lineStyle === 'double' ? Math.max(3, w * 2) : w;
+        let hrWidth = '100%';
+        let hrMargin = '0';
+        if (lineWidthTitle) {
+          hrWidth = '50%';
+          hrMargin = '0 auto';
+        }
+        return `border:none;border-top:${thickness}px ${lineStyle} ${lineColor};width:${hrWidth};margin:${hrMargin};`;
+      };
+
       switch (layout) {
         case 'spaced': {
-          // Title centered at ~1/3 of page height
           const spacedTop = Math.round(contentHeight * 0.25);
-          titleHtml = `<div style="${titleBaseStyle}margin:${spacedTop}px 0 ${titleMarginBottom}px 0;">${chapter.title}</div>`;
+          if (ctConfig.showLines) {
+            const hrTop = getHrStyle();
+            const hrBottom = getHrStyle();
+            titleHtml = `<div style="margin:${spacedTop}px 0 ${titleMarginBottom}px 0;text-align:center;"><div style="${hrTop}"></div><div style="${titleBaseStyle}padding:${titleMarginBottom / 2}px 0;">${chapter.title}</div><div style="${hrBottom}"></div></div>`;
+          } else {
+            titleHtml = `<div style="${titleBaseStyle}margin:${spacedTop}px 0 ${titleMarginBottom}px 0;">${chapter.title}</div>`;
+          }
           break;
         }
         case 'halfPage': {
-          // Title in upper half, text in lower half
           const halfTop = Math.round((contentHeight * 0.5) - baseTitleHeight - titleMarginBottom);
-          titleHtml = `<div style="${titleBaseStyle}margin:${Math.max(0, halfTop)}px 0 ${titleMarginBottom}px 0;">${chapter.title}</div>`;
+          if (ctConfig.showLines) {
+            const hrTop = getHrStyle();
+            const hrBottom = getHrStyle();
+            titleHtml = `<div style="margin:${Math.max(0, halfTop)}px 0 ${titleMarginBottom}px 0;text-align:center;"><div style="${hrTop}"></div><div style="${titleBaseStyle}padding:${titleMarginBottom / 2}px 0;">${chapter.title}</div><div style="${hrBottom}"></div></div>`;
+          } else {
+            titleHtml = `<div style="${titleBaseStyle}margin:${Math.max(0, halfTop)}px 0 ${titleMarginBottom}px 0;">${chapter.title}</div>`;
+          }
           break;
         }
         case 'fullPage': {
-          // Title centered on its own page
-          const fullTop = Math.round((contentHeight - baseTitleHeight) / 2);
-          titleHtml = `<div style="${titleBaseStyle}margin:${Math.max(0, fullTop)}px 0 0 0;">${chapter.title}</div>`;
-          break;
-        }
-        case 'ruled': {
-          // Title with decorative lines
-          const hrMargin = Math.round(titleMarginBottom / 2);
-          const hrStyle = `border:none;border-top:1px solid #333;margin:${hrMargin}px 0;`;
-          titleHtml = `<div style="margin:${titleMarginTop}px 0 ${titleMarginBottom}px 0;"><div style="${hrStyle}"></div><div style="${titleBaseStyle}padding:${hrMargin}px 0;">${chapter.title}</div><div style="${hrStyle}"></div></div>`;
+          if (ctConfig.showLines) {
+            const hrTop = getHrStyle(lineStyle === 'double', 3);
+            const hrBottom = getHrStyle(lineStyle === 'double', 3);
+            titleHtml = `<div style="${titleBaseStyle}display:flex;align-items:center;justify-content:center;min-height:${contentHeight}px;flex-direction:column;"><div style="${hrTop}"></div><div>${chapter.title}</div><div style="${hrBottom}"></div></div>`;
+          } else {
+            titleHtml = `<div style="${titleBaseStyle}display:flex;align-items:center;justify-content:center;min-height:${contentHeight}px;flex-direction:column;"><div>${chapter.title}</div></div>`;
+          }
           break;
         }
         default: {
-          // 'continuous' - title at top with normal margins
-          titleHtml = `<div style="${titleBaseStyle}margin:${titleMarginTop}px 0 ${titleMarginBottom}px 0;">${chapter.title}</div>`;
+          if (ctConfig.showLines) {
+            const hrTop = getHrStyle();
+            const hrBottom = getHrStyle();
+            titleHtml = `<div style="margin:${titleMarginTop}px 0 ${titleMarginBottom}px 0;text-align:center;"><div style="${hrTop}"></div><div style="${titleBaseStyle}padding:${titleMarginBottom / 2}px 0;">${chapter.title}</div><div style="${hrBottom}"></div></div>`;
+          } else {
+            titleHtml = `<div style="${titleBaseStyle}margin:${titleMarginTop}px 0 ${titleMarginBottom}px 0;">${chapter.title}</div>`;
+          }
         }
       }
 
@@ -293,6 +324,8 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
           isFirstChapterPage: true,
           currentSubheader: ''
         });
+        
+        // Text continues on next page (left page) - no blank page needed
         currentHtml = '';
         currentHeight = 0;
       } else if (titleHeight > contentHeight) {

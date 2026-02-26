@@ -62,7 +62,6 @@ const CHAPTER_LAYOUTS = [
   { id: 'spaced', label: 'Con espacio', icon: SpacedIcon },
   { id: 'halfPage', label: 'Media página', icon: HalfPageIcon },
   { id: 'fullPage', label: 'Página completa', icon: FullPageIcon },
-  { id: 'ruled', label: 'Con líneas', icon: RuledIcon },
 ];
 
 function SidebarLeft() {
@@ -99,7 +98,7 @@ function SidebarLeft() {
       whenPaginationSamePosition: 'merge',
       skipFirstChapterPage: true
     },
-    chapterTitle: { align: 'center', bold: true, sizeMultiplier: 1.8, marginTop: 2, marginBottom: 1, startOnRightPage: true, layout: 'continuous' },
+    chapterTitle: { align: 'center', bold: true, sizeMultiplier: 1.8, marginTop: 2, marginBottom: 1, startOnRightPage: true, layout: 'continuous', showLines: false, lineWidth: 0.5, lineStyle: 'solid', lineColor: '#333333', lineWidthTitle: false },
     subheaders: {
       h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBottom: 0.5, minLinesAfter: 2 },
       h2: { align: 'center', bold: true, sizeMultiplier: 1.35, marginTop: 1.25, marginBottom: 0.5, minLinesAfter: 2 },
@@ -324,6 +323,88 @@ function SidebarLeft() {
                 );
               })}
             </div>
+          </fieldset>
+
+          <fieldset className="config-group">
+            <legend>Decoración</legend>
+            <label className="checkbox-label">
+              <input 
+                type="checkbox" 
+                checked={safeConfig.chapterTitle?.showLines || false} 
+                onChange={(e) => updateChapterTitle('showLines', e.target.checked)} 
+              />
+              Mostrar líneas decorativas
+            </label>
+            
+            {safeConfig.chapterTitle?.showLines && (
+              <>
+                <fieldset className="config-group">
+                  <legend>Estilo de línea</legend>
+                  <div className="radio-group">
+                    <label>
+                      <input 
+                        type="radio" 
+                        name="lineStyle" 
+                        value="solid" 
+                        checked={(safeConfig.chapterTitle?.lineStyle || 'solid') === 'solid'} 
+                        onChange={(e) => updateChapterTitle('lineStyle', e.target.value)} 
+                      /> Sólida
+                    </label>
+                    <label>
+                      <input 
+                        type="radio" 
+                        name="lineStyle" 
+                        value="dashed" 
+                        checked={(safeConfig.chapterTitle?.lineStyle || 'solid') === 'dashed'} 
+                        onChange={(e) => updateChapterTitle('lineStyle', e.target.value)} 
+                      /> Discontinua
+                    </label>
+                    <label>
+                      <input 
+                        type="radio" 
+                        name="lineStyle" 
+                        value="dotted" 
+                        checked={(safeConfig.chapterTitle?.lineStyle || 'solid') === 'dotted'} 
+                        onChange={(e) => updateChapterTitle('lineStyle', e.target.value)} 
+                      /> Punteada
+                    </label>
+                    <label>
+                      <input 
+                        type="radio" 
+                        name="lineStyle" 
+                        value="double" 
+                        checked={(safeConfig.chapterTitle?.lineStyle || 'solid') === 'double'} 
+                        onChange={(e) => updateChapterTitle('lineStyle', e.target.value)} 
+                      /> Doble
+                    </label>
+                  </div>
+                </fieldset>
+
+                <fieldset className="config-group">
+                  <legend>Grosor</legend>
+                  <div className="number-row">
+                    <input 
+                      type="number" 
+                      min="0.25" 
+                      max="3" 
+                      step="0.25" 
+                      value={safeConfig.chapterTitle?.lineWidth || 0.5} 
+                      onChange={(e) => updateChapterTitle('lineWidth', parseFloat(e.target.value))} 
+                    />
+                    <span>px</span>
+                  </div>
+                </fieldset>
+
+                <label className="checkbox-label">
+                  <input 
+                    type="checkbox" 
+                    checked={safeConfig.chapterTitle?.lineWidthTitle || false} 
+                    onChange={(e) => updateChapterTitle('lineWidthTitle', e.target.checked)} 
+                  />
+                  Líneas del ancho del título
+                </label>
+              </>
+            )}
           </fieldset>
         </>
       )

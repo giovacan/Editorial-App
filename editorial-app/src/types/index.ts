@@ -6,7 +6,7 @@ export type PageNumberPos = 'top' | 'bottom';
 export type PageNumberAlign = 'left' | 'center' | 'right' | 'outer';
 export type HeaderContent = 'title' | 'chapter' | 'both';
 export type TextAlign = 'left' | 'center' | 'right' | 'justify';
-export type ChapterLayout = 'continuous' | 'withFirstParagraph' | 'titleOnly';
+export type ChapterLayout = 'continuous' | 'spaced' | 'halfPage' | 'fullPage';
 
 // Header Template Types
 export type HeaderTemplateId = 'classic' | 'modern' | 'minimal' | 'academic' | 'literary' | 'custom';
@@ -34,6 +34,11 @@ export interface ChapterTitleConfig {
   marginBottom: number;
   startOnRightPage: boolean;
   layout: ChapterLayout;
+  showLines: boolean;
+  lineWidth: number;
+  lineStyle: 'solid' | 'dashed' | 'dotted' | 'double';
+  lineColor: string;
+  lineWidthTitle: boolean;
 }
 
 export interface ParagraphConfig {
