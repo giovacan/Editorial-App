@@ -1,17 +1,18 @@
 import { useMemo } from 'react';
 
 export const useHeaderFooter = (config, currentPageData, totalPages, bookTitle) => {
+  const safePageData = currentPageData || { pageNumber: 1, chapterTitle: '', currentSubheader: '', isBlank: false, isFirstChapterPage: false };
   const headerConfig = config?.header || {};
   const showHeaders = headerConfig.enabled !== false;
   
-  const isEvenPage = currentPageData?.pageNumber ? currentPageData.pageNumber % 2 === 0 : false;
+  const isEvenPage = safePageData.pageNumber ? safePageData.pageNumber % 2 === 0 : false;
   const truncatedSubheader = useMemo(() => {
-    const subheader = currentPageData?.currentSubheader || '';
+    const subheader = safePageData?.currentSubheader || '';
     if (subheader.length > 40) {
       return subheader.substring(0, 37) + '...';
     }
     return subheader;
-  }, [currentPageData?.currentSubheader]);
+  }, [safePageData?.currentSubheader]);
   
   const subtopicBehavior = headerConfig.subtopicBehavior || 'combine';
   const subtopicSeparator = headerConfig.subtopicSeparator || ' - ';
@@ -20,9 +21,9 @@ export const useHeaderFooter = (config, currentPageData, totalPages, bookTitle) 
     const baseContent = (() => {
       switch (contentType) {
         case 'title': return bookTitle || 'Sin título';
-        case 'chapter': return currentPageData?.chapterTitle || 'Capítulo';
+        case 'chapter': return safePageData?.chapterTitle || 'Capítulo';
         case 'subheader': return truncatedSubheader;
-        case 'page': return String(currentPageData?.pageNumber || '');
+        case 'page': return String(safePageData?.pageNumber || '');
         default: return '';
       }
     })();
@@ -75,43 +76,43 @@ export const useHeaderFooter = (config, currentPageData, totalPages, bookTitle) 
   }
   
   const headerLeft = useMemo(() => {
-    if (!showHeaders || currentPageData?.isBlank || shouldSkipHeader() || !shouldShowHeader) return '';
+    if (!showHeaders || safePageData?.isBlank || shouldSkipHeader() || !shouldShowHeader) return '';
     if (headerConfig.template) {
       return getHeaderContent(pageConfig?.leftContent);
     }
     return '';
-  }, [showHeaders, currentPageData, shouldShowHeader, headerConfig, pageConfig]);
+  }, [showHeaders, safePageData, shouldShowHeader, headerConfig, pageConfig]);
   
   const headerCenter = useMemo(() => {
-    if (!showHeaders || currentPageData?.isBlank || shouldSkipHeader() || !shouldShowHeader) return '';
+    if (!showHeaders || safePageData?.isBlank || shouldSkipHeader() || !shouldShowHeader) return '';
     if (headerConfig.template) {
       return getHeaderContent(pageConfig?.centerContent);
     }
     if (headerConfig.content === 'title') {
       return bookTitle;
     } else if (headerConfig.content === 'chapter') {
-      return currentPageData?.chapterTitle || '';
+      return safePageData?.chapterTitle || '';
     }
     if (isEvenPage) {
       return bookTitle;
     }
-    return currentPageData?.chapterTitle || '';
-  }, [showHeaders, currentPageData, shouldShowHeader, headerConfig, bookTitle, isEvenPage]);
+    return safePageData?.chapterTitle || '';
+  }, [showHeaders, safePageData, shouldShowHeader, headerConfig, bookTitle, isEvenPage]);
   
   const headerRight = useMemo(() => {
-    if (!showHeaders || currentPageData?.isBlank || shouldSkipHeader() || !shouldShowHeader) return '';
+    if (!showHeaders || safePageData?.isBlank || shouldSkipHeader() || !shouldShowHeader) return '';
     if (headerConfig.template) {
       return getHeaderContent(pageConfig?.rightContent);
     }
     if (!isEvenPage) {
-      return currentPageData?.chapterTitle || '';
+      return safePageData?.chapterTitle || '';
     }
     return '';
-  }, [showHeaders, currentPageData, shouldShowHeader, headerConfig, pageConfig, isEvenPage]);
+  }, [showHeaders, safePageData, shouldShowHeader, headerConfig, pageConfig, isEvenPage]);
   
   const shouldSkipHeader = () => {
     if (!headerConfig.skipFirstChapterPage) return false;
-    return currentPageData?.isFirstChapterPage === true;
+    return safePageData?.isFirstChapterPage === true;
   };
   
   const showFooter = headerConfig.enabled !== false && headerConfig.showPageNumbers !== false;
