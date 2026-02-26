@@ -1,0 +1,48 @@
+Plan Completo Final:
+1. Gutter Dinámico + Manual
+- Toggle: Automático / Personalizado
+- Input numérico para valor manual
+- Sin límites (para cualquier imprenta)
+2. Páginas Extras al Final
+- Cantidad de páginas (input numérico)
+- Checkbox: incluir número de página
+3. Formato de Página
+Opciones de formato:
+- A5 (148 x 210 mm)
+- 6x9 (152 x 229 mm)
+- 5x8 (127 x 203 mm)
+- A4 (210 x 297 mm)
+- 8x10 (203 x 254 mm)
+- Carta (8.5 x 11 in)
+- Media Carta (5.5 x 8.5 in)
+- Personalizado
+Interfaz para personalizado (solo visible al seleccionar):
+Ancho: [____]  ( Unidad: ○ mm  ○ cm  ● in )
+Alto:  [____]  ( Unidad: ○ mm  ○ cm  ● in )
+Nota: Todos los formatos muestran sus medidas al lado del nombre.
+---
+Archivos a Modificar
+| Archivo | Cambios |
+|---------|---------|
+| src/types/index.ts | Tipos: gutterStrategy, gutterManual, extraEndPages, extraEndPagesNumbered, customPageFormat (width, height, unit) |
+| src/store/useEditorStore.ts | Configuración inicial y acciones |
+| src/utils/kdpStandards.ts | Función gutter dinámico, formatos: media carta, personalizado |
+| src/components/Preview/Preview.jsx | Gutter dinámico, páginas extras, formato personalizado |
+| src/components/SidebarLeft/SidebarLeft.jsx | UI completa: gutter, páginas extras, formatos |
+---
+
+
+
+
+1. Preview.jsx es muy grande: ~1600 líneas - difíciles de mantener
+La principal deuda técnica es Preview.jsx que hace demasiado (paginado, renderizado,headers, orphan/widow control, etc.). Consideraría extraer lógica a hooks personalizados.
+
+| Fase | Dificultad | Tiempo estimado |
+|------|-------------|-----------------|
+| 1. Crear estructura de carpetas | Baja | 5 min |
+| 2. Extraer textMeasurer.js | Media | 30 min |
+| 3. Extraer paginationEngine.js | Alta | 1-2 horas |
+| 4. Crear hooks | Media | 1 hora |
+| 5. Refactorizar Preview.jsx | Media | 30 min |
+| 6. Testing y fixes | Variable | - |
+Total estimado: 3-4 horas con testing

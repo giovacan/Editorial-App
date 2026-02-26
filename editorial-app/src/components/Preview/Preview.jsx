@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, memo } from 'react';
+import { useRef, memo } from 'react';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import useEditorStore from '../../store/useEditorStore';
 import { usePagination, usePageNavigation } from '../../hooks/usePagination';
@@ -104,7 +104,7 @@ function Preview() {
     handleMouseLeaveMagnifier
   } = useMagnifier(previewPageRef);
   
-  const currentPageData = pages[currentPage] || { html: '', pageNumber: 1, isBlank: false };
+  const currentPageData = pages[currentPage] || { html: '', pageNumber: 1, isBlank: false, chapterTitle: '', currentSubheader: '' };
   
   const {
     showHeaders,
