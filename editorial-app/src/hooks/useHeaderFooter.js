@@ -8,7 +8,7 @@ export const useHeaderFooter = (config, currentPageData, totalPages, bookTitle) 
   const truncatedSubheader = useMemo(() => {
     const subheader = currentPageData?.currentSubheader || '';
     if (subheader.length > 40) {
-.substring(0,      return subheader 37) + '...';
+      return subheader.substring(0, 37) + '...';
     }
     return subheader;
   }, [currentPageData?.currentSubheader]);
