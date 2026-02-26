@@ -88,7 +88,7 @@ function Preview() {
     contentHeight 
   } = calculateContentDimensions(pageFormat, bookConfig, previewScale);
   
-  const { pages } = usePagination(bookData, config, measureRef);
+  const { pages = [] } = usePagination(bookData, config, measureRef);
   const { currentPage, goToPage, goToNextPage, goToPrevPage, goToFirstPage, goToLastPage, totalPages } = usePageNavigation(pages.length);
   
   const {
@@ -97,6 +97,7 @@ function Preview() {
     magnifierZoom,
     setMagnifierZoom,
     magnifierPanelRef,
+    magnifierPos,
     updateMagnifierPosition,
     handleMouseEnterPreview,
     handleMouseLeavePreview,
@@ -104,7 +105,7 @@ function Preview() {
     handleMouseLeaveMagnifier
   } = useMagnifier(previewPageRef);
   
-  const currentPageData = pages[currentPage] || { html: '', pageNumber: 1, isBlank: false, chapterTitle: '', currentSubheader: '' };
+  const currentPageData = (pages && pages.length > 0 && pages[currentPage]) ? pages[currentPage] : { html: '', pageNumber: 1, isBlank: false, chapterTitle: '', currentSubheader: '' };
   
   const {
     showHeaders,
@@ -255,39 +256,79 @@ function Preview() {
         </div>
       </div>
 
-      {showMagnifier && previewPageRef.current && !currentPageData.isBlank ? (
-        <div 
-          ref={magnifierPanelRef}
-          className="magnifier-panel"
-          style={{
-            width: '200px',
-            height: '200px',
-            position: 'fixed',
-            left: '60%',
-            top: '50%',
-            transform: 'translate(-50%, -50%)',
-            border: '2px solid #333',
-            borderRadius: '50%',
-            overflow: 'hidden',
-            background: 'white',
-            zIndex: 1000,
-            backgroundImage: `url(${getMagnifierImage()})`,
-            backgroundSize: `${magnifierZoom}%`,
-            backgroundPosition: `${magnifierPos.x}% ${magnifierPos.y}%`,
-            backgroundRepeat: 'no-repeat',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
-          }}
-          onMouseEnter={handleMouseEnterMagnifier}
-          onMouseLeave={handleMouseLeaveMagnifier}
-        />
-      ) : null}
+      {showMagnifier && previewPageRef.current && !currentPageData.isBlank ? (() => {
+        const magScale = magnifierZoom / 100;
+        const tx = -(magnifierPos.x / 100) * pageWidthPx * (magScale - 1);
+        const ty = -(magnifierPos.y / 100) * pageHeightPx * (magScale - 1);
+
+        return (
+          <div 
+            ref={magnifierPanelRef}
+            className="magnifier-panel"
+            style={{
+              position: 'fixed',
+              left: '60%',
+              top: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: '320px',
+              height: '400px',
+              background: 'white',
+              border: '2px solid #333',
+              borderRadius: '8px',
+              overflow: 'hidden',
+              zIndex: 1000,
+              boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+            }}
+            onMouseEnter={handleMouseEnterMagnifier}
+            onMouseLeave={handleMouseLeaveMagnifier}
+          >
+            <div className="magnifier-panel-header" style={{
+              background: '#f5f5f5',
+              padding: '8px 12px',
+              borderBottom: '1px solid #ddd',
+              fontSize: '12px',
+              fontWeight: 'bold'
+            }}>
+              Vista {magnifierZoom}%
+            </div>
+            <div className="magnifier-panel-content" style={{
+              width: '100%',
+              height: 'calc(100% - 36px)',
+              overflow: 'hidden'
+            }}>
+              <div
+                style={{
+                  width: `${pageWidthPx}px`,
+                  height: `${pageHeightPx}px`,
+                  padding: `${marginTop}px ${marginRight}px ${marginBottom}px ${marginLeft}px`,
+                  fontSize: `${fontSize}px`,
+                  fontFamily: fontFamily,
+                  lineHeight: lineHeight,
+                  textAlign: textAlign,
+                  textJustify: 'inter-word',
+                  hyphens: 'auto',
+                  wordBreak: 'break-word',
+                  background: 'white',
+                  transform: `scale(${magScale}) translate(${tx / magScale}px, ${ty / magScale}px)`,
+                  transformOrigin: '0 0'
+                }}
+              >
+                {hasHeaderContent && !skipHeader && (
+                  <div 
+                    className="preview-header"
+                    dangerouslySetInnerHTML={{ __html: headerHtml }}
+                    style={{ marginBottom: '0.5em' }}
+                  />
+                )}
+                <div dangerouslySetInnerHTML={{ __html: currentPageData.html || '' }} />
+                {pageNumHtml}
+              </div>
+            </div>
+          </div>
+        );
+      })() : null}
     </div>
   );
-  
-  function getMagnifierImage() {
-    if (!previewPageRef.current) return '';
-    return '';
-  }
 }
 
 export default memo(Preview);

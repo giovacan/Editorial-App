@@ -114,9 +114,9 @@ export const usePagination = (bookData, config, measureRef) => {
     
     const processChapter = (chapter, chapterIndex) => {
       const isSection = chapter.type === 'section';
-      const shouldStartOnRight = shouldStartOnRightPage(chapter, chapter);
+      const shouldStartOnRight = shouldStartOnRightPage(chapter, chapterIndex, safeConfig);
       
-      if (shouldStartOnIndex, safeConfigRight && chapterIndex > 0) {
+      if (shouldStartOnRight && chapterIndex > 0) {
         if (generatedPages.length % 2 === 1) {
           generatedPages.push({ html: '', pageNumber: generatedPages.length + 1, isBlank: true });
         }
