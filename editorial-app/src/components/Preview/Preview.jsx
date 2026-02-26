@@ -94,9 +94,10 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
   const bookConfig = KDP_STANDARDS.getBookTypeConfig(safeBookData.bookType);
   const pageFormat = KDP_STANDARDS.getPageFormat(safeConfig.pageFormat || bookConfig.recommendedFormat);
 
-  const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign) => {
+  const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, hasIndent = false, indentValue = 1.5, isFirstChunkOfPage = true) => {
     const lines = [];
     let remainingHtml = html;
+    let isFirstChunk = isFirstChunkOfPage;
     
     while (remainingHtml) {
       measureDiv.innerHTML = remainingHtml;
@@ -118,11 +119,12 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
       let low = 0;
       let high = text.length;
       let fitLength = 0;
+      const indent = hasIndent && isFirstChunk ? indentValue + 'em' : '0';
       
       while (low < high) {
         const mid = Math.floor((low + high + 1) / 2);
         const trialHtml = text.substring(0, mid);
-        measureDiv.innerHTML = `<p style="margin:0;padding:0;text-align:${textAlign};text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;">${trialHtml}</p>`;
+        measureDiv.innerHTML = `<p style="margin:0;padding:0;text-align:${textAlign};text-indent:${indent};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;">${trialHtml}</p>`;
         
         if (measureDiv.offsetHeight <= maxHeight) {
           fitLength = mid;
@@ -142,7 +144,9 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
 
       const chunkText = text.substring(0, breakPoint);
       const endsWithSentence = /[.!?]\s*$/.test(chunkText);
-      lines.push(`<p style="margin:0;padding:0;text-align:${textAlign};text-indent:0;text-justify:inter-word;hyphens:auto;text-align-last:${endsWithSentence ? 'left' : 'justify'};overflow-wrap:break-word;">${chunkText}</p>`);
+      const indentForChunk = hasIndent && isFirstChunk ? indentValue + 'em' : '0';
+      lines.push(`<p style="margin:0;padding:0;text-align:${textAlign};text-indent:${indentForChunk};text-justify:inter-word;hyphens:auto;text-align-last:${endsWithSentence ? 'left' : 'justify'};overflow-wrap:break-word;">${chunkText}</p>`);
+      isFirstChunk = false;
       remainingHtml = text.substring(breakPoint);
       
       if (remainingHtml) {
@@ -349,18 +353,21 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
         const tag = el.tagName;
         const tagLower = tag.toLowerCase();
         let elHtml = '';
+        let currentHasIndent = false;
+        let currentIndent = 1.5;
 
         if (tag === 'P' || tag === 'DIV') {
           const isFirstParagraph = paragraphCount === 0;
-          const indent = safeConfig.paragraph?.firstLineIndent || 1.5;
+          currentIndent = safeConfig.paragraph?.firstLineIndent || 1.5;
+          currentHasIndent = !isFirstParagraph;
 
           const parentBlockquote = el.closest('blockquote');
           if (parentBlockquote && safeConfig.quote?.enabled) {
             const qConfig = safeConfig.quote;
-            elHtml = `<p style="margin:${qConfig.marginTop}em 0 ${qConfig.marginBottom}em ${qConfig.indentLeft}em;padding:0;padding-right:${qConfig.indentRight}em;text-align:${textAlign};text-indent:${isFirstParagraph ? '0' : indent + 'em'};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;line-height:${baseLineHeight};font-style:${qConfig.italic ? 'italic' : 'normal'};font-size:${baseFontSize * qConfig.sizeMultiplier}pt;${qConfig.showLine ? 'border-left:3px solid #444;padding-left:0.75em;' : ''}">${el.innerHTML}</p>`;
+            elHtml = `<p style="margin:${qConfig.marginTop}em 0 ${qConfig.marginBottom}em ${qConfig.indentLeft}em;padding:0;padding-right:${qConfig.indentRight}em;text-align:${textAlign};text-indent:${isFirstParagraph ? '0' : currentIndent + 'em'};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;line-height:${baseLineHeight};font-style:${qConfig.italic ? 'italic' : 'normal'};font-size:${baseFontSize * qConfig.sizeMultiplier}pt;${qConfig.showLine ? 'border-left:3px solid #444;padding-left:0.75em;' : ''}">${el.innerHTML}</p>`;
           } else {
             const spacingBetween = safeConfig.paragraph?.spacingBetween || 0;
-            elHtml = `<p style="margin:${spacingBetween > 0 ? spacingBetween + 'em' : '0'} 0;padding:0;text-align:${textAlign};text-indent:${isFirstParagraph ? '0' : indent + 'em'};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;line-height:${baseLineHeight};">${el.innerHTML}</p>`;
+            elHtml = `<p style="margin:${spacingBetween > 0 ? spacingBetween + 'em' : '0'} 0;padding:0;text-align:${textAlign};text-indent:${isFirstParagraph ? '0' : currentIndent + 'em'};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;line-height:${baseLineHeight};">${el.innerHTML}</p>`;
           }
           
           // Track pseudo-headers (bold short text) for header display
@@ -423,7 +430,7 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
           }
 
           if (splitLongParagraphs) {
-            const lines = splitParagraphByLines(elHtml, measureDiv, contentHeight, textAlign);
+            const lines = splitParagraphByLines(elHtml, measureDiv, contentHeight, textAlign, currentHasIndent, currentIndent, true);
 
             let lineHtml = '';
 
@@ -515,7 +522,7 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
           }
 
           if (splitLongParagraphs) {
-            const splitArr = splitParagraphByLines(elHtml, measureDiv, remainingSpace, textAlign);
+            const splitArr = splitParagraphByLines(elHtml, measureDiv, remainingSpace, textAlign, currentHasIndent, currentIndent, true);
 
             if (splitArr.length > 1) {
               const firstChunk = splitArr[0];
@@ -631,7 +638,6 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
                   const nextTag = nextEl.tagName;
 
                   if (nextTag === 'P' || nextTag === 'DIV') {
-                    const indent = safeConfig.paragraph?.firstLineIndent || 1.5;
                     nextElHtml = `<p style="margin:0 0;padding:0;text-align:${textAlign};text-indent:0;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;line-height:${baseLineHeight};">${nextEl.innerHTML}</p>`;
                     paragraphCount++;
                   }
@@ -705,6 +711,10 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
           }
 
           const firstElOuter = firstEl.outerHTML;
+          const firstElStyle = firstEl.getAttribute('style') || '';
+          const indentMatch = firstElStyle.match(/text-indent:\s*([\d.]+)em/);
+          const firstElIndent = indentMatch ? parseFloat(indentMatch[1]) : 0;
+          const firstElHasIndent = firstElIndent > 0;
           let moved = false;
 
           // Medir la combinación directamente para que los márgenes CSS se calculen en contexto
@@ -724,7 +734,7 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
           } else if (!isHeader && !isList && splitLongParagraphs) {
             // El elemento no cabe completo — intentar dividir el párrafo
             const fillSpace = remainingLines * lineHeightPx;
-            const splitArr = splitParagraphByLines(firstElOuter, measureDiv, fillSpace, textAlign);
+            const splitArr = splitParagraphByLines(firstElOuter, measureDiv, fillSpace, textAlign, firstElHasIndent, firstElIndent, true);
 
             if (splitArr.length > 1) {
               const chunk = splitArr[0];
