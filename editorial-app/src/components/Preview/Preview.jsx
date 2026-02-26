@@ -20,13 +20,13 @@ function Preview() {
   
   const isOverPreview = useRef(false);
   const isOverMagnifier = useRef(false);
+  const magnifierTimeoutRef = useRef(null);
   
   const updateMagnifierPosition = (e) => {
-    if (!previewPageRef.current || !previewScrollRef.current) return;
+    if (!previewPageRef.current) return;
     
     try {
       const pageRect = previewPageRef.current.getBoundingClientRect();
-      const scrollRect = previewScrollRef.current.getBoundingClientRect();
       
       // Calcular posición relativa al viewport
       const viewportX = e.clientX;
@@ -38,12 +38,13 @@ function Preview() {
         return;
       }
       
-      // Calcular posición porcentual dentro del preview
+      // Calcular posición porcentual dentro del preview con mejor precisión
       const x = Math.max(0, Math.min(100, ((viewportX - pageRect.left) / pageRect.width) * 100));
       const y = Math.max(0, Math.min(100, ((viewportY - pageRect.top) / pageRect.height) * 100));
       
       setMagnifierPos({ x, y });
       
+      // Actualizar posición del panel de lupa
       if (magnifierPanelRef.current) {
         magnifierPanelRef.current.style.setProperty('--magnifier-x', `${x}%`);
         magnifierPanelRef.current.style.setProperty('--magnifier-y', `${y}%`);
@@ -151,6 +152,7 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
     
     return lines;
   };
+
 
   useEffect(() => {
     if (!safeBookData?.chapters?.length || !measureRef.current) {
@@ -932,6 +934,14 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
     if (currentPage < totalPages - 1) setCurrentPage(currentPage + 1);
   };
 
+  const goToFirstPage = () => {
+    if (currentPage !== 0) setCurrentPage(0);
+  };
+
+  const goToLastPage = () => {
+    if (currentPage !== totalPages - 1) setCurrentPage(totalPages - 1);
+  };
+
   const goToPage = (pageNum) => {
     setCurrentPage(Math.max(0, Math.min(pageNum - 1, totalPages - 1)));
   };
@@ -1376,6 +1386,14 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
         <div className="preview-controls-left">
           <button 
             className="btn btn-icon" 
+            onClick={goToFirstPage}
+            disabled={currentPage === 0}
+            title="Primera página"
+          >
+            «
+          </button>
+          <button 
+            className="btn btn-icon" 
             onClick={goToPrevPage}
             disabled={currentPage === 0}
             title="Página anterior"
@@ -1400,6 +1418,14 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
             title="Página siguiente"
           >
             →
+          </button>
+          <button 
+            className="btn btn-icon" 
+            onClick={goToLastPage}
+            disabled={currentPage >= totalPages - 1}
+            title="Última página"
+          >
+            »
           </button>
         </div>
         <div className="preview-controls-right">
@@ -1459,10 +1485,7 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
           }}
           onMouseLeave={() => {
             isOverPreview.current = false;
-            // Solo ocultar si no está sobre el panel de lupa
-            if (!isOverMagnifier.current) {
-              setShowMagnifier(false);
-            }
+            setShowMagnifier(false);
           }}
           onMouseMove={(e) => {
             if (isOverPreview.current) {
@@ -1496,23 +1519,14 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
 
       {showMagnifier && (() => {
         const magScale = magnifierZoom / 100;
-        const tx = -(magnifierPos.x / 100) * pageWidth * (magScale - 1);
-        const ty = -(magnifierPos.y / 100) * pageHeight * (magScale - 1);
+        const tx = (magnifierPos.x / 100 - 0.5) * pageWidth * (1 - magScale);
+        const ty = (magnifierPos.y / 100 - 0.5) * pageHeight * (1 - magScale);
 
         return (
         <div 
           className="magnifier-panel" 
           ref={magnifierPanelRef}
-          onMouseEnter={() => {
-            isOverMagnifier.current = true;
-          }}
-          onMouseLeave={() => {
-            isOverMagnifier.current = false;
-            // Solo ocultar si no está sobre el preview
-            if (!isOverPreview.current) {
-              setShowMagnifier(false);
-            }
-          }}
+          style={{ pointerEvents: 'none' }}
         >
           <div className="magnifier-panel-header">
             <span>Vista {magnifierZoom}%</span>
@@ -1535,7 +1549,7 @@ h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBo
                   wordBreak: 'break-word',
                   background: 'white',
                   boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-                  transform: `scale(${magScale}) translate(${tx / magScale}px, ${ty / magScale}px)`,
+                  transform: `scale(${magScale}) translate(${tx}px, ${ty}px)`,
                   transformOrigin: '0 0'
                 }}
               >
