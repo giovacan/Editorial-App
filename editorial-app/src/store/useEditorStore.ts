@@ -386,6 +386,7 @@ const useEditorStore = create<EditorState>()(
 
     newProject: () => {
       localStorage.removeItem(STORAGE_KEY);
+      const freshState = getInitialState();
       set({
         bookData: {
           title: '',
@@ -395,6 +396,7 @@ const useEditorStore = create<EditorState>()(
           pageFormat: '6x9',
           margins: {}
         },
+        config: freshState.config,
         editing: { activeChapterId: null, isDirty: false },
         ui: { showPreview: false, showUpload: true, activeTab: 'structure' }
       });
