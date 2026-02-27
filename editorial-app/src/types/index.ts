@@ -1,5 +1,7 @@
 export type BookType = 'novela' | 'ensayo' | 'poesia' | 'manual' | 'infantil';
-export type PageFormat = 'a5' | '5x8' | 'a4' | '6x9' | '8x10' | 'letter';
+export type PageFormat = 'a5' | '5x8' | 'a4' | '6x9' | '8x10' | 'letter' | 'half-letter' | 'custom';
+export type GutterStrategy = 'auto' | 'custom';
+export type PageFormatUnit = 'mm' | 'cm' | 'in';
 export type ChapterType = 'chapter' | 'section';
 export type TabName = 'structure' | 'config' | 'preview' | 'export';
 export type PageNumberPos = 'top' | 'bottom';
@@ -127,8 +129,20 @@ export interface Editing {
   isDirty: boolean;
 }
 
+export interface CustomPageFormat {
+  width: number;
+  height: number;
+  unit: PageFormatUnit;
+}
+
 export interface Config {
   pageFormat: PageFormat;
+  customPageFormat: CustomPageFormat;
+  gutterStrategy: GutterStrategy;
+  gutterManual: number;
+  gutterUnit: 'in' | 'mm' | 'cm';
+  extraEndPages: number;
+  extraEndPagesNumbered: boolean;
   fontSize: number;
   fontFamily: string;
   lineHeight: number;

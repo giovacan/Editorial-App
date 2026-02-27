@@ -9,15 +9,16 @@ import html2pdf from 'html2pdf.js';
 import './Layout.css';
 
 function Layout() {
-  const state = useEditorStore((s) => s);
+  const chapters = useEditorStore((s) => s.bookData?.chapters);
+  const ui = useEditorStore((s) => s.ui);
+  const loadContent = useEditorStore((s) => s.loadContent);
+  const newProject = useEditorStore((s) => s.newProject);
   
-  const safeBookData = state.bookData || { title: '', author: '', chapters: [], bookType: 'novela', pageFormat: '6x9', margins: {} };
-  const safeUi = state.ui || { showPreview: false, showUpload: true, activeTab: 'structure' };
-  const loadContent = state.loadContent;
-  const newProject = state.newProject;
+  const safeChapters = chapters || [];
+  const safeUi = ui || { showPreview: false, showUpload: true, activeTab: 'structure' };
 
   const handleNewProject = () => {
-    if (safeBookData?.chapters?.length > 0) {
+    if (safeChapters?.length > 0) {
       if (confirm('¿Crear nuevo proyecto? Se perderán los cambios sin guardar.')) {
         newProject();
       }

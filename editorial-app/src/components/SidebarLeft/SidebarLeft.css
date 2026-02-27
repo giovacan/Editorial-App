@@ -378,3 +378,59 @@
   color: #2563eb;
   font-weight: 500;
 }
+
+.custom-format-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.custom-format-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.custom-format-row label {
+  min-width: 45px;
+  font-size: 0.8125rem;
+  color: #374151;
+}
+
+.custom-format-row input {
+  flex: 1;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.8125rem;
+}
+
+.custom-format-unit {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.25rem;
+}
+
+.custom-format-unit label {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.8125rem;
+  color: #374151;
+  cursor: pointer;
+}
+
+.gutter-toggle {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.8125rem;
+  color: #374151;
+  cursor: pointer;
+}

@@ -13,9 +13,14 @@ const PX_PER_INCH = 96;
 
 const DEFAULT_CONFIG = {
   pageFormat: 'a5',
+  customPageFormat: { width: 6, height: 9, unit: 'in' },
+  gutterStrategy: 'auto',
+  gutterManual: 0.25,
+  extraEndPages: 0,
+  extraEndPagesNumbered: false,
   fontSize: 12,
   lineHeight: 1.6,
-  chapterTitle: { 
+  chapterTitle: {
     align: 'center', 
     bold: true, 
     sizeMultiplier: 1.8, 
@@ -38,7 +43,7 @@ const DEFAULT_CONFIG = {
     h6: { align: 'left', bold: false, sizeMultiplier: 1.0, marginTop: 0.5, marginBottom: 0.25, minLinesAfter: 1 }
   },
   paragraph: { firstLineIndent: 1.5, align: 'justify', spacingBetween: 0 },
-  quote: { enabled: true, indentLeft: 2, indentRight: 2, showLine: true, italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1 },
+  quote: { enabled: true, indentLeft: 2, indentRight: 2, showLine: true, italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1, template: 'classic', autoDetect: true },
   pagination: { minOrphanLines: 2, minWidowLines: 2, splitLongParagraphs: true },
   header: {
     enabled: false,
@@ -61,8 +66,11 @@ const DEFAULT_CONFIG = {
 };
 
 function Preview() {
-  const { bookData, config } = useEditorStore();
-  const activeChapterId = useEditorStore((state) => state.editing?.activeChapterId);
+  const bookData = useEditorStore((s) => s.bookData);
+  const config = useEditorStore((s) => s.config);
+  const editing = useEditorStore((s) => s.editing);
+  
+  const activeChapterId = editing?.activeChapterId;
   
   const measureRef = useRef(null);
   const previewPageRef = useRef(null);
@@ -73,11 +81,52 @@ function Preview() {
   const safeConfig = config || DEFAULT_CONFIG;
   
   const bookConfig = KDP_STANDARDS.getBookTypeConfig(safeBookData.bookType);
-  const pageFormat = KDP_STANDARDS.getPageFormat(safeConfig.pageFormat || bookConfig.recommendedFormat);
+  
+  let pageFormat;
+  if (safeConfig.pageFormat === 'custom') {
+    const customDims = KDP_STANDARDS.getCustomPageDimensions(
+      safeConfig.customPageFormat?.width || 6,
+      safeConfig.customPageFormat?.height || 9,
+      safeConfig.customPageFormat?.unit || 'in'
+    );
+    pageFormat = {
+      id: 'custom',
+      name: 'Custom',
+      width: customDims.widthMm,
+      height: customDims.heightMm,
+      unit: 'mm',
+      description: `Custom (${customDims.widthIn.toFixed(2)}" × ${customDims.heightIn.toFixed(2)}")`,
+      minMargins: { top: 12.7, bottom: 12.7, left: 12.7, right: 12.7 },
+      recommended: false,
+      type: 'paperback'
+    };
+  } else {
+    pageFormat = KDP_STANDARDS.getPageFormat(safeConfig.pageFormat || bookConfig.recommendedFormat);
+  }
+  
+  const { pages = [] } = usePagination(bookData, config, measureRef);
+  const totalPageCount = pages.length;
+  
+  const getGutterInInches = (value, unit) => {
+    if (unit === 'mm') return value / 25.4;
+    if (unit === 'cm') return value / 2.54;
+    return value;
+  };
+
+  const gutterValue = safeConfig.gutterStrategy === 'custom' 
+    ? getGutterInInches(safeConfig.gutterManual, safeConfig.gutterUnit || 'in')
+    : KDP_STANDARDS.getDynamicGutter(safeConfig.pageFormat, safeBookData.bookType, totalPageCount);
+  const { currentPage, goToPage, goToNextPage, goToPrevPage, goToFirstPage, goToLastPage, totalPages } = usePageNavigation(pages.length);
+  
+  const currentPageData = (pages && pages.length > 0 && pages[currentPage]) ? pages[currentPage] : { html: '', pageNumber: 1, isBlank: false, chapterTitle: '', currentSubheader: '' };
+  
+  const isCurrentPageEven = currentPageData.pageNumber % 2 === 0;
+  const isTitleOnlyPage = currentPageData.isTitleOnlyPage === true;
+  const gutterForPage = isTitleOnlyPage ? 0 : gutterValue;
   
   const previewScale = Math.min(0.42, AVAILABLE_SIDEBAR_WIDTH / (pageFormat.width * PX_PER_MM));
   
-  const { 
+  const {
     pageWidthPx, 
     pageHeightPx, 
     marginTop, 
@@ -86,10 +135,7 @@ function Preview() {
     marginRight, 
     contentWidth, 
     contentHeight 
-  } = calculateContentDimensions(pageFormat, bookConfig, previewScale);
-  
-  const { pages = [] } = usePagination(bookData, config, measureRef);
-  const { currentPage, goToPage, goToNextPage, goToPrevPage, goToFirstPage, goToLastPage, totalPages } = usePageNavigation(pages.length);
+  } = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterForPage, isCurrentPageEven);
   
   const {
     showMagnifier,
@@ -104,8 +150,6 @@ function Preview() {
     handleMouseEnterMagnifier,
     handleMouseLeaveMagnifier
   } = useMagnifier(previewPageRef);
-  
-  const currentPageData = (pages && pages.length > 0 && pages[currentPage]) ? pages[currentPage] : { html: '', pageNumber: 1, isBlank: false, chapterTitle: '', currentSubheader: '' };
   
   const {
     showHeaders,
@@ -130,7 +174,9 @@ function Preview() {
   const hasHeaderContent = headerLeft || headerCenter || headerRight;
   const showHeaderLine = (headerConfig.showLine !== false) && hasHeaderContent;
   
-  const pageNumHtml = (showNums && !currentPageData.isBlank) ? (
+  const showPageNumber = (showNums && !currentPageData.isBlank) || (currentPageData.isExtraEndPage && currentPageData.shouldShowPageNumber);
+  
+  const pageNumHtml = showPageNumber ? (
     <span className="page-number" style={{ position: 'absolute', bottom: '12px', right: '24px', fontSize: `${fontSize * 0.8}pt` }}>
       {currentPageData.pageNumber}
     </span>

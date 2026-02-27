@@ -54,6 +54,12 @@ const initialState = {
   },
   config: {
     pageFormat: 'a5',
+    customPageFormat: { width: 6, height: 9, unit: 'in' },
+    gutterStrategy: 'auto' as const,
+    gutterManual: 0.25,
+    gutterUnit: 'in' as const,
+    extraEndPages: 0,
+    extraEndPagesNumbered: false,
     fontSize: 12,
     fontFamily: 'Georgia, serif',
     lineHeight: 1.5,
@@ -133,7 +139,10 @@ const initialState = {
       italic: true,
       sizeMultiplier: 0.95,
       marginTop: 1,
-      marginBottom: 1
+      marginBottom: 1,
+      template: 'classic',
+      autoDetect: true,
+      detectedQuotes: []
     },
     pagination: {
       minOrphanLines: 2,
@@ -218,6 +227,58 @@ const useEditorStore = create<EditorState>()(
     setConfig: (config) => {
       set((state) => {
         const newState = { config: { ...state.config, ...config } };
+        saveToStorage(newState as EditorState);
+        return newState;
+      });
+    },
+
+    applyQuoteTemplate: (template) => {
+      set((state) => {
+        if (!state.bookData?.chapters) return state;
+        
+        const newChapters = state.bookData.chapters.map(chapter => {
+          let html = chapter.html || '';
+          if (html.includes('blockquote class="quote')) return chapter;
+          
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = html;
+          
+          const textElements = Array.from(tempDiv.querySelectorAll('em, i'));
+          const topLevelElements = textElements.filter(el => {
+            const parent = el.parentElement;
+            return parent && parent !== tempDiv && !parent.matches('em, i, blockquote');
+          });
+          
+          let hasChanges = false;
+          let changesCount = 0;
+          
+          topLevelElements.forEach(el => {
+            if (changesCount > 100) return;
+            if (el.closest('blockquote')) return;
+            
+            const text = el.textContent || '';
+            const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
+            
+            if (wordCount > 5) {
+              const wrapper = document.createElement('blockquote');
+              wrapper.className = `quote ${template}`;
+              wrapper.innerHTML = el.innerHTML;
+              el.parentNode?.replaceChild(wrapper, el);
+              hasChanges = true;
+              changesCount++;
+            }
+          });
+          
+          if (!hasChanges) return chapter;
+          return { ...chapter, html: tempDiv.innerHTML };
+        });
+        
+        const hasAnyChanges = newChapters.some((ch, i) => ch.html !== state.bookData.chapters[i].html);
+        if (!hasAnyChanges) return state;
+        
+        const newState = {
+          bookData: { ...state.bookData, chapters: newChapters }
+        };
         saveToStorage(newState as EditorState);
         return newState;
       });

@@ -68,10 +68,23 @@ function SidebarLeft() {
   const [activeTab, setActiveTab] = useState('structure');
   const [selectedSubheaderLevel, setSelectedSubheaderLevel] = useState('h1');
   
-  const store = useEditorStore((s) => s);
+  const chapters = useEditorStore((s) => s.bookData?.chapters);
+  const bookType = useEditorStore((s) => s.bookData?.bookType);
+  const config = useEditorStore((s) => s.config);
+  const activeChapterId = useEditorStore((s) => s.editing.activeChapterId);
+  const addChapter = useEditorStore((s) => s.addChapter);
+  const addSection = useEditorStore((s) => s.addSection);
+  const updateChapter = useEditorStore((s) => s.updateChapter);
+  const setBookData = useEditorStore((s) => s.setBookData);
+  const setConfig = useEditorStore((s) => s.setConfig);
+  const getStatsSelector = useEditorStore((s) => s.getStatsSelector);
+  const setActiveChapter = useEditorStore((s) => s.setActiveChapter);
+  const deleteChapter = useEditorStore((s) => s.deleteChapter);
+  const moveChapter = useEditorStore((s) => s.moveChapter);
   
-  const safeBookData = store.bookData || { title: '', author: '', chapters: [], bookType: 'novela' };
-  const safeConfig = store.config || { 
+  const safeBookData = { title: '', author: '', chapters: chapters || [], bookType: bookType || 'novela' };
+  
+  const safeConfig = useMemo(() => config || {
     pageFormat: 'a5', 
     fontSize: 12, 
     lineHeight: 1.6,
@@ -108,77 +121,137 @@ function SidebarLeft() {
       h6: { align: 'left', bold: false, sizeMultiplier: 1.0, marginTop: 0.5, marginBottom: 0.25, minLinesAfter: 1 }
     },
     paragraph: { firstLineIndent: 1.5, align: 'justify', spacingBetween: 0 },
-    quote: { enabled: true, indentLeft: 2, indentRight: 2, showLine: true, italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1 },
+    quote: { enabled: true, indentLeft: 2, indentRight: 2, showLine: true, italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1, template: 'classic', autoDetect: true },
     pagination: { minOrphanLines: 2, minWidowLines: 2, splitLongParagraphs: true }
-  };
+  }, [config]);
   
-  const stats = useMemo(() => store.getStatsSelector(), [safeBookData?.chapters?.length]);
+  const stats = useMemo(() => getStatsSelector(), [chapters]);
+
+  const convertToUnit = (value, currentUnit, targetUnit) => {
+    let valueInInches;
+    if (currentUnit === 'mm') valueInInches = value / 25.4;
+    else if (currentUnit === 'cm') valueInInches = value / 2.54;
+    else valueInInches = value;
+
+    if (targetUnit === 'mm') return valueInInches * 25.4;
+    if (targetUnit === 'cm') return valueInInches * 2.54;
+    return valueInInches;
+  };
+
+  const handleCustomPageUnitChange = (newUnit) => {
+    const currentUnit = safeConfig.customPageFormat?.unit || 'in';
+    const currentWidth = safeConfig.customPageFormat?.width || 6;
+    const currentHeight = safeConfig.customPageFormat?.height || 9;
+    
+    setConfig({
+      customPageFormat: {
+        ...safeConfig.customPageFormat,
+        unit: newUnit,
+        width: convertToUnit(currentWidth, currentUnit, newUnit),
+        height: convertToUnit(currentHeight, currentUnit, newUnit)
+      }
+    });
+  };
+
+  const handleGutterUnitChange = (newUnit) => {
+    const currentUnit = safeConfig.gutterUnit || 'in';
+    const currentValue = safeConfig.gutterManual || recommendedGutter;
+    
+    setConfig({
+      gutterUnit: newUnit,
+      gutterManual: convertToUnit(currentValue, currentUnit, newUnit)
+    });
+  };
+
+  const recommendedGutter = useMemo(() => {
+    const pageCount = stats?.pages || 0;
+    return KDP_STANDARDS.getDynamicGutter(safeConfig.pageFormat, safeBookData.bookType, pageCount);
+  }, [stats?.pages, safeConfig.pageFormat, safeBookData.bookType]);
+
+  const recommendedGutterInUnit = useMemo(() => {
+    const unit = safeConfig.gutterUnit || 'in';
+    if (unit === 'mm') return recommendedGutter * 25.4;
+    if (unit === 'cm') return recommendedGutter * 2.54;
+    return recommendedGutter;
+  }, [recommendedGutter, safeConfig.gutterUnit]);
+
+  const handleGutterStrategyChange = (strategy) => {
+    if (strategy === 'custom') {
+      setConfig({ 
+        gutterStrategy: 'custom',
+        gutterManual: recommendedGutterInUnit
+      });
+    } else {
+      setConfig({ gutterStrategy: strategy });
+    }
+  };
 
   const handleAddChapter = useCallback(() => {
     const title = prompt('Título del capítulo:');
     if (title) {
-      store.addChapter(title);
+      addChapter(title);
     }
-  }, [store.addChapter]);
+  }, [addChapter]);
 
   const handleAddSection = useCallback(() => {
     const title = prompt('Nombre de la sección (ej: Prólogo, Dedicatoria):');
     if (title) {
-      store.addSection(title);
+      addSection(title);
     }
-  }, [store.addSection]);
+  }, [addSection]);
 
   const handleTitleChange = useCallback((chapterId, newTitle) => {
-    store.updateChapter(chapterId, { title: newTitle });
-  }, [store.updateChapter]);
+    updateChapter(chapterId, { title: newTitle });
+  }, [updateChapter]);
 
   const handleDocumentTitleChange = (e) => {
-    store.setBookData({ title: e.target.value });
+    setBookData({ title: e.target.value });
   };
 
   const handleDocumentAuthorChange = (e) => {
-    store.setBookData({ author: e.target.value });
+    setBookData({ author: e.target.value });
   };
 
   const handleBookTypeChange = (e) => {
     const bookConfig = KDP_STANDARDS.getBookTypeConfig(e.target.value);
-    store.setBookData({ bookType: e.target.value });
-    store.setConfig({
+    setBookData({ bookType: e.target.value });
+    setConfig({
       pageFormat: bookConfig.recommendedFormat,
       fontSize: bookConfig.fontSize,
       lineHeight: bookConfig.lineHeight
     });
   };
 
-  const updateChapterTitle = (key, value) => {
-    store.setConfig({ chapterTitle: { ...safeConfig.chapterTitle, [key]: value } });
-  };
+  const updateChapterTitle = useCallback((key, value) => {
+    const currentChapterTitle = config?.chapterTitle || { align: 'center', bold: true, sizeMultiplier: 1.8, marginTop: 2, marginBottom: 1, startOnRightPage: true, layout: 'continuous', showLines: false, lineWidth: 0.5, lineStyle: 'solid', lineColor: '#333333', lineWidthTitle: false };
+    setConfig({ chapterTitle: { ...currentChapterTitle, [key]: value } });
+  }, [setConfig, config?.chapterTitle]);
 
-  const updateChapterLayout = (layout) => {
-    store.setConfig({ chapterTitle: { ...safeConfig.chapterTitle, layout } });
-  };
+  const updateChapterLayout = useCallback((layout) => {
+    const currentChapterTitle = config?.chapterTitle || { align: 'center', bold: true, sizeMultiplier: 1.8, marginTop: 2, marginBottom: 1, startOnRightPage: true, layout: 'continuous', showLines: false, lineWidth: 0.5, lineStyle: 'solid', lineColor: '#333333', lineWidthTitle: false };
+    setConfig({ chapterTitle: { ...currentChapterTitle, layout } });
+  }, [setConfig, config?.chapterTitle]);
 
-  const updateSubheader = (key, value) => {
-    const currentSubheader = safeConfig.subheaders?.[selectedSubheaderLevel] || {};
-    store.setConfig({
+  const updateSubheader = useCallback((key, value) => {
+    const currentSubheaders = config?.subheaders || { h1: {}, h2: {}, h3: {}, h4: {}, h5: {}, h6: {} };
+    const currentSubheader = currentSubheaders[selectedSubheaderLevel] || {};
+    setConfig({
       subheaders: {
-        ...safeConfig.subheaders,
+        ...currentSubheaders,
         [selectedSubheaderLevel]: { ...currentSubheader, [key]: value }
       }
     });
-  };
+  }, [setConfig, config?.subheaders, selectedSubheaderLevel]);
 
-  const updateParagraph = (key, value) => {
-    store.setConfig({ paragraph: { ...safeConfig.paragraph, [key]: value } });
-  };
+  const updateParagraph = useCallback((key, value) => {
+    const currentParagraph = config?.paragraph || { firstLineIndent: 1.5, align: 'justify', spacingBetween: 0 };
+    setConfig({ paragraph: { ...currentParagraph, [key]: value } });
+  }, [setConfig, config?.paragraph]);
 
-  const updateQuote = (key, value) => {
-    store.setConfig({ quote: { ...safeConfig.quote, [key]: value } });
-  };
-
-  const updatePagination = (key, value) => {
-    store.setConfig({ pagination: { ...safeConfig.pagination, [key]: value } });
-  };
+  const updatePagination = useCallback((key, value) => {
+    const currentPagination = config?.pagination || { minOrphanLines: 2, minWidowLines: 2, splitLongParagraphs: true };
+    setConfig({ pagination: { ...currentPagination, [key]: value } });
+  }, [setConfig, config?.pagination]);
 
   // Helper for safe access to current subheader config
   const currentSubheaderConfig = useMemo(() =>
@@ -218,15 +291,148 @@ function SidebarLeft() {
             <legend>Formato de página</legend>
             <select 
               value={safeConfig.pageFormat} 
-              onChange={(e) => store.setConfig({ pageFormat: e.target.value })}
+              onChange={(e) => setConfig({ pageFormat: e.target.value })}
             >
-              <option value="a5">A5 (14.8 × 21 cm)</option>
-              <option value="a4">A4 (21 × 29.7 cm)</option>
-              <option value="letter">Letter (8.5 × 11 in)</option>
-              <option value="5x8">5 × 8 inches</option>
-              <option value="6x9">6 × 9 inches</option>
-              <option value="8x10">8 × 10 inches</option>
+              <option value="a5">A5 (148 × 210 mm)</option>
+              <option value="6x9">6 × 9 inches (152 × 229 mm)</option>
+              <option value="5x8">5 × 8 inches (127 × 203 mm)</option>
+              <option value="a4">A4 (210 × 297 mm)</option>
+              <option value="8x10">8 × 10 inches (203 × 254 mm)</option>
+              <option value="letter">Letter (8.5 × 11 inches)</option>
+              <option value="half-letter">Half Letter (5.5 × 8.5 inches)</option>
+              <option value="custom">Personalizado</option>
             </select>
+          </fieldset>
+
+          {safeConfig.pageFormat === 'custom' && (
+            <fieldset className="config-group">
+              <legend>Dimensiones personalizadas</legend>
+              <div className="custom-format-inputs">
+                <div className="custom-format-row">
+                  <label>Ancho:</label>
+                  <input 
+                    type="number" 
+                    min="1" 
+                    step="0.1"
+                    value={safeConfig.customPageFormat?.width || 6}
+                    onChange={(e) => setConfig({ 
+                      customPageFormat: { ...safeConfig.customPageFormat, width: parseFloat(e.target.value) || 6 }
+                    })}
+                  />
+                </div>
+                <div className="custom-format-row">
+                  <label>Alto:</label>
+                  <input 
+                    type="number" 
+                    min="1" 
+                    step="0.1"
+                    value={safeConfig.customPageFormat?.height || 9}
+                    onChange={(e) => setConfig({ 
+                      customPageFormat: { ...safeConfig.customPageFormat, height: parseFloat(e.target.value) || 9 }
+                    })}
+                  />
+                </div>
+                <div className="custom-format-unit">
+                  <label>
+                    <input 
+                      type="radio" 
+                      name="customUnit" 
+                      value="mm"
+                      checked={(safeConfig.customPageFormat?.unit || 'in') === 'mm'}
+                      onChange={(e) => handleCustomPageUnitChange('mm')}
+                    /> mm
+                  </label>
+                  <label>
+                    <input 
+                      type="radio" 
+                      name="customUnit" 
+                      value="cm"
+                      checked={(safeConfig.customPageFormat?.unit || 'in') === 'cm'}
+                      onChange={(e) => handleCustomPageUnitChange('cm')}
+                    /> cm
+                  </label>
+                  <label>
+                    <input 
+                      type="radio" 
+                      name="customUnit" 
+                      value="in"
+                      checked={(safeConfig.customPageFormat?.unit || 'in') === 'in'}
+                      onChange={(e) => handleCustomPageUnitChange('in')}
+                    /> in
+                  </label>
+                </div>
+              </div>
+            </fieldset>
+          )}
+
+          <fieldset className="config-group">
+            <legend>Gutter (lomo)</legend>
+            <div className="gutter-toggle">
+              <label className="radio-label">
+                <input 
+                  type="radio" 
+                  name="gutterStrategy" 
+                  value="auto"
+                  checked={(safeConfig.gutterStrategy || 'auto') === 'auto'}
+                  onChange={(e) => handleGutterStrategyChange('auto')}
+                /> Automático
+              </label>
+              <label className="radio-label">
+                <input 
+                  type="radio" 
+                  name="gutterStrategy" 
+                  value="custom"
+                  checked={(safeConfig.gutterStrategy || 'auto') === 'custom'}
+                  onChange={(e) => handleGutterStrategyChange('custom')}
+                /> Personalizado
+              </label>
+            </div>
+            {(safeConfig.gutterStrategy || 'auto') === 'custom' && (
+              <div className="gutter-custom">
+                <div className="gutter-recommended" style={{ fontSize: '11px', color: '#6b7280', marginBottom: '8px' }}>
+                  Recomendado para {stats?.pages || 0} páginas: <strong>{recommendedGutterInUnit.toFixed(3)} {safeConfig.gutterUnit || 'in'}</strong>
+                </div>
+                <div className="number-row">
+                  <input 
+                    type="number" 
+                    min="0" 
+                    step={safeConfig.gutterUnit === 'mm' ? 1 : safeConfig.gutterUnit === 'cm' ? 0.1 : 0.125}
+                    value={safeConfig.gutterManual || recommendedGutterInUnit}
+                    onChange={(e) => setConfig({ gutterManual: parseFloat(e.target.value) || 0 })}
+                  />
+                  <select 
+                    value={safeConfig.gutterUnit || 'in'}
+                    onChange={(e) => handleGutterUnitChange(e.target.value)}
+                    style={{ marginLeft: '8px', padding: '2px 4px' }}
+                  >
+                    <option value="in">in</option>
+                    <option value="mm">mm</option>
+                    <option value="cm">cm</option>
+                  </select>
+                </div>
+              </div>
+            )}
+          </fieldset>
+
+          <fieldset className="config-group">
+            <legend>Páginas extras al final</legend>
+            <div className="number-row">
+              <input 
+                type="number" 
+                min="0" 
+                value={safeConfig.extraEndPages || 0}
+                onChange={(e) => setConfig({ extraEndPages: parseInt(e.target.value) || 0 })}
+              />
+              <span>páginas</span>
+            </div>
+            <label className="checkbox-label">
+              <input 
+                type="checkbox" 
+                checked={safeConfig.extraEndPagesNumbered || false}
+                onChange={(e) => setConfig({ extraEndPagesNumbered: e.target.checked })}
+              />
+              Incluir número de página
+            </label>
           </fieldset>
         </>
       )
@@ -241,7 +447,7 @@ function SidebarLeft() {
             <legend>Familia de fuente</legend>
             <select 
               value={safeConfig.fontFamily} 
-              onChange={(e) => store.setConfig({ fontFamily: e.target.value })}
+              onChange={(e) => setConfig({ fontFamily: e.target.value })}
             >
               <optgroup label="Serif">
                 <option value="Georgia, serif">Georgia</option>
@@ -276,7 +482,7 @@ function SidebarLeft() {
               min="10" 
               max="16" 
               value={safeConfig.fontSize}
-              onChange={(e) => store.setConfig({ fontSize: parseInt(e.target.value) })}
+              onChange={(e) => setConfig({ fontSize: parseInt(e.target.value) })}
             />
           </fieldset>
 
@@ -284,7 +490,7 @@ function SidebarLeft() {
             <legend>Interlineado</legend>
             <select 
               value={safeConfig.lineHeight}
-              onChange={(e) => store.setConfig({ lineHeight: parseFloat(e.target.value) })}
+              onChange={(e) => setConfig({ lineHeight: parseFloat(e.target.value) })}
             >
               <option value="1.4">1.4 (Apretado)</option>
               <option value="1.5">1.5 (Recomendado)</option>
@@ -523,6 +729,57 @@ function SidebarLeft() {
           </fieldset>
 
           <fieldset className="config-group">
+            <legend>Detección automática</legend>
+            <label className="checkbox-label">
+              <input 
+                type="checkbox" 
+                checked={safeConfig.quote.autoDetect !== false} 
+                onChange={(e) => updateQuote('autoDetect', e.target.checked)} 
+              />
+              Detectar citas automáticamente
+            </label>
+            <p style={{ fontSize: '11px', color: '#6b7280', marginTop: '8px' }}>
+              Detecta: — guiones largos, «» comillas italianas, "" inglesas, y citas largas en cursiva (&gt;15 palabras)
+            </p>
+          </fieldset>
+
+          <fieldset className="config-group">
+            <legend>Plantilla de cita</legend>
+            <select 
+              value={safeConfig.quote.template || 'classic'}
+              onChange={(e) => updateQuote('template', e.target.value)}
+              style={{ width: '100%', padding: '6px', marginTop: '4px' }}
+            >
+              <option value="classic">Clásico — Líneas decorativas</option>
+              <option value="bar">Moderno — Barra vertical</option>
+              <option value="italic">Italiano — Cursiva + comillas</option>
+              <option value="indent">Sangría — Ambas márgenes</option>
+              <option value="minimal">Minimalista — Texto suave</option>
+            </select>
+          </fieldset>
+
+          <fieldset className="config-group">
+            <legend>Aplicar plantillas</legend>
+            <button 
+              className="btn btn-small" 
+              style={{ width: '100%', marginBottom: '8px' }}
+              disabled={chapters?.some(ch => ch.html?.includes('blockquote class="quote'))}
+              onClick={() => {
+                if (chapters?.some(ch => ch.html?.includes('blockquote class="quote'))) {
+                  alert('Las citas ya han sido aplicadas. Recarga la página o modifica el contenido manualmente.');
+                  return;
+                }
+                if (confirm('¿Aplicar estilo de cita a todo el documento?')) {
+                  const applyToAll = useEditorStore.getState().applyQuoteTemplate;
+                  if (applyToAll) applyToAll(safeConfig.quote.template || 'classic');
+                }
+              }}
+            >
+              Aplicar a todas las citas detectadas
+            </button>
+          </fieldset>
+
+          <fieldset className="config-group">
             <legend>Sangría</legend>
             <div className="number-row">
               <label>Izquierda:</label>
@@ -581,7 +838,7 @@ function SidebarLeft() {
           <fieldset className="config-group">
             <legend>Mostrar</legend>
             <label className="checkbox-label">
-              <input type="checkbox" checked={safeConfig.showHeaders} onChange={(e) => store.setConfig({ showHeaders: e.target.checked })} />
+              <input type="checkbox" checked={safeConfig.showHeaders} onChange={(e) => setConfig({ showHeaders: e.target.checked })} />
               Mostrar encabezados en páginas
             </label>
           </fieldset>
@@ -594,7 +851,7 @@ function SidebarLeft() {
                   value={safeConfig.header?.template || 'classic'}
                   onChange={(templateId) => {
                     const templateConfig = getHeaderTemplateConfig(templateId);
-                    store.setConfig({ 
+                    setConfig({ 
                       showHeaders: true,
                       header: { 
                         ...safeConfig.header,
@@ -617,7 +874,7 @@ function SidebarLeft() {
                         <label>Izquierda</label>
                         <select 
                           value={safeConfig.header?.evenPage?.leftContent || 'title'}
-                          onChange={(e) => store.setConfig({ 
+                          onChange={(e) => setConfig({ 
                             header: { 
                               ...safeConfig.header, 
                               evenPage: { ...safeConfig.header?.evenPage, leftContent: e.target.value }
@@ -633,7 +890,7 @@ function SidebarLeft() {
                         <label>Centro</label>
                         <select 
                           value={safeConfig.header?.evenPage?.centerContent || 'none'}
-                          onChange={(e) => store.setConfig({ 
+                          onChange={(e) => setConfig({ 
                             header: { 
                               ...safeConfig.header, 
                               evenPage: { ...safeConfig.header?.evenPage, centerContent: e.target.value }
@@ -649,7 +906,7 @@ function SidebarLeft() {
                         <label>Derecha</label>
                         <select 
                           value={safeConfig.header?.evenPage?.rightContent || 'none'}
-                          onChange={(e) => store.setConfig({ 
+                          onChange={(e) => setConfig({ 
                             header: { 
                               ...safeConfig.header, 
                               evenPage: { ...safeConfig.header?.evenPage, rightContent: e.target.value }
@@ -671,7 +928,7 @@ function SidebarLeft() {
                         <label>Izquierda</label>
                         <select 
                           value={safeConfig.header?.oddPage?.leftContent || 'none'}
-                          onChange={(e) => store.setConfig({ 
+                          onChange={(e) => setConfig({ 
                             header: { 
                               ...safeConfig.header, 
                               oddPage: { ...safeConfig.header?.oddPage, leftContent: e.target.value }
@@ -687,7 +944,7 @@ function SidebarLeft() {
                         <label>Centro</label>
                         <select 
                           value={safeConfig.header?.oddPage?.centerContent || 'none'}
-                          onChange={(e) => store.setConfig({ 
+                          onChange={(e) => setConfig({ 
                             header: { 
                               ...safeConfig.header, 
                               oddPage: { ...safeConfig.header?.oddPage, centerContent: e.target.value }
@@ -703,7 +960,7 @@ function SidebarLeft() {
                         <label>Derecha</label>
                         <select 
                           value={safeConfig.header?.oddPage?.rightContent || 'chapter'}
-                          onChange={(e) => store.setConfig({ 
+                          onChange={(e) => setConfig({ 
                             header: { 
                               ...safeConfig.header, 
                               oddPage: { ...safeConfig.header?.oddPage, rightContent: e.target.value }
@@ -727,7 +984,7 @@ function SidebarLeft() {
                   <input 
                     type="checkbox" 
                     checked={safeConfig.header?.trackSubheaders || false}
-                    onChange={(e) => store.setConfig({ 
+                    onChange={(e) => setConfig({ 
                       header: { ...safeConfig.header, trackSubheaders: e.target.checked }
                     })}
                   />
@@ -737,7 +994,7 @@ function SidebarLeft() {
                   <input 
                     type="checkbox" 
                     checked={safeConfig.header?.trackPseudoHeaders || false}
-                    onChange={(e) => store.setConfig({ 
+                    onChange={(e) => setConfig({ 
                       header: { ...safeConfig.header, trackPseudoHeaders: e.target.checked }
                     })}
                   />
@@ -753,7 +1010,7 @@ function SidebarLeft() {
                       </label>
                       <select 
                         value={safeConfig.header?.subtopicBehavior || 'none'}
-                        onChange={(e) => store.setConfig({ 
+                        onChange={(e) => setConfig({ 
                           header: { ...safeConfig.header, subtopicBehavior: e.target.value }
                         })}
                         style={{ width: '100%', marginBottom: '8px' }}
@@ -781,7 +1038,7 @@ function SidebarLeft() {
                             : 'custom'}
                           onChange={(e) => {
                             if (e.target.value !== 'custom') {
-                              store.setConfig({ 
+                              setConfig({ 
                                 header: { ...safeConfig.header, subtopicSeparator: e.target.value }
                               });
                             }
@@ -803,7 +1060,7 @@ function SidebarLeft() {
                             value={!SEPARATOR_OPTIONS.some(opt => opt.value === safeConfig.header?.subtopicSeparator) 
                               ? safeConfig.header?.subtopicSeparator || ''
                               : ''}
-                            onChange={(e) => store.setConfig({ 
+                            onChange={(e) => setConfig({ 
                               header: { ...safeConfig.header, subtopicSeparator: e.target.value }
                             })}
                             style={{ flex: 1, padding: '4px 8px' }}
@@ -824,7 +1081,7 @@ function SidebarLeft() {
                           max="100"
                           step="5"
                           value={safeConfig.header?.subtopicMaxLength || 60}
-                          onChange={(e) => store.setConfig({ 
+                          onChange={(e) => setConfig({ 
                             header: { ...safeConfig.header, subtopicMaxLength: parseInt(e.target.value) || 60 }
                           })}
                           style={{ width: '80px', padding: '4px 8px' }}
@@ -841,7 +1098,7 @@ function SidebarLeft() {
                 <legend>Mostrar en</legend>
                 <select 
                   value={safeConfig.header?.displayMode || 'alternate'}
-                  onChange={(e) => store.setConfig({ 
+                  onChange={(e) => setConfig({ 
                     header: { ...safeConfig.header, displayMode: e.target.value }
                   })}
                 >
@@ -866,7 +1123,7 @@ function SidebarLeft() {
                             const newLevels = currentLevels.includes(level)
                               ? currentLevels.filter(l => l !== level)
                               : [...currentLevels, level];
-                            store.setConfig({ 
+                            setConfig({ 
                               header: { ...safeConfig.header, subheaderLevels: newLevels }
                             });
                           }}
@@ -881,7 +1138,7 @@ function SidebarLeft() {
                     <legend>Formato del subtema</legend>
                     <select 
                       value={safeConfig.header?.subheaderFormat || 'full'}
-                      onChange={(e) => store.setConfig({ 
+                      onChange={(e) => setConfig({ 
                         header: { ...safeConfig.header, subheaderFormat: e.target.value }
                       })}
                     >
@@ -901,7 +1158,7 @@ function SidebarLeft() {
                     <label>Fuente</label>
                     <select 
                       value={safeConfig.header?.fontFamily || 'same'}
-                      onChange={(e) => store.setConfig({ 
+                      onChange={(e) => setConfig({ 
                         header: { ...safeConfig.header, fontFamily: e.target.value }
                       })}
                     >
@@ -918,7 +1175,7 @@ function SidebarLeft() {
                       max="100" 
                       step="5"
                       value={safeConfig.header?.fontSize || 70}
-                      onChange={(e) => store.setConfig({ 
+                      onChange={(e) => setConfig({ 
                         header: { ...safeConfig.header, fontSize: parseInt(e.target.value) }
                       })}
                     />
@@ -932,7 +1189,7 @@ function SidebarLeft() {
                   <input 
                     type="checkbox" 
                     checked={safeConfig.header?.showLine ?? true}
-                    onChange={(e) => store.setConfig({ 
+                    onChange={(e) => setConfig({ 
                       header: { ...safeConfig.header, showLine: e.target.checked }
                     })}
                   />
@@ -944,7 +1201,7 @@ function SidebarLeft() {
                       <label>Estilo</label>
                       <select 
                         value={safeConfig.header?.lineStyle || 'solid'}
-                        onChange={(e) => store.setConfig({ 
+                        onChange={(e) => setConfig({ 
                           header: { ...safeConfig.header, lineStyle: e.target.value }
                         })}
                       >
@@ -961,7 +1218,7 @@ function SidebarLeft() {
                         max="2" 
                         step="0.25"
                         value={safeConfig.header?.lineWidth || 0.5}
-                        onChange={(e) => store.setConfig({ 
+                        onChange={(e) => setConfig({ 
                           header: { ...safeConfig.header, lineWidth: parseFloat(e.target.value) }
                         })}
                       />
@@ -976,7 +1233,7 @@ function SidebarLeft() {
                   <legend>Cuando paginación también está arriba</legend>
                   <select 
                     value={safeConfig.header?.whenPaginationSamePosition || 'merge'}
-                    onChange={(e) => store.setConfig({ 
+                    onChange={(e) => setConfig({ 
                       header: { ...safeConfig.header, whenPaginationSamePosition: e.target.value }
                     })}
                   >
@@ -993,7 +1250,7 @@ function SidebarLeft() {
                   <input 
                     type="checkbox" 
                     checked={safeConfig.header?.skipFirstChapterPage ?? true}
-                    onChange={(e) => store.setConfig({ 
+                    onChange={(e) => setConfig({ 
                       header: { ...safeConfig.header, skipFirstChapterPage: e.target.checked }
                     })}
                   />
@@ -1014,7 +1271,7 @@ function SidebarLeft() {
           <fieldset className="config-group">
             <legend>Mostrar</legend>
             <label className="checkbox-label">
-              <input type="checkbox" checked={safeConfig.showPageNumbers} onChange={(e) => store.setConfig({ showPageNumbers: e.target.checked })} />
+              <input type="checkbox" checked={safeConfig.showPageNumbers} onChange={(e) => setConfig({ showPageNumbers: e.target.checked })} />
               Mostrar números de página
             </label>
           </fieldset>
@@ -1023,7 +1280,7 @@ function SidebarLeft() {
             <>
               <fieldset className="config-group">
                 <legend>Posición</legend>
-                <select value={safeConfig.pageNumberPos} onChange={(e) => store.setConfig({ pageNumberPos: e.target.value })}>
+                <select value={safeConfig.pageNumberPos} onChange={(e) => setConfig({ pageNumberPos: e.target.value })}>
                   <option value="top">Arriba</option>
                   <option value="bottom">Abajo</option>
                 </select>
@@ -1031,7 +1288,7 @@ function SidebarLeft() {
 
               <fieldset className="config-group">
                 <legend>Alineación</legend>
-                <select value={safeConfig.pageNumberAlign} onChange={(e) => store.setConfig({ pageNumberAlign: e.target.value })}>
+                <select value={safeConfig.pageNumberAlign} onChange={(e) => setConfig({ pageNumberAlign: e.target.value })}>
                   <option value="left">Izquierda</option>
                   <option value="center">Centro</option>
                   <option value="right">Derecha</option>
@@ -1075,7 +1332,7 @@ function SidebarLeft() {
         </>
       )
     }
-  ], [selectedSubheaderLevel, safeConfig, safeBookData?.bookType, handleBookTypeChange, store.setConfig, currentSubheaderConfig]);
+  ], [selectedSubheaderLevel, safeConfig, safeBookData?.bookType, handleBookTypeChange, setConfig, currentSubheaderConfig]);
 
   return (
     <aside className="sidebar sidebar-left" role="complementary" aria-label="Panel de estructura y configuración">
@@ -1142,10 +1399,10 @@ function SidebarLeft() {
                     key={chapter.id}
                     chapter={chapter}
                     index={index}
-                    isActive={store.editing?.activeChapterId === chapter.id}
-                    onSelect={store.setActiveChapter}
-                    onDelete={store.deleteChapter}
-                    onMove={store.moveChapter}
+                    isActive={activeChapterId === chapter.id}
+                    onSelect={setActiveChapter}
+                    onDelete={deleteChapter}
+                    onMove={moveChapter}
                     onTitleChange={handleTitleChange}
                     totalChapters={safeBookData.chapters.length}
                   />

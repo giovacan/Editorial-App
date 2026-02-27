@@ -14,14 +14,23 @@ export const calculatePreviewScale = (availableWidth, pageFormatWidthMm) => {
   return Math.min(0.42, availableWidth / (pageFormatWidthMm * PX_PER_MM));
 };
 
-export const calculateContentDimensions = (pageFormat, bookConfig, previewScale) => {
+export const calculateContentDimensions = (pageFormat, bookConfig, previewScale, gutterValue = null, isEvenPage = false) => {
   const pageWidthPx = pageFormat.width * PX_PER_MM * previewScale;
   const pageHeightPx = pageFormat.height * PX_PER_MM * previewScale;
   
+  const gutter = gutterValue !== null ? gutterValue : (bookConfig.gutter || 0);
+  
   const marginTop = bookConfig.marginTop * PX_PER_INCH * previewScale;
   const marginBottom = bookConfig.marginBottom * PX_PER_INCH * previewScale;
-  const marginLeft = (bookConfig.marginLeft + (bookConfig.gutter || 0)) * PX_PER_INCH * previewScale;
-  const marginRight = bookConfig.marginRight * PX_PER_INCH * previewScale;
+  
+  let marginLeft, marginRight;
+  if (isEvenPage) {
+    marginLeft = bookConfig.marginLeft * PX_PER_INCH * previewScale;
+    marginRight = (bookConfig.marginRight + gutter) * PX_PER_INCH * previewScale;
+  } else {
+    marginLeft = (bookConfig.marginLeft + gutter) * PX_PER_INCH * previewScale;
+    marginRight = bookConfig.marginRight * PX_PER_INCH * previewScale;
+  }
   
   const contentWidth = pageWidthPx - marginLeft - marginRight;
   const contentHeight = pageHeightPx - marginTop - marginBottom;

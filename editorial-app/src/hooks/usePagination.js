@@ -8,8 +8,34 @@ import {
 } from '../utils/paginationEngine';
 import { calculateContentDimensions } from '../utils/textMeasurer';
 
+const getBlockquoteStyle = (qConfig, template) => {
+  if (!qConfig) return '';
+  const baseStyle = `font-style:${qConfig.italic ? 'italic' : 'normal'};font-size:${qConfig.sizeMultiplier}pt;line-height:1.6;`;
+  
+  switch (template) {
+    case 'classic':
+      return `margin:${qConfig.marginTop}em ${qConfig.indentRight}em ${qConfig.marginBottom}em ${qConfig.indentLeft}em;padding:0.5em 1em;border-left:${qConfig.showLine ? '3px solid #444' : 'none'};${baseStyle}`;
+    case 'bar':
+      return `margin:${qConfig.marginTop}em 0 ${qConfig.marginBottom}em 0;padding:0.5em 0 0.5em 1.5em;border-left:4px solid #666;${baseStyle}`;
+    case 'italic':
+      return `margin:${qConfig.marginTop}em ${qConfig.indentRight}em ${qConfig.marginBottom}em ${qConfig.indentLeft}em;padding:0.5em;font-style:italic;${baseStyle}`;
+    case 'indent':
+      return `margin:${qConfig.marginTop}em ${qConfig.indentRight + 1}em ${qConfig.marginBottom}em ${qConfig.indentLeft + 1}em;padding:0.5em;${baseStyle}`;
+    case 'minimal':
+      return `margin:${qConfig.marginTop}em ${qConfig.indentRight}em ${qConfig.marginBottom}em ${qConfig.indentLeft}em;padding:0.25em 0.5em;opacity:0.85;${baseStyle}`;
+    default:
+      return `margin:${qConfig.marginTop}em ${qConfig.indentRight}em ${qConfig.marginBottom}em ${qConfig.indentLeft}em;padding:0.5em 1em;border-left:${qConfig.showLine ? '3px solid #444' : 'none'};${baseStyle}`;
+  }
+};
+
 const DEFAULT_CONFIG = {
   pageFormat: 'a5',
+  customPageFormat: { width: 6, height: 9, unit: 'in' },
+  gutterStrategy: 'auto',
+  gutterManual: 0.25,
+  gutterUnit: 'in',
+  extraEndPages: 0,
+  extraEndPagesNumbered: false,
   fontSize: 12,
   lineHeight: 1.6,
   chapterTitle: { 
@@ -34,7 +60,7 @@ const DEFAULT_CONFIG = {
     h6: { align: 'left', bold: false, sizeMultiplier: 1.0, marginTop: 0.5, marginBottom: 0.25, minLinesAfter: 1 }
   },
   paragraph: { firstLineIndent: 1.5, align: 'justify', spacingBetween: 0 },
-  quote: { enabled: true, indentLeft: 2, indentRight: 2, showLine: true, italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1 },
+  quote: { enabled: true, indentLeft: 2, indentRight: 2, showLine: true, italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1, template: 'classic', autoDetect: true },
   pagination: { minOrphanLines: 2, minWidowLines: 2, splitLongParagraphs: true },
   header: {
     enabled: false,
@@ -62,12 +88,56 @@ const PX_PER_INCH = 96;
 
 export const usePagination = (bookData, config, measureRef) => {
   const [pages, setPages] = useState([]);
+  const [calculatedPageCount, setCalculatedPageCount] = useState(0);
   
   const safeBookData = bookData || { bookType: 'novela', chapters: [], title: '' };
   const safeConfig = config || DEFAULT_CONFIG;
   
   const bookConfig = KDP_STANDARDS.getBookTypeConfig(safeBookData.bookType);
-  const pageFormat = KDP_STANDARDS.getPageFormat(safeConfig.pageFormat || bookConfig.recommendedFormat);
+  
+  let pageFormat;
+  if (safeConfig.pageFormat === 'custom') {
+    const customDims = KDP_STANDARDS.getCustomPageDimensions(
+      safeConfig.customPageFormat?.width || 6,
+      safeConfig.customPageFormat?.height || 9,
+      safeConfig.customPageFormat?.unit || 'in'
+    );
+    pageFormat = {
+      id: 'custom',
+      name: 'Custom',
+      width: customDims.widthMm,
+      height: customDims.heightMm,
+      unit: 'mm',
+      description: `Custom (${customDims.widthIn.toFixed(2)}" × ${customDims.heightIn.toFixed(2)}")`,
+      minMargins: { top: 12.7, bottom: 12.7, left: 12.7, right: 12.7 },
+      recommended: false,
+      type: 'paperback'
+    };
+  } else {
+    pageFormat = KDP_STANDARDS.getPageFormat(safeConfig.pageFormat || bookConfig.recommendedFormat);
+  }
+
+  const calculateGutter = useCallback((pageCount) => {
+    if (safeConfig.gutterStrategy === 'custom') {
+      return safeConfig.gutterManual;
+    }
+    return KDP_STANDARDS.getDynamicGutter(safeConfig.pageFormat, safeBookData.bookType, pageCount);
+  }, [safeConfig.gutterStrategy, safeConfig.gutterManual, safeConfig.pageFormat, safeBookData.bookType]);
+  
+  const [gutterValue, setGutterValue] = useState(() => calculateGutter(0));
+  
+  const extraEndPages = safeConfig.extraEndPages || 0;
+  const extraEndPagesNumbered = safeConfig.extraEndPagesNumbered || false;
+  
+  useEffect(() => {
+    if (safeConfig.gutterStrategy === 'auto' && pages.length > 0 && pages.length !== calculatedPageCount) {
+      const newGutter = calculateGutter(pages.length);
+      if (Math.abs(newGutter - gutterValue) > 0.001) {
+        setGutterValue(newGutter);
+        setCalculatedPageCount(pages.length);
+      }
+    }
+  }, [pages.length, safeConfig.gutterStrategy, calculatedPageCount, gutterValue, calculateGutter]);
   
   useEffect(() => {
     if (!safeBookData?.chapters?.length || !measureRef.current) {
@@ -78,16 +148,15 @@ export const usePagination = (bookData, config, measureRef) => {
     const measureDiv = measureRef.current;
     const previewScale = Math.min(0.42, AVAILABLE_SIDEBAR_WIDTH / (pageFormat.width * PX_PER_MM));
     
-    const { 
-      pageWidthPx, 
-      pageHeightPx, 
-      marginTop, 
-      marginBottom, 
-      marginLeft, 
-      marginRight, 
-      contentWidth, 
-      contentHeight 
-    } = calculateContentDimensions(pageFormat, bookConfig, previewScale);
+    const dimsOdd = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterValue, false);
+    const dimsEven = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterValue, true);
+    
+    const contentWidth = Math.min(dimsOdd.contentWidth, dimsEven.contentWidth);
+    const contentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight);
+    const pageWidthPx = dimsOdd.pageWidthPx;
+    const pageHeightPx = dimsOdd.pageHeightPx;
+    const marginTop = dimsOdd.marginTop;
+    const marginBottom = dimsOdd.marginBottom;
     
     const baseFontSize = (safeConfig.fontSize || bookConfig.fontSize) * previewScale;
     const baseLineHeight = safeConfig.lineHeight || bookConfig.lineHeight;
@@ -142,8 +211,10 @@ export const usePagination = (bookData, config, measureRef) => {
       const headerConfig = safeConfig.header || {};
       const trackSubheaders = headerConfig.trackSubheaders;
       let currentSubheader = '';
+      let paragraphCount = 0;
       
       const layout = ctConfig.layout || 'continuous';
+      const isTitleOnlyPage = layout === 'fullPage';
       
       if (layout === 'fullPage') {
         generatedPages.push({ 
@@ -152,6 +223,7 @@ export const usePagination = (bookData, config, measureRef) => {
           chapterTitle: chapter.title, 
           isBlank: false,
           isFirstChapterPage: true,
+          isTitleOnlyPage: true,
           currentSubheader: ''
         });
         currentHtml = '';
@@ -163,6 +235,7 @@ export const usePagination = (bookData, config, measureRef) => {
           chapterTitle: chapter.title, 
           isBlank: false,
           isFirstChapterPage: true,
+          isTitleOnlyPage: true,
           currentSubheader: ''
         });
         currentHtml = '';
@@ -176,7 +249,11 @@ export const usePagination = (bookData, config, measureRef) => {
         if (cancelled) return;
         
         const el = children[childIdx];
-        const elHtml = buildParagraphHtml(el, safeConfig, baseFontSize, baseLineHeight, textAlign);
+        const isFirstParagraph = paragraphCount === 0;
+        if (el.tagName === 'P' || el.tagName === 'DIV') {
+          paragraphCount++;
+        }
+        const elHtml = buildParagraphHtml(el, safeConfig, baseFontSize, baseLineHeight, textAlign, isFirstParagraph);
         
         if (headerConfig.trackSubheaders && el.tagName.match(/^H[1-6]$/i)) {
           const level = el.tagName.slice(1).toLowerCase();
@@ -196,6 +273,7 @@ export const usePagination = (bookData, config, measureRef) => {
               pageNumber: generatedPages.length + 1, 
               chapterTitle: chapter.title, 
               isBlank: false,
+              isTitleOnlyPage: false,
               currentSubheader
             });
             currentHtml = '';
@@ -203,7 +281,8 @@ export const usePagination = (bookData, config, measureRef) => {
           }
           
           if (splitLongParagraphs) {
-            const lines = splitParagraphByLines(elHtml, measureDiv, contentHeight, textAlign, false, 1.5, true);
+            const indentValue = safeConfig.paragraph?.firstLineIndent || 1.5;
+            const lines = splitParagraphByLines(elHtml, measureDiv, contentHeight, textAlign, !isFirstParagraph, indentValue, true);
             let lineHtml = '';
             
             lines.forEach((line, idx) => {
@@ -269,15 +348,89 @@ export const usePagination = (bookData, config, measureRef) => {
         const candidateHeight = measureDiv.offsetHeight;
         
         if (candidateHeight > contentHeight) {
-          generatedPages.push({ 
-            html: currentHtml, 
-            pageNumber: generatedPages.length + 1, 
-            chapterTitle: chapter.title, 
-            isBlank: false,
-            currentSubheader
-          });
-          currentHtml = elHtml;
-          currentHeight = elHeight;
+          const remainingSpace = contentHeight - currentHeight;
+          const remainingLinesOnPage = Math.round(remainingSpace / lineHeightPx);
+
+          const shouldBreakPage = (el) => {
+            const tag = el.tagName;
+            const isList = tag === 'UL' || tag === 'OL';
+            const isHeader = tag.match(/^H[1-6]$/i);
+            if (isHeader || isList) return true;
+            if (remainingLinesOnPage < minOrphanLines) return true;
+            return false;
+          };
+
+          if (shouldBreakPage(el)) {
+            generatedPages.push({ 
+              html: currentHtml, 
+              pageNumber: generatedPages.length + 1, 
+              chapterTitle: chapter.title, 
+              isBlank: false,
+              currentSubheader
+            });
+            currentHtml = elHtml;
+            currentHeight = elHeight;
+            continue;
+          }
+
+          if (splitLongParagraphs) {
+            const indentValue = safeConfig.paragraph?.firstLineIndent || 1.5;
+            const splitArr = splitParagraphByLines(elHtml, measureDiv, remainingSpace, textAlign, !isFirstParagraph, indentValue, true);
+
+            if (splitArr.length > 1) {
+              const firstChunk = splitArr[0];
+              const restHtml = splitArr.slice(1).join('');
+
+              measureDiv.innerHTML = firstChunk;
+              const orphanLines = Math.round(measureDiv.offsetHeight / lineHeightPx);
+              measureDiv.innerHTML = restHtml;
+              const widowLines = Math.round(measureDiv.offsetHeight / lineHeightPx);
+
+              if (orphanLines >= minOrphanLines && widowLines >= minWidowLines) {
+                generatedPages.push({ 
+                  html: currentHtml + firstChunk, 
+                  pageNumber: generatedPages.length + 1, 
+                  chapterTitle: chapter.title, 
+                  isBlank: false,
+                  currentSubheader
+                });
+                currentHtml = restHtml;
+                measureDiv.innerHTML = currentHtml;
+                currentHeight = measureDiv.offsetHeight;
+              } else {
+                generatedPages.push({ 
+                  html: currentHtml, 
+                  pageNumber: generatedPages.length + 1, 
+                  chapterTitle: chapter.title, 
+                  isBlank: false,
+                  currentSubheader
+                });
+                currentHtml = elHtml;
+                currentHeight = elHeight;
+              }
+            } else {
+              generatedPages.push({ 
+                html: currentHtml, 
+                pageNumber: generatedPages.length + 1, 
+                chapterTitle: chapter.title, 
+                isBlank: false,
+                currentSubheader
+              });
+              currentHtml = elHtml;
+              currentHeight = elHeight;
+            }
+          } else {
+            generatedPages.push({ 
+              html: currentHtml, 
+              pageNumber: generatedPages.length + 1, 
+              chapterTitle: chapter.title, 
+              isBlank: false,
+              currentSubheader
+            });
+            currentHtml = elHtml;
+            measureDiv.innerHTML = elHtml;
+            currentHeight = measureDiv.offsetHeight;
+          }
         } else {
           currentHtml = candidateHtml;
           currentHeight = candidateHeight;
@@ -301,12 +454,138 @@ export const usePagination = (bookData, config, measureRef) => {
       }
     });
     
+    const applyFillPass = () => {
+      let totalIterations = 0;
+      const maxIterations = 10000;
+      
+      for (let pageIdx = 0; pageIdx < generatedPages.length - 1; pageIdx++) {
+        if (totalIterations >= maxIterations) break;
+        
+        for (let fillAttempts = 0; fillAttempts < 50; fillAttempts++) {
+          if (totalIterations >= maxIterations) break;
+          totalIterations++;
+          
+          const page = generatedPages[pageIdx];
+          if (page.isBlank) break;
+
+          measureDiv.innerHTML = page.html;
+          const remainingSpace = contentHeight - measureDiv.offsetHeight;
+          const remainingLines = Math.floor(remainingSpace / lineHeightPx);
+
+          if (remainingLines < minOrphanLines) break;
+
+          let nextIdx = pageIdx + 1;
+          while (nextIdx < generatedPages.length && generatedPages[nextIdx].isBlank) nextIdx++;
+          if (nextIdx >= generatedPages.length) break;
+
+          const nextPage = generatedPages[nextIdx];
+          if (page.chapterTitle !== nextPage.chapterTitle) break;
+
+          const tmp = document.createElement('div');
+          tmp.innerHTML = nextPage.html;
+          const firstEl = tmp.firstElementChild;
+          if (!firstEl) break;
+
+          const isHeader = /^H[1-6]$/i.test(firstEl.tagName);
+          const isList = firstEl.tagName === 'UL' || firstEl.tagName === 'OL';
+          const isBlockquote = firstEl.tagName === 'BLOCKQUOTE';
+          
+          if (isBlockquote && remainingLines < 10) break;
+
+          const firstElOuter = firstEl.outerHTML;
+          
+          let quoteConfig = null;
+          let quoteClass = '';
+          if (isBlockquote) {
+            const classes = Array.from(firstEl.classList).find(c => ['classic', 'bar', 'italic', 'indent', 'minimal'].includes(c));
+            quoteClass = classes || 'classic';
+            quoteConfig = safeConfig.quote || {};
+          }
+
+          measureDiv.innerHTML = page.html + firstElOuter;
+          const pageWithElHeight = measureDiv.offsetHeight;
+          
+          if (pageWithElHeight <= contentHeight) {
+            firstEl.remove();
+            const restHtml = tmp.innerHTML;
+            measureDiv.innerHTML = restHtml;
+            const widowLines = restHtml.trim() ? Math.round(measureDiv.offsetHeight / lineHeightPx) : Infinity;
+
+            if (!restHtml.trim() || widowLines >= minWidowLines) {
+              generatedPages[pageIdx] = { ...page, html: page.html + firstElOuter };
+              generatedPages[nextIdx] = { ...nextPage, html: restHtml };
+            } else {
+              break;
+            }
+          } else if (!isHeader && !isList && splitLongParagraphs && !isBlockquote) {
+            const fillSpace = remainingLines * lineHeightPx;
+            
+            const pageHasParagraph = /<p[^>]*>/i.test(page.html);
+            const pageHasBlockquote = /<blockquote/i.test(page.html);
+            const isFirstParagraphOfChapter = !pageHasParagraph && !pageHasBlockquote && firstEl.tagName === 'P';
+            
+            const splitArr = splitParagraphByLines(firstElOuter, measureDiv, fillSpace, textAlign, !isFirstParagraphOfChapter, safeConfig.paragraph?.firstLineIndent || 1.5, true);
+
+            if (splitArr.length > 1) {
+              const chunk = splitArr[0];
+              const rest = splitArr.slice(1).join('');
+
+              measureDiv.innerHTML = page.html + chunk;
+              if (measureDiv.offsetHeight <= contentHeight) {
+                measureDiv.innerHTML = chunk;
+                const chunkLines = Math.round(measureDiv.offsetHeight / lineHeightPx);
+
+                measureDiv.innerHTML = rest;
+                const widowLines = rest.trim() ? Math.round(measureDiv.offsetHeight / lineHeightPx) : Infinity;
+
+                firstEl.remove();
+                const restPageHtml = rest + tmp.innerHTML;
+
+                if (chunkLines >= minOrphanLines && (!rest.trim() || widowLines >= minWidowLines)) {
+                  let updatedChunk = chunk;
+                  let updatedRest = rest;
+                  
+                  if (isBlockquote && quoteClass) {
+                    const quoteStyle = getBlockquoteStyle(quoteConfig, quoteClass);
+                    updatedChunk = chunk.replace(/<blockquote/, `<blockquote class="quote ${quoteClass}" style="${quoteStyle}"`);
+                  }
+                  
+                  generatedPages[pageIdx] = { ...page, html: page.html + updatedChunk };
+                  generatedPages[nextIdx] = { ...nextPage, html: updatedRest + tmp.innerHTML };
+                } else {
+                  break;
+                }
+              } else {
+                break;
+              }
+            } else {
+              break;
+            }
+          } else {
+            break;
+          }
+        }
+      }
+    };
+
+    applyFillPass();
+    
+    for (let i = 0; i < extraEndPages; i++) {
+      generatedPages.push({
+        html: '',
+        pageNumber: generatedPages.length + 1,
+        isBlank: true,
+        isExtraEndPage: true,
+        shouldShowPageNumber: extraEndPagesNumbered
+      });
+    }
+    
     if (!cancelled) {
       setPages(generatedPages);
     }
     
     return () => { cancelled = true; };
-  }, [bookData, config, measureRef, bookConfig, pageFormat]);
+  }, [bookData, config, measureRef, bookConfig, pageFormat, gutterValue, extraEndPages, extraEndPagesNumbered]);
   
   return { pages };
 };

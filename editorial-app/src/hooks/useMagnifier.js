@@ -10,27 +10,18 @@ export const useMagnifier = (previewPageRef) => {
   const magnifierTimeoutRef = useRef(null);
   
   const updateMagnifierPosition = useCallback((e) => {
-    if (!previewPageRef.current) return;
+    const pageEl = previewPageRef?.current;
+    if (!pageEl) return;
     
     try {
-      const pageRect = previewPageRef.current.getBoundingClientRect();
+      const pageRect = pageEl.getBoundingClientRect();
       const viewportX = e.clientX;
       const viewportY = e.clientY;
-      
-      if (viewportX < pageRect.left || viewportX > pageRect.right || 
-          viewportY < pageRect.top || viewportY > pageRect.bottom) {
-        return;
-      }
       
       const x = Math.max(0, Math.min(100, ((viewportX - pageRect.left) / pageRect.width) * 100));
       const y = Math.max(0, Math.min(100, ((viewportY - pageRect.top) / pageRect.height) * 100));
       
       setMagnifierPos({ x, y });
-      
-      if (magnifierPanelRef.current) {
-        magnifierPanelRef.current.style.setProperty('--magnifier-x', `${x}%`);
-        magnifierPanelRef.current.style.setProperty('--magnifier-y', `${y}%`);
-      }
     } catch (error) {
       console.warn('Error updating magnifier position:', error);
     }
@@ -73,7 +64,6 @@ export const useMagnifier = (previewPageRef) => {
     showMagnifier,
     setShowMagnifier,
     magnifierPos,
-    setMagnifierPos,
     magnifierZoom,
     setMagnifierZoom,
     magnifierPanelRef,

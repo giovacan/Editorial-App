@@ -160,6 +160,17 @@ export const KDP_STANDARDS: KDPStandards = {
       minMargins: { top: 12.7, bottom: 12.7, left: 12.7, right: 12.7 },
       recommended: false,
       type: 'paperback'
+    },
+    'half-letter': {
+      id: 'half-letter',
+      name: 'Half Letter',
+      width: 140,
+      height: 216,
+      unit: 'mm',
+      description: 'Media Carta (5.5" × 8.5")',
+      minMargins: { top: 12.7, bottom: 12.7, left: 12.7, right: 12.7 },
+      recommended: false,
+      type: 'paperback'
     }
   },
 
@@ -315,6 +326,79 @@ export const KDP_STANDARDS: KDPStandards = {
         margins.right >= minMargins.right,
       minMargins,
       userMargins: margins
+    };
+  },
+
+  getDynamicGutter(pageFormatId: string, bookType: string, pageCount: number = 0): number {
+    const format = this.getPageFormat(pageFormatId);
+    
+    const widthInches = format.unit === 'mm' ? format.width / 25.4 : format.width;
+    
+    let baseGutter: number;
+    if (widthInches <= 5.5) {
+      baseGutter = 0.25;
+    } else if (widthInches <= 6.5) {
+      baseGutter = 0.25;
+    } else if (widthInches <= 8.5) {
+      baseGutter = 0.375;
+    } else if (widthInches <= 11) {
+      baseGutter = 0.5;
+    } else {
+      baseGutter = 0.625;
+    }
+
+    if (pageCount <= 0) {
+      return baseGutter;
+    }
+
+    const pageCountGutter = this.getGutterByPageCount(pageCount, widthInches);
+    
+    return Math.max(baseGutter, pageCountGutter);
+  },
+
+  getGutterByPageCount(pageCount: number, widthInches: number): number {
+    const isLargeFormat = widthInches > 7;
+    
+    if (pageCount <= 60) {
+      return isLargeFormat ? 0.375 : 0.25;
+    } else if (pageCount <= 100) {
+      return isLargeFormat ? 0.5 : 0.375;
+    } else if (pageCount <= 200) {
+      return isLargeFormat ? 0.625 : 0.5;
+    } else if (pageCount <= 300) {
+      return isLargeFormat ? 0.75 : 0.625;
+    } else if (pageCount <= 400) {
+      return isLargeFormat ? 0.875 : 0.75;
+    } else if (pageCount <= 500) {
+      return isLargeFormat ? 1.0 : 0.875;
+    } else {
+      return isLargeFormat ? 1.125 : 1.0;
+    }
+  },
+
+  getCustomPageDimensions(width: number, height: number, unit: 'mm' | 'cm' | 'in'): { widthMm: number; heightMm: number; widthIn: number; heightIn: number } {
+    let widthMm: number, heightMm: number;
+    
+    switch (unit) {
+      case 'mm':
+        widthMm = width;
+        heightMm = height;
+        break;
+      case 'cm':
+        widthMm = width * 10;
+        heightMm = height * 10;
+        break;
+      case 'in':
+        widthMm = width * 25.4;
+        heightMm = height * 25.4;
+        break;
+    }
+    
+    return {
+      widthMm,
+      heightMm,
+      widthIn: widthMm / 25.4,
+      heightIn: heightMm / 25.4
     };
   }
 };
