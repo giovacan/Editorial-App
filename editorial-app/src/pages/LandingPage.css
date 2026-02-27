@@ -1,0 +1,468 @@
+/* Landing Page - Hero + Login Layout */
+
+.landing-page {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 100vh;
+  background: #ffffff;
+}
+
+/* ======================== HERO PANEL ======================== */
+
+.landing-hero {
+  background: linear-gradient(135deg, #1a2e5c 0%, #2563eb 100%);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 40px;
+  color: white;
+}
+
+/* Subtle pattern overlay */
+.landing-hero::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image:
+    radial-gradient(circle at 20% 50%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(255, 255, 255, 0.05) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.landing-hero-content {
+  position: relative;
+  z-index: 1;
+  max-width: 500px;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+/* Hero Header */
+.hero-header {
+  text-align: left;
+}
+
+.hero-icon {
+  font-size: 64px;
+  display: block;
+  margin-bottom: 20px;
+}
+
+.hero-title {
+  font-size: 48px;
+  font-weight: 800;
+  margin: 0 0 12px 0;
+  line-height: 1.1;
+  color: #ffffff;
+}
+
+.hero-tagline {
+  font-size: 18px;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+  font-weight: 300;
+}
+
+/* Features List */
+.hero-features {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.feature {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.feature-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  font-size: 14px;
+  color: #a8e6a1;
+  flex-shrink: 0;
+}
+
+/* CTA Buttons */
+.hero-cta {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.btn-primary {
+  display: inline-block;
+  padding: 14px 28px;
+  background: #ffffff;
+  color: #1a2e5c;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+  background: #f0f0f0;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+}
+
+.btn-secondary {
+  display: inline-block;
+  padding: 12px 24px;
+  background: transparent;
+  color: #ffffff;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.btn-secondary:hover {
+  border-color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Editor Mockup */
+.editor-mockup {
+  margin-top: 20px;
+  perspective: 1000px;
+}
+
+.mockup-page {
+  background: white;
+  border-radius: 8px;
+  padding: 40px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  color: #333;
+}
+
+.mockup-header {
+  margin-bottom: 24px;
+  border-bottom: 2px solid #e0e0e0;
+  padding-bottom: 16px;
+}
+
+.mockup-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2937;
+  margin: 0 0 4px 0;
+}
+
+.mockup-author {
+  font-size: 12px;
+  color: #9ca3af;
+  margin: 0;
+}
+
+.mockup-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 16px;
+}
+
+.mockup-column {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mockup-line {
+  height: 8px;
+  background: linear-gradient(90deg, #e0e0e0 0%, #d0d0d0 100%);
+  border-radius: 2px;
+}
+
+.mockup-line.short {
+  width: 70%;
+}
+
+.mockup-footer {
+  text-align: center;
+  font-size: 10px;
+  color: #9ca3af;
+  border-top: 1px solid #e0e0e0;
+  padding-top: 12px;
+}
+
+/* ======================== AUTH PANEL ======================== */
+
+.landing-auth {
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 40px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+}
+
+.auth-header {
+  margin-bottom: 30px;
+  text-align: center;
+}
+
+.auth-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1f2937;
+  margin: 0;
+}
+
+.auth-error {
+  background: #fee2e2;
+  color: #dc2626;
+  padding: 12px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+
+/* Form */
+.auth-form {
+  margin-bottom: 20px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 6px;
+}
+
+.form-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  box-sizing: border-box;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Buttons */
+.btn-submit {
+  width: 100%;
+  padding: 12px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-submit:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.btn-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.form-divider {
+  position: relative;
+  margin: 20px 0;
+  text-align: center;
+}
+
+.form-divider::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: #e5e7eb;
+}
+
+.form-divider span {
+  background: white;
+  color: #9ca3af;
+  padding: 0 10px;
+  font-size: 12px;
+  position: relative;
+  z-index: 1;
+}
+
+.btn-google {
+  width: 100%;
+  padding: 12px;
+  background: white;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-google:hover:not(:disabled) {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+.btn-google:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.auth-footer {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.auth-link {
+  color: #3b82f6;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.auth-link:hover {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+/* ======================== RESPONSIVE ======================== */
+
+@media (max-width: 1024px) {
+  .landing-hero-content {
+    max-width: 400px;
+  }
+
+  .hero-title {
+    font-size: 40px;
+  }
+
+  .hero-icon {
+    font-size: 56px;
+  }
+
+  .editor-mockup {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .landing-page {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-hero {
+    padding: 40px 24px;
+    min-height: 50vh;
+  }
+
+  .landing-hero-content {
+    gap: 30px;
+  }
+
+  .hero-title {
+    font-size: 32px;
+  }
+
+  .hero-icon {
+    font-size: 48px;
+  }
+
+  .hero-tagline {
+    font-size: 16px;
+  }
+
+  .feature {
+    font-size: 14px;
+  }
+
+  .landing-auth {
+    padding: 40px 24px;
+  }
+
+  .auth-card {
+    max-width: 100%;
+  }
+
+  .hero-cta {
+    flex-direction: column;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .landing-hero {
+    padding: 30px 16px;
+  }
+
+  .landing-auth {
+    padding: 30px 16px;
+  }
+
+  .hero-title {
+    font-size: 28px;
+  }
+
+  .hero-icon {
+    font-size: 40px;
+  }
+
+  .hero-tagline {
+    font-size: 14px;
+  }
+
+  .auth-title {
+    font-size: 24px;
+  }
+
+  .mockup-page {
+    padding: 24px;
+  }
+}

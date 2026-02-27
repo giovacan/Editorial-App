@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 import Layout from './components/Layout/Layout';
+import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './components/Auth/LoginPage';
 import { RegisterPage } from './components/Auth/RegisterPage';
 import { ProtectedRoute } from './components/Auth/ProtectedRoute';
@@ -40,9 +41,9 @@ function App() {
           </Route>
         </Route>
 
-        {/* Default redirect */}
-        <Route path="/" element={<Navigate to="/books" replace />} />
-        <Route path="*" element={<Navigate to="/books" replace />} />
+        {/* Landing page */}
+        <Route path="/" element={<LandingPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ErrorBoundary>
   );

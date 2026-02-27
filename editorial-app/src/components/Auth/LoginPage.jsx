@@ -10,9 +10,9 @@ export function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // If already logged in, redirect to app
+  // If already logged in, redirect to books
   if (user) {
-    return <Navigate to="/app" replace />;
+    return <Navigate to="/books" replace />;
   }
 
   const handleSubmit = async (e) => {
@@ -22,7 +22,7 @@ export function LoginPage() {
 
     try {
       await signIn(email, password);
-      navigate('/app');
+      navigate('/books');
     } catch (err) {
       setError(err.message || 'Error al iniciar sesión');
     } finally {
@@ -36,7 +36,7 @@ export function LoginPage() {
 
     try {
       await signInGoogle();
-      navigate('/app');
+      navigate('/books');
     } catch (err) {
       setError(err.message || 'Error al iniciar sesión con Google');
     } finally {
