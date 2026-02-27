@@ -9,6 +9,9 @@ import {
 
 const AuthContext = createContext(null);
 
+// Check if in mock mode (no Firebase credentials)
+const isMockMode = !import.meta.env.VITE_FIREBASE_API_KEY || !import.meta.env.VITE_FIREBASE_PROJECT_ID;
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -20,8 +23,19 @@ export function AuthProvider({ children }) {
       setLoading(false);
     });
 
+    // In mock mode, ensure user is set from mock auth
+    if (isMockMode && !user) {
+      // Give mock initialization a moment to complete
+      const timer = setTimeout(() => {
+        if (!user) {
+          setLoading(false);
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+
     return unsubscribe;
-  }, []);
+  }, [user]);
 
   // Check if user is admin (email matches VITE_ADMIN_EMAIL)
   const isAdmin = user?.email === import.meta.env.VITE_ADMIN_EMAIL;

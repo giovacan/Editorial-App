@@ -9,8 +9,12 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';
+import * as mockFirebase from './firebase.mock';
 
 const googleProvider = new GoogleAuthProvider();
+
+// Check if using mock Firebase
+const isMockMode = !import.meta.env.VITE_FIREBASE_API_KEY || !import.meta.env.VITE_FIREBASE_PROJECT_ID;
 
 /**
  * Helper to create or update user document in Firestore
@@ -54,6 +58,12 @@ async function createOrUpdateUserDoc(user, displayName) {
  */
 export async function signUpWithEmail(email, password, displayName) {
   try {
+    if (isMockMode) {
+      const user = await mockFirebase.mockAuthFunctions.signUpWithEmail(email, password);
+      // In mock mode, user doc is already created
+      return user;
+    }
+
     const result = await createUserWithEmailAndPassword(auth, email, password);
     const user = result.user;
 
@@ -81,6 +91,10 @@ export async function signUpWithEmail(email, password, displayName) {
  */
 export async function signInWithEmail(email, password) {
   try {
+    if (isMockMode) {
+      return await mockFirebase.mockAuthFunctions.signInWithEmail(email, password);
+    }
+
     const result = await signInWithEmailAndPassword(auth, email, password);
     return result.user;
   } catch (error) {
@@ -94,6 +108,10 @@ export async function signInWithEmail(email, password) {
  */
 export async function signInWithGoogle() {
   try {
+    if (isMockMode) {
+      return await mockFirebase.mockAuthFunctions.signInWithGoogle();
+    }
+
     const result = await signInWithPopup(auth, googleProvider);
     const user = result.user;
 
@@ -112,6 +130,11 @@ export async function signInWithGoogle() {
  */
 export async function logOut() {
   try {
+    if (isMockMode) {
+      await mockFirebase.mockAuthFunctions.logOut();
+      return;
+    }
+
     await signOut(auth);
   } catch (error) {
     throw new Error(error.message);
