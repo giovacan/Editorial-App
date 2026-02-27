@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import './LandingPage.css';
 
 export function LandingPage() {
   const navigate = useNavigate();
@@ -15,8 +14,6 @@ export function LandingPage() {
   if (user) {
     return <Navigate to="/books" replace />;
   }
-
-  // Show landing page (don't wait for auth loading in mock mode)
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -48,87 +45,41 @@ export function LandingPage() {
   };
 
   return (
-    <div className="landing-page">
+    <div style={styles.page}>
       {/* LEFT PANEL - HERO */}
-      <div className="landing-hero">
-        <div className="landing-hero-content">
-          <div className="hero-header">
-            <div className="hero-icon">📖</div>
-            <h1 className="hero-title">Editorial App</h1>
-            <p className="hero-tagline">Tu editor de libros profesional para KDP y más</p>
+      <div style={styles.hero}>
+        <div style={styles.heroContent}>
+          <div style={styles.heroIcon}>📖</div>
+          <h1 style={styles.heroTitle}>Editorial App</h1>
+          <p style={styles.heroTagline}>Tu editor de libros profesional para KDP y más</p>
+
+          <div style={styles.features}>
+            <div style={styles.feature}>✓ Paginación automática</div>
+            <div style={styles.feature}>✓ Formatos A5, Letter, KDP</div>
+            <div style={styles.feature}>✓ Exportación PDF y ePub</div>
           </div>
 
-          <div className="hero-features">
-            <div className="feature">
-              <span className="feature-check">✓</span>
-              <span>Paginación automática</span>
-            </div>
-            <div className="feature">
-              <span className="feature-check">✓</span>
-              <span>Formatos A5, Letter, KDP</span>
-            </div>
-            <div className="feature">
-              <span className="feature-check">✓</span>
-              <span>Exportación PDF y ePub</span>
-            </div>
-          </div>
-
-          <div className="hero-cta">
-            <Link to="/register" className="btn-primary">
+          <div style={styles.ctaButtons}>
+            <Link to="/register" style={styles.btnPrimary}>
               Probar gratis →
             </Link>
-            <Link to="/pricing" className="btn-secondary">
+            <Link to="/pricing" style={styles.btnSecondary}>
               Ver precios
             </Link>
-          </div>
-
-          {/* MOCKUP DEL EDITOR */}
-          <div className="editor-mockup">
-            <div className="mockup-page">
-              <div className="mockup-header">
-                <div className="mockup-title">Capítulo 1: El Comienzo</div>
-                <div className="mockup-author">Por Tu Nombre</div>
-              </div>
-              <div className="mockup-columns">
-                <div className="mockup-column">
-                  <div className="mockup-line"></div>
-                  <div className="mockup-line"></div>
-                  <div className="mockup-line short"></div>
-                  <div className="mockup-line"></div>
-                  <div className="mockup-line"></div>
-                  <div className="mockup-line short"></div>
-                  <div className="mockup-line"></div>
-                  <div className="mockup-line"></div>
-                </div>
-                <div className="mockup-column">
-                  <div className="mockup-line"></div>
-                  <div className="mockup-line"></div>
-                  <div className="mockup-line short"></div>
-                  <div className="mockup-line"></div>
-                  <div className="mockup-line"></div>
-                  <div className="mockup-line short"></div>
-                  <div className="mockup-line"></div>
-                  <div className="mockup-line"></div>
-                </div>
-              </div>
-              <div className="mockup-footer">Página 1</div>
-            </div>
           </div>
         </div>
       </div>
 
       {/* RIGHT PANEL - AUTH FORM */}
-      <div className="landing-auth">
-        <div className="auth-card">
-          <div className="auth-header">
-            <h2 className="auth-title">Inicia sesión</h2>
-          </div>
+      <div style={styles.auth}>
+        <div style={styles.authCard}>
+          <h2 style={styles.authTitle}>Inicia sesión</h2>
 
-          {error && <div className="auth-error">{error}</div>}
+          {error && <div style={styles.error}>{error}</div>}
 
-          <form onSubmit={handleSubmit} className="auth-form">
-            <div className="form-group">
-              <label htmlFor="email">Correo electrónico</label>
+          <form onSubmit={handleSubmit} style={styles.form}>
+            <div style={styles.formGroup}>
+              <label htmlFor="email" style={styles.label}>Correo electrónico</label>
               <input
                 id="email"
                 type="email"
@@ -136,12 +87,12 @@ export function LandingPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="tu@email.com"
                 required
-                className="form-input"
+                style={styles.input}
               />
             </div>
 
-            <div className="form-group">
-              <label htmlFor="password">Contraseña</label>
+            <div style={styles.formGroup}>
+              <label htmlFor="password" style={styles.label}>Contraseña</label>
               <input
                 id="password"
                 type="password"
@@ -149,42 +100,38 @@ export function LandingPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
-                className="form-input"
+                style={styles.input}
               />
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="btn-submit"
               style={{
+                ...styles.button,
                 opacity: loading ? 0.6 : 1,
-                cursor: loading ? 'not-allowed' : 'pointer',
               }}
             >
               {loading ? 'Iniciando sesión...' : 'Iniciar sesión'}
             </button>
           </form>
 
-          <div className="form-divider">
-            <span>O</span>
-          </div>
+          <div style={styles.divider}>O</div>
 
           <button
             onClick={handleGoogleSignIn}
             disabled={loading}
-            className="btn-google"
             style={{
+              ...styles.googleButton,
               opacity: loading ? 0.6 : 1,
-              cursor: loading ? 'not-allowed' : 'pointer',
             }}
           >
             🔐 Entrar con Google
           </button>
 
-          <p className="auth-footer">
+          <p style={styles.footer}>
             ¿No tienes cuenta?{' '}
-            <Link to="/register" className="auth-link">
+            <Link to="/register" style={styles.link}>
               Regístrate aquí
             </Link>
           </p>
@@ -193,3 +140,173 @@ export function LandingPage() {
     </div>
   );
 }
+
+const styles = {
+  page: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    minHeight: '100vh',
+    margin: 0,
+    padding: 0,
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  },
+  hero: {
+    background: 'linear-gradient(135deg, #1a2e5c 0%, #2563eb 100%)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '60px 40px',
+    color: 'white',
+  },
+  heroContent: {
+    maxWidth: '400px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '30px',
+  },
+  heroIcon: {
+    fontSize: '64px',
+    marginBottom: '10px',
+  },
+  heroTitle: {
+    fontSize: '48px',
+    fontWeight: 'bold',
+    margin: '0 0 10px 0',
+    color: 'white',
+  },
+  heroTagline: {
+    fontSize: '18px',
+    margin: '0',
+    color: 'rgba(255,255,255,0.9)',
+  },
+  features: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+  },
+  feature: {
+    fontSize: '16px',
+    color: 'rgba(255,255,255,0.95)',
+  },
+  ctaButtons: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+  },
+  btnPrimary: {
+    padding: '14px 28px',
+    background: 'white',
+    color: '#1a2e5c',
+    border: 'none',
+    borderRadius: '8px',
+    fontSize: '16px',
+    fontWeight: '600',
+    textDecoration: 'none',
+    cursor: 'pointer',
+    textAlign: 'center',
+    transition: 'all 0.3s',
+    display: 'block',
+  },
+  btnSecondary: {
+    padding: '12px 24px',
+    background: 'transparent',
+    color: 'white',
+    border: '2px solid rgba(255,255,255,0.5)',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontWeight: '500',
+    textDecoration: 'none',
+    cursor: 'pointer',
+    textAlign: 'center',
+    display: 'block',
+  },
+  auth: {
+    background: 'white',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '60px 40px',
+  },
+  authCard: {
+    width: '100%',
+    maxWidth: '380px',
+  },
+  authTitle: {
+    fontSize: '28px',
+    fontWeight: 'bold',
+    color: '#1f2937',
+    margin: '0 0 30px 0',
+    textAlign: 'center',
+  },
+  error: {
+    background: '#fee2e2',
+    color: '#dc2626',
+    padding: '12px',
+    borderRadius: '6px',
+    marginBottom: '20px',
+    fontSize: '14px',
+  },
+  form: {
+    marginBottom: '20px',
+  },
+  formGroup: {
+    marginBottom: '20px',
+  },
+  label: {
+    display: 'block',
+    fontSize: '14px',
+    fontWeight: '500',
+    color: '#374151',
+    marginBottom: '6px',
+  },
+  input: {
+    width: '100%',
+    padding: '10px 12px',
+    border: '1px solid #d1d5db',
+    borderRadius: '6px',
+    fontSize: '14px',
+    boxSizing: 'border-box',
+    fontFamily: 'inherit',
+  },
+  button: {
+    width: '100%',
+    padding: '12px',
+    background: '#3b82f6',
+    color: 'white',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '14px',
+    fontWeight: '500',
+    cursor: 'pointer',
+    transition: 'background-color 0.2s',
+  },
+  divider: {
+    textAlign: 'center',
+    margin: '20px 0',
+    color: '#9ca3af',
+    fontSize: '12px',
+  },
+  googleButton: {
+    width: '100%',
+    padding: '12px',
+    background: 'white',
+    color: '#374151',
+    border: '1px solid #d1d5db',
+    borderRadius: '6px',
+    fontSize: '14px',
+    fontWeight: '500',
+    cursor: 'pointer',
+  },
+  footer: {
+    textAlign: 'center',
+    marginTop: '20px',
+    fontSize: '14px',
+    color: '#6b7280',
+    margin: '20px 0 0 0',
+  },
+  link: {
+    color: '#3b82f6',
+    textDecoration: 'none',
+    fontWeight: '500',
+  },
+};
