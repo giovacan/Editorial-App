@@ -5,7 +5,6 @@ import SidebarLeft from '../SidebarLeft/SidebarLeft';
 import SidebarRight from '../SidebarRight/SidebarRight';
 import UploadArea from '../UploadArea/UploadArea';
 import Editor from '../Editor/Editor';
-import html2pdf from 'html2pdf.js';
 import './Layout.css';
 
 function Layout() {
@@ -79,11 +78,14 @@ function Layout() {
   };
 
   const handleExportPdf = async () => {
+    // Lazy load html2pdf only when needed
+    const { default: html2pdf } = await import('html2pdf.js');
+
     const { bookData: safeBookData, config: safeConfig } = useEditorStore.getState();
-    
+
     const bookConfig = KDP_STANDARDS.getBookTypeConfig(safeBookData.bookType);
     const pageFormat = KDP_STANDARDS.getPageFormat(safeConfig.pageFormat || bookConfig.recommendedFormat);
-    
+
     const marginMM = {
       top: bookConfig.marginTop * 25.4,
       bottom: bookConfig.marginBottom * 25.4,
@@ -125,7 +127,7 @@ function Layout() {
     } catch (error) {
       alert('Error al generar PDF: ' + error.message);
     }
-    
+
     window.document.body.removeChild(container);
   };
 

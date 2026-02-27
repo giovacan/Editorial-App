@@ -272,6 +272,25 @@ function SidebarLeft() {
     [safeConfig.subheaders, selectedSubheaderLevel]
   );
 
+  // Create stable config reference for accordion memoization
+  // Only changes when actual values change, not when config object reference changes
+  const stableConfigHash = JSON.stringify({
+    pageFormat: safeConfig.pageFormat,
+    customPageFormat: safeConfig.customPageFormat,
+    gutterStrategy: safeConfig.gutterStrategy,
+    gutterManual: safeConfig.gutterManual,
+    gutterUnit: safeConfig.gutterUnit,
+    fontSize: safeConfig.fontSize,
+    lineHeight: safeConfig.lineHeight,
+    chapterTitle: safeConfig.chapterTitle,
+    subheaders: safeConfig.subheaders,
+    paragraph: safeConfig.paragraph,
+    quote: safeConfig.quote,
+    pagination: safeConfig.pagination,
+    header: safeConfig.header,
+    fontFamily: safeConfig.fontFamily
+  });
+
   const accordionItems = useMemo(() => [
     {
       id: 'formato',
@@ -1338,7 +1357,7 @@ function SidebarLeft() {
         </>
       )
     }
-  ], [selectedSubheaderLevel, safeConfig, safeBookData?.bookType, handleBookTypeChange, setConfig, currentSubheaderConfig]);
+  ], [selectedSubheaderLevel, stableConfigHash, safeBookData?.bookType, handleBookTypeChange, setConfig, currentSubheaderConfig]);
 
   return (
     <aside className="sidebar sidebar-left" role="complementary" aria-label="Panel de estructura y configuración">
