@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, memo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import useEditorStore from '../../store/useEditorStore';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import Accordion from '../Accordion/Accordion';
@@ -70,7 +71,7 @@ function SidebarLeft() {
   
   const chapters = useEditorStore((s) => s.bookData?.chapters);
   const bookType = useEditorStore((s) => s.bookData?.bookType);
-  const config = useEditorStore((s) => s.config);
+  const config = useEditorStore(useShallow((s) => s.config));
   const activeChapterId = useEditorStore((s) => s.editing.activeChapterId);
   const addChapter = useEditorStore((s) => s.addChapter);
   const addSection = useEditorStore((s) => s.addSection);

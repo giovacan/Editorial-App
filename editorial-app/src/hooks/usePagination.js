@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { KDP_STANDARDS } from '../utils/kdpStandards';
 import {
   splitParagraphByLines,
@@ -74,30 +74,33 @@ export const usePagination = (bookData, config, measureRef) => {
   
   const safeBookData = bookData || { bookType: 'novela', chapters: [], title: '' };
   const safeConfig = config || DEFAULT_CONFIG;
-  
-  const bookConfig = KDP_STANDARDS.getBookTypeConfig(safeBookData.bookType);
-  
-  let pageFormat;
-  if (safeConfig.pageFormat === 'custom') {
-    const customDims = KDP_STANDARDS.getCustomPageDimensions(
-      safeConfig.customPageFormat?.width || 6,
-      safeConfig.customPageFormat?.height || 9,
-      safeConfig.customPageFormat?.unit || 'in'
-    );
-    pageFormat = {
-      id: 'custom',
-      name: 'Custom',
-      width: customDims.widthMm,
-      height: customDims.heightMm,
-      unit: 'mm',
-      description: `Custom (${customDims.widthIn.toFixed(2)}" × ${customDims.heightIn.toFixed(2)}")`,
-      minMargins: { top: 12.7, bottom: 12.7, left: 12.7, right: 12.7 },
-      recommended: false,
-      type: 'paperback'
-    };
-  } else {
-    pageFormat = KDP_STANDARDS.getPageFormat(safeConfig.pageFormat || bookConfig.recommendedFormat);
-  }
+
+  const bookConfig = useMemo(
+    () => KDP_STANDARDS.getBookTypeConfig(safeBookData.bookType),
+    [safeBookData.bookType]
+  );
+
+  const pageFormat = useMemo(() => {
+    if (safeConfig.pageFormat === 'custom') {
+      const customDims = KDP_STANDARDS.getCustomPageDimensions(
+        safeConfig.customPageFormat?.width || 6,
+        safeConfig.customPageFormat?.height || 9,
+        safeConfig.customPageFormat?.unit || 'in'
+      );
+      return {
+        id: 'custom',
+        name: 'Custom',
+        width: customDims.widthMm,
+        height: customDims.heightMm,
+        unit: 'mm',
+        description: `Custom (${customDims.widthIn.toFixed(2)}" × ${customDims.heightIn.toFixed(2)}")`,
+        minMargins: { top: 12.7, bottom: 12.7, left: 12.7, right: 12.7 },
+        recommended: false,
+        type: 'paperback'
+      };
+    }
+    return KDP_STANDARDS.getPageFormat(safeConfig.pageFormat || bookConfig.recommendedFormat);
+  }, [safeConfig.pageFormat, safeConfig.customPageFormat, bookConfig])
 
   const calculateGutter = useCallback((pageCount) => {
     if (safeConfig.gutterStrategy === 'custom') {
@@ -107,7 +110,13 @@ export const usePagination = (bookData, config, measureRef) => {
   }, [safeConfig.gutterStrategy, safeConfig.gutterManual, safeConfig.pageFormat, safeBookData.bookType]);
   
   const [gutterValue, setGutterValue] = useState(() => calculateGutter(0));
-  
+  const gutterValueRef = useRef(gutterValue);
+
+  // Keep ref in sync with state, but don't trigger pagination effect
+  useEffect(() => {
+    gutterValueRef.current = gutterValue;
+  }, [gutterValue]);
+
   const extraEndPages = safeConfig.extraEndPages || 0;
   const extraEndPagesNumbered = safeConfig.extraEndPagesNumbered || false;
   
@@ -130,8 +139,8 @@ export const usePagination = (bookData, config, measureRef) => {
     const measureDiv = measureRef.current;
     const previewScale = Math.min(0.42, AVAILABLE_SIDEBAR_WIDTH / (pageFormat.width * PX_PER_MM));
     
-    const dimsOdd = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterValue, false);
-    const dimsEven = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterValue, true);
+    const dimsOdd = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterValueRef.current, false);
+    const dimsEven = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterValueRef.current, true);
     
     const contentWidth = Math.min(dimsOdd.contentWidth, dimsEven.contentWidth);
     const contentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight);
@@ -567,7 +576,7 @@ export const usePagination = (bookData, config, measureRef) => {
     }
     
     return () => { cancelled = true; };
-  }, [bookData, config, measureRef, bookConfig, pageFormat, gutterValue, extraEndPages, extraEndPagesNumbered]);
+  }, [bookData, config, measureRef, bookConfig, pageFormat, extraEndPages, extraEndPagesNumbered]);
   
   return { pages };
 };

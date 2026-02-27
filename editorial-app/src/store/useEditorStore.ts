@@ -157,8 +157,6 @@ const initialState = {
   }
 };
 
-const savedState = loadFromStorage();
-
 const mergeDeep = (target: any, source: any): any => {
   if (source && typeof source === 'object') {
     for (const key of Object.keys(source)) {
@@ -172,13 +170,17 @@ const mergeDeep = (target: any, source: any): any => {
   return target;
 };
 
-const mergedInitialState = savedState 
-  ? { 
-      ...initialState, 
-      bookData: { ...initialState.bookData, ...savedState.bookData },
-      config: mergeDeep({ ...initialState.config }, savedState.config)
-    }
-  : initialState;
+// Lazy initialization - deferred until first store access
+const getInitialState = () => {
+  const savedState = loadFromStorage();
+  return savedState
+    ? {
+        ...initialState,
+        bookData: { ...initialState.bookData, ...savedState.bookData },
+        config: mergeDeep({ ...initialState.config }, savedState.config)
+      }
+    : initialState;
+};
 
 let cachedStats: { chapters: number; words: number; characters: number; pages: number; readingTime: number } | null = null;
 let cachedChaptersLength = 0;
@@ -214,7 +216,7 @@ const calculateStats = (chapters: Chapter[]) => {
 const useEditorStore = create<EditorState>()(
   subscribeWithSelector(
     (set, get) => ({
-    ...mergedInitialState,
+    ...getInitialState(),
 
     setBookData: (bookData) => {
       set((state) => {
