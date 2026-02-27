@@ -60,7 +60,7 @@ export function LandingPage() {
           </div>
 
           <div style={styles.ctaButtons}>
-            <Link to="/register" style={styles.btnPrimary}>
+            <Link to="/app" style={styles.btnPrimary}>
               Probar gratis →
             </Link>
             <Link to="/pricing" style={styles.btnSecondary}>
@@ -145,10 +145,11 @@ const styles = {
   page: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
-    minHeight: '100vh',
+    height: '100vh',
     margin: 0,
     padding: 0,
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    overflow: 'hidden',
   },
   hero: {
     background: 'linear-gradient(135deg, #1a2e5c 0%, #2563eb 100%)',

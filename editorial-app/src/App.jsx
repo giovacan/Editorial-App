@@ -23,11 +23,11 @@ function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/pricing" element={<PricingPage />} />
+        <Route path="/app" element={<Layout />} />
 
         {/* Protected routes - requires authentication */}
         <Route element={<ProtectedRoute />}>
           <Route path="/books" element={<BooksPage />} />
-          <Route path="/app" element={<Layout />} />
         </Route>
 
         {/* Admin routes - requires authentication AND admin privileges */}
