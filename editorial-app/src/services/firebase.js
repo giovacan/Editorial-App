@@ -36,7 +36,9 @@ if (hasFirebaseCredentials) {
   app = null;
 
   console.log('🎭 Mock Firebase initialized (development mode)');
-  mockFirebase.initializeMockDevelopmentMode();
+  // Don't auto-login - allows viewing landing page
+  // Uncomment to auto-login for testing protected routes:
+  // mockFirebase.initializeMockDevelopmentMode();
 }
 
 export { auth, db, functions };
