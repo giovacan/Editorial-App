@@ -1,32 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { KDP_STANDARDS } from '../utils/kdpStandards';
-import { 
-  splitParagraphByLines, 
-  buildParagraphHtml, 
-  buildChapterTitleHtml, 
-  shouldStartOnRightPage 
+import {
+  splitParagraphByLines,
+  buildParagraphHtml,
+  buildChapterTitleHtml,
+  getQuoteStyle,
+  shouldStartOnRightPage
 } from '../utils/paginationEngine';
 import { calculateContentDimensions } from '../utils/textMeasurer';
 
-const getBlockquoteStyle = (qConfig, template) => {
-  if (!qConfig) return '';
-  const baseStyle = `font-style:${qConfig.italic ? 'italic' : 'normal'};font-size:${qConfig.sizeMultiplier}pt;line-height:1.6;`;
-  
-  switch (template) {
-    case 'classic':
-      return `margin:${qConfig.marginTop}em ${qConfig.indentRight}em ${qConfig.marginBottom}em ${qConfig.indentLeft}em;padding:0.5em 1em;border-left:${qConfig.showLine ? '3px solid #444' : 'none'};${baseStyle}`;
-    case 'bar':
-      return `margin:${qConfig.marginTop}em 0 ${qConfig.marginBottom}em 0;padding:0.5em 0 0.5em 1.5em;border-left:4px solid #666;${baseStyle}`;
-    case 'italic':
-      return `margin:${qConfig.marginTop}em ${qConfig.indentRight}em ${qConfig.marginBottom}em ${qConfig.indentLeft}em;padding:0.5em;font-style:italic;${baseStyle}`;
-    case 'indent':
-      return `margin:${qConfig.marginTop}em ${qConfig.indentRight + 1}em ${qConfig.marginBottom}em ${qConfig.indentLeft + 1}em;padding:0.5em;${baseStyle}`;
-    case 'minimal':
-      return `margin:${qConfig.marginTop}em ${qConfig.indentRight}em ${qConfig.marginBottom}em ${qConfig.indentLeft}em;padding:0.25em 0.5em;opacity:0.85;${baseStyle}`;
-    default:
-      return `margin:${qConfig.marginTop}em ${qConfig.indentRight}em ${qConfig.marginBottom}em ${qConfig.indentLeft}em;padding:0.5em 1em;border-left:${qConfig.showLine ? '3px solid #444' : 'none'};${baseStyle}`;
-  }
-};
 
 const DEFAULT_CONFIG = {
   pageFormat: 'a5',
@@ -546,7 +528,7 @@ export const usePagination = (bookData, config, measureRef) => {
                   let updatedRest = rest;
                   
                   if (isBlockquote && quoteClass) {
-                    const quoteStyle = getBlockquoteStyle(quoteConfig, quoteClass);
+                    const quoteStyle = getQuoteStyle(quoteConfig, quoteClass, baseFontSize, baseLineHeight, textAlign);
                     updatedChunk = chunk.replace(/<blockquote/, `<blockquote class="quote ${quoteClass}" style="${quoteStyle}"`);
                   }
                   
