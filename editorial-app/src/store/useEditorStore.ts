@@ -248,48 +248,54 @@ const useEditorStore = create<EditorState>()(
     applyQuoteTemplate: (template) => {
       set((state) => {
         if (!state.bookData?.chapters) return state;
-        
+
         const newChapters = state.bookData.chapters.map(chapter => {
           let html = chapter.html || '';
           if (html.includes('blockquote class="quote')) return chapter;
-          
-          const tempDiv = document.createElement('div');
-          tempDiv.innerHTML = html;
-          
-          const textElements = Array.from(tempDiv.querySelectorAll('em, i'));
-          const topLevelElements = textElements.filter(el => {
-            const parent = el.parentElement;
-            return parent && parent !== tempDiv && !parent.matches('em, i, blockquote');
-          });
-          
-          let hasChanges = false;
-          let changesCount = 0;
-          
-          topLevelElements.forEach(el => {
-            if (changesCount > 100) return;
-            if (el.closest('blockquote')) return;
-            
-            const text = el.textContent || '';
-            const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
-            
-            if (wordCount > 5) {
-              const wrapper = document.createElement('blockquote');
-              wrapper.className = `quote ${template}`;
-              wrapper.innerHTML = el.innerHTML;
-              el.parentNode?.replaceChild(wrapper, el);
-              hasChanges = true;
-              changesCount++;
-            }
-          });
-          
-          if (!hasChanges) return chapter;
-          return { ...chapter, html: tempDiv.innerHTML };
+
+          try {
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = html;
+
+            const textElements = Array.from(tempDiv.querySelectorAll('em, i'));
+            const topLevelElements = textElements.filter(el => {
+              const parent = el.parentElement;
+              return parent && parent !== tempDiv && !parent.matches('em, i, blockquote');
+            });
+
+            let hasChanges = false;
+            let changesCount = 0;
+
+            topLevelElements.forEach(el => {
+              if (changesCount > 100) return;
+              if (el.closest('blockquote')) return;
+
+              const text = el.textContent || '';
+              const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
+
+              if (wordCount > 5) {
+                const wrapper = document.createElement('blockquote');
+                wrapper.className = `quote ${template}`;
+                wrapper.innerHTML = el.innerHTML;
+                el.parentNode?.replaceChild(wrapper, el);
+                hasChanges = true;
+                changesCount++;
+              }
+            });
+
+            if (!hasChanges) return chapter;
+            return { ...chapter, html: tempDiv.innerHTML };
+          } catch (error) {
+            console.error('Error applying quote template to chapter:', error);
+            return chapter;
+          }
         });
-        
+
         const hasAnyChanges = newChapters.some((ch, i) => ch.html !== state.bookData.chapters[i].html);
         if (!hasAnyChanges) return state;
-        
+
         const newState = {
+          ...state,
           bookData: { ...state.bookData, chapters: newChapters }
         };
         saveToStorage(newState as EditorState);

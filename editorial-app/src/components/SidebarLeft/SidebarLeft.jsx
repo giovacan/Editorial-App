@@ -274,7 +274,7 @@ function SidebarLeft() {
 
   // Create stable config reference for accordion memoization
   // Only changes when actual values change, not when config object reference changes
-  const stableConfigHash = JSON.stringify({
+  const stableConfigHash = useMemo(() => JSON.stringify({
     pageFormat: safeConfig.pageFormat,
     customPageFormat: safeConfig.customPageFormat,
     gutterStrategy: safeConfig.gutterStrategy,
@@ -289,7 +289,22 @@ function SidebarLeft() {
     pagination: safeConfig.pagination,
     header: safeConfig.header,
     fontFamily: safeConfig.fontFamily
-  });
+  }), [
+    safeConfig.pageFormat,
+    safeConfig.customPageFormat,
+    safeConfig.gutterStrategy,
+    safeConfig.gutterManual,
+    safeConfig.gutterUnit,
+    safeConfig.fontSize,
+    safeConfig.lineHeight,
+    safeConfig.chapterTitle,
+    safeConfig.subheaders,
+    safeConfig.paragraph,
+    safeConfig.quote,
+    safeConfig.pagination,
+    safeConfig.header,
+    safeConfig.fontFamily
+  ]);
 
   const accordionItems = useMemo(() => [
     {
@@ -795,8 +810,14 @@ function SidebarLeft() {
                   return;
                 }
                 if (confirm('¿Aplicar estilo de cita a todo el documento?')) {
-                  const applyToAll = useEditorStore.getState().applyQuoteTemplate;
-                  if (applyToAll) applyToAll(safeConfig.quote.template || 'classic');
+                  try {
+                    const applyToAll = useEditorStore.getState().applyQuoteTemplate;
+                    const template = safeConfig?.quote?.template || 'classic';
+                    if (applyToAll) applyToAll(template);
+                  } catch (error) {
+                    console.error('Error applying quote template:', error);
+                    alert('Error al aplicar estilos de cita: ' + error.message);
+                  }
                 }
               }}
             >
