@@ -30,8 +30,6 @@ function SidebarRight({ onExportPdf, onExportEpub, onExportHtml }) {
 
       {activeTab === 'preview' && (
         <section className="sidebar-section preview-section">
-          <h2 className="sidebar-title">Vista Previa del Libro</h2>
-          
           {safeChapters?.length === 0 ? (
             <div className="preview-placeholder">
               <p>Sube contenido para ver la vista previa</p>

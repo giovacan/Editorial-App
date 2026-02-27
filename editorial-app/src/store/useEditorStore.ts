@@ -156,6 +156,10 @@ const initialState = {
     showPreview: false,
     showUpload: true,
     activeTab: 'structure' as const
+  },
+  paginationProgress: {
+    isActive: false,
+    percent: 0
   }
 };
 
@@ -444,7 +448,19 @@ const useEditorStore = create<EditorState>()(
     getStatsSelector: () => {
       const chapters = get().bookData?.chapters || [];
       return calculateStats(chapters);
-    }
+    },
+
+    setPaginationProgress: (percent: number) => set((state) => ({
+      paginationProgress: { ...state.paginationProgress, percent }
+    })),
+
+    startPagination: () => set((state) => ({
+      paginationProgress: { isActive: true, percent: 0 }
+    })),
+
+    endPagination: () => set((state) => ({
+      paginationProgress: { isActive: false, percent: 0 }
+    }))
   })
   )
 );

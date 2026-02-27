@@ -4,6 +4,7 @@ import useEditorStore from '../../store/useEditorStore';
 import { useBookSync } from '../../hooks/useBookSync';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import Header from '../Header/Header';
+import PaginationProgressBar from '../PaginationProgressBar/PaginationProgressBar';
 import SidebarLeft from '../SidebarLeft/SidebarLeft';
 import SidebarRight from '../SidebarRight/SidebarRight';
 import UploadArea from '../UploadArea/UploadArea';
@@ -398,6 +399,7 @@ ${safeBookData.chapters.map((ch, i) => `      <li><a href="chapter${i}.xhtml">${
         onSaveProject={handleSaveProject}
         onOpenProject={handleOpenProject}
       />
+      <PaginationProgressBar />
       
       <main className="app-main">
         <SidebarLeft />

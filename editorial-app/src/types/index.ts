@@ -184,14 +184,23 @@ export interface Stats {
   readingTime: number;
 }
 
+export interface PaginationProgress {
+  isActive: boolean;
+  percent: number;
+}
+
 export interface EditorState {
   bookData: Document;
   editing: Editing;
   config: Config;
   ui: UI;
+  paginationProgress: PaginationProgress;
   setBookData: (doc: Partial<Document>) => void;
   setConfig: (config: Partial<Config>) => void;
   setUi: (ui: Partial<UI>) => void;
+  setPaginationProgress: (percent: number) => void;
+  startPagination: () => void;
+  endPagination: () => void;
   addChapter: (title?: string) => Chapter;
   addSection: (title?: string) => Chapter;
   updateChapter: (id: string, updates: Partial<Chapter>) => void;

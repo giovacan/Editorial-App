@@ -35,9 +35,17 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
         )
       : `margin:0;padding:0;text-align:${textAlign};text-indent:${(hasIndent && isFirstChunk && preserveFirstIndent) ? indentValue + 'em' : '0'};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`;
     
-    measureDiv.innerHTML = remainingHtml;
+    let measuredHeight = 0;
+    try {
+      measureDiv.innerHTML = remainingHtml;
+      measuredHeight = measureDiv.offsetHeight || 0;
+    } catch (e) {
+      console.warn('Measurement error on initial check:', e);
+      lines.push(remainingHtml);
+      break;
+    }
     
-    if (measureDiv.offsetHeight <= maxHeight) {
+    if (measuredHeight <= maxHeight) {
       lines.push(remainingHtml);
       break;
     }
@@ -62,9 +70,16 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
         ? `<blockquote style="${testStyle}">${trialText}</blockquote>`
         : `<p style="${testStyle}">${trialText}</p>`;
 
-      measureDiv.innerHTML = wrapper;
+      try {
+        measureDiv.innerHTML = wrapper;
+        measuredHeight = measureDiv.offsetHeight || 0;
+      } catch (e) {
+        console.warn('Measurement error in binary search:', e);
+        high = mid - 1;
+        continue;
+      }
       
-      if (measureDiv.offsetHeight <= maxHeight) {
+      if (measuredHeight <= maxHeight) {
         fitLength = mid;
         low = mid;
       } else {

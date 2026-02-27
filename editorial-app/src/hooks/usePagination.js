@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { KDP_STANDARDS } from '../utils/kdpStandards';
+import useEditorStore from '../store/useEditorStore';
 import {
   splitParagraphByLines,
   buildParagraphHtml,
@@ -67,6 +68,33 @@ const DEFAULT_CONFIG = {
 const AVAILABLE_SIDEBAR_WIDTH = 220;
 const PX_PER_MM = 3.7795;
 const PX_PER_INCH = 96;
+
+const validatePages = (pages) => {
+  const validPages = [];
+  let corruptedCount = 0;
+  
+  for (let i = 0; i < pages.length; i++) {
+    const page = pages[i];
+    if (page && typeof page.pageNumber === 'number' && page.pageNumber > 0) {
+      validPages.push(page);
+    } else {
+      corruptedCount++;
+      validPages.push({
+        html: page?.html || '',
+        pageNumber: i + 1,
+        isBlank: true,
+        chapterTitle: page?.chapterTitle || '',
+        currentSubheader: page?.currentSubheader || ''
+      });
+    }
+  }
+  
+  if (corruptedCount > 0) {
+    console.warn(`⚠️ ${corruptedCount} páginas corregidas durante la paginación`);
+  }
+  
+  return validPages;
+};
 
 export const usePagination = (bookData, config, measureRef) => {
   const [pages, setPages] = useState([]);
@@ -140,7 +168,16 @@ export const usePagination = (bookData, config, measureRef) => {
       return;
     }
 
+    useEditorStore.getState().startPagination();
+
     const measureDiv = measureRef.current;
+    
+    try {
+      measureDiv.innerHTML = '';
+      measureDiv.style.cssText = '';
+    } catch (e) {
+      console.warn('Error resetting measureDiv:', e);
+    }
     const previewScale = Math.min(0.42, AVAILABLE_SIDEBAR_WIDTH / (pageFormat.width * PX_PER_MM));
     
     const dimsOdd = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterValueRef.current, false);
@@ -463,26 +500,37 @@ export const usePagination = (bookData, config, measureRef) => {
     safeBookData.chapters.forEach((chapter, index) => {
       if (!cancelled) {
         processChapter(chapter, index);
+        const progress = Math.round(((index + 1) / safeBookData.chapters.length) * 70);
+        useEditorStore.getState().setPaginationProgress(progress);
       }
     });
     
+    useEditorStore.getState().setPaginationProgress(75);
+    
     const applyFillPass = () => {
       let totalIterations = 0;
-      const maxIterations = 10000;
+      const maxIterations = 5000;
       
       for (let pageIdx = 0; pageIdx < generatedPages.length - 1; pageIdx++) {
         if (totalIterations >= maxIterations) break;
         
-        for (let fillAttempts = 0; fillAttempts < 50; fillAttempts++) {
+        for (let fillAttempts = 0; fillAttempts < 10; fillAttempts++) {
           if (totalIterations >= maxIterations) break;
           totalIterations++;
           
           const page = generatedPages[pageIdx];
           if (page.isBlank) break;
 
-          measureDiv.innerHTML = page.html;
-          const remainingSpace = contentHeight - measureDiv.offsetHeight;
-          const remainingLines = Math.floor(remainingSpace / lineHeightPx);
+          let remainingSpace = 0;
+          let remainingLines = 0;
+          try {
+            measureDiv.innerHTML = page.html;
+            remainingSpace = contentHeight - (measureDiv.offsetHeight || 0);
+            remainingLines = Math.floor(remainingSpace / lineHeightPx);
+          } catch (e) {
+            console.warn('Fill pass measurement error at page', pageIdx, e);
+            break;
+          }
 
           if (remainingLines < minOrphanLines) break;
 
@@ -582,6 +630,8 @@ export const usePagination = (bookData, config, measureRef) => {
 
     applyFillPass();
     
+    useEditorStore.getState().setPaginationProgress(95);
+    
     for (let i = 0; i < extraEndPages; i++) {
       generatedPages.push({
         html: '',
@@ -593,10 +643,16 @@ export const usePagination = (bookData, config, measureRef) => {
     }
     
     if (!cancelled) {
-      setPages(generatedPages);
+      const validatedPages = validatePages(generatedPages);
+      
+      setPages(validatedPages);
+      useEditorStore.getState().setPaginationProgress(100);
     }
     
-    return () => { cancelled = true; };
+    return () => { 
+      cancelled = true; 
+      useEditorStore.getState().endPagination();
+    };
   }, [bookData, config, measureRef, bookConfig, pageFormat, extraEndPages, extraEndPagesNumbered]);
   
   return { pages };

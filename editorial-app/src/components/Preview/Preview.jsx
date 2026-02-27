@@ -1,4 +1,4 @@
-import { useRef, memo } from 'react';
+import { useRef, memo, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import useEditorStore from '../../store/useEditorStore';
@@ -78,7 +78,28 @@ function Preview() {
   const previewPageRef = useRef(null);
   const navigatedChapterRef = useRef(null);
   const previewScrollRef = useRef(null);
-  
+
+  // Initialize measureRef in document.body (outside any overflow containers)
+  useEffect(() => {
+    if (!measureRef.current) {
+      const div = document.createElement('div');
+      div.style.position = 'fixed';
+      div.style.left = '-99999px';
+      div.style.top = '0';
+      div.style.visibility = 'hidden';
+      div.style.pointerEvents = 'none';
+      div.setAttribute('lang', 'es');
+      document.body.appendChild(div);
+      measureRef.current = div;
+
+      return () => {
+        if (measureRef.current && measureRef.current.parentNode) {
+          measureRef.current.parentNode.removeChild(measureRef.current);
+        }
+      };
+    }
+  }, []);
+
   const safeBookData = bookData || { bookType: 'novela', chapters: [], title: '' };
   const safeConfig = config || DEFAULT_CONFIG;
   
@@ -109,13 +130,7 @@ function Preview() {
   const { pages = [] } = usePagination(bookData, config, measureRef);
   const totalPageCount = pages.length;
   
-  const getGutterInInches = (value, unit) => {
-    if (unit === 'mm') return value / 25.4;
-    if (unit === 'cm') return value / 2.54;
-    return value;
-  };
-
-  const gutterValue = safeConfig.gutterStrategy === 'custom' 
+  const gutterValue = safeConfig.gutterStrategy === 'custom'
     ? getGutterInInches(safeConfig.gutterManual, safeConfig.gutterUnit || 'in')
     : KDP_STANDARDS.getDynamicGutter(safeConfig.pageFormat, safeBookData.bookType, totalPageCount);
   const { currentPage, goToPage, goToNextPage, goToPrevPage, goToFirstPage, goToLastPage, totalPages } = usePageNavigation(pages.length);
@@ -138,7 +153,7 @@ function Preview() {
     contentWidth, 
     contentHeight 
   } = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterForPage, isCurrentPageEven);
-  
+
   const {
     showMagnifier,
     setShowMagnifier,
@@ -189,8 +204,6 @@ function Preview() {
   
   return (
     <div className="preview-wrapper">
-      <div ref={measureRef} lang="es" style={{ position: 'fixed', left: -99999, top: 0, visibility: 'hidden' }}></div>
-      
       <div className="preview-controls">
         <div className="preview-controls-left">
           <button 
@@ -311,7 +324,7 @@ function Preview() {
         const magScale = magnifierZoom / 100;
         const tx = -(magnifierPos.x / 100) * pageWidthPx * (magScale - 1);
         const ty = -(magnifierPos.y / 100) * pageHeightPx * (magScale - 1);
-
+        
         return (
           <div 
             ref={magnifierPanelRef}
@@ -342,12 +355,22 @@ function Preview() {
             }}>
               Vista {magnifierZoom}%
             </div>
-            <div className="magnifier-panel-content" style={{
-              width: '100%',
-              height: 'calc(100% - 36px)',
-              overflow: 'hidden'
-            }}>
+            <div 
+              style={{
+                width: '100%',
+                height: 'calc(100% - 36px)',
+                overflow: 'hidden',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                padding: '0',
+                boxSizing: 'border-box',
+                background: '#f0f0f0'
+              }}
+            >
               <div
+                className="preview-page"
+                lang="es"
                 style={{
                   width: `${pageWidthPx}px`,
                   height: `${pageHeightPx}px`,
@@ -360,18 +383,24 @@ function Preview() {
                   hyphens: 'auto',
                   wordBreak: 'break-word',
                   background: 'white',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                  overflow: 'hidden',
+                  boxSizing: 'border-box',
                   transform: `scale(${magScale}) translate(${tx / magScale}px, ${ty / magScale}px)`,
                   transformOrigin: '0 0'
                 }}
               >
-                {hasHeaderContent && !skipHeader && (
+                {showHeaders && !currentPageData.isBlank && !skipHeader && hasHeaderContent && (
                   <div 
                     className="preview-header"
                     dangerouslySetInnerHTML={{ __html: headerHtml }}
                     style={{ marginBottom: '0.5em' }}
                   />
                 )}
-                <div dangerouslySetInnerHTML={{ __html: currentPageData.html || '' }} />
+                <div 
+                  className="preview-content"
+                  dangerouslySetInnerHTML={{ __html: currentPageData.html || '' }}
+                />
                 {pageNumHtml}
               </div>
             </div>
