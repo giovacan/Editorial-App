@@ -111,6 +111,7 @@ export const usePagination = (bookData, config, measureRef) => {
   
   const [gutterValue, setGutterValue] = useState(() => calculateGutter(0));
   const gutterValueRef = useRef(gutterValue);
+  const previousPageCountRef = useRef(0);
 
   // Keep ref in sync with state, but don't trigger pagination effect
   useEffect(() => {
@@ -119,16 +120,19 @@ export const usePagination = (bookData, config, measureRef) => {
 
   const extraEndPages = safeConfig.extraEndPages || 0;
   const extraEndPagesNumbered = safeConfig.extraEndPagesNumbered || false;
-  
+
+  // Gutter recalculation - NOT dependent on pages.length to avoid loops
   useEffect(() => {
-    if (safeConfig.gutterStrategy === 'auto' && pages.length > 0 && pages.length !== calculatedPageCount) {
-      const newGutter = calculateGutter(pages.length);
-      if (Math.abs(newGutter - gutterValue) > 0.001) {
-        setGutterValue(newGutter);
-        setCalculatedPageCount(pages.length);
+    if (safeConfig.gutterStrategy === 'auto' && pages.length > 0) {
+      if (previousPageCountRef.current !== pages.length) {
+        previousPageCountRef.current = pages.length;
+        const newGutter = calculateGutter(pages.length);
+        if (Math.abs(newGutter - gutterValueRef.current) > 0.001) {
+          setGutterValue(newGutter);
+        }
       }
     }
-  }, [pages.length, safeConfig.gutterStrategy, calculatedPageCount, gutterValue, calculateGutter]);
+  }, [pages, safeConfig.gutterStrategy, calculateGutter]);
   
   useEffect(() => {
     if (!safeBookData?.chapters?.length || !measureRef.current) {

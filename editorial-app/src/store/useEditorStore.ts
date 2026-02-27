@@ -183,17 +183,28 @@ const getInitialState = () => {
 };
 
 let cachedStats: { chapters: number; words: number; characters: number; pages: number; readingTime: number } | null = null;
-let cachedChaptersLength = 0;
+let cachedKey = '';
+
+// Create a cache key based on chapter count + combined html hash
+const getChaptersKey = (chapters: Chapter[]) => {
+  let hash = chapters.length.toString();
+  for (let i = 0; i < chapters.length; i++) {
+    hash += '|' + (chapters[i]?.html?.length ?? 0);
+  }
+  return hash;
+};
 
 const calculateStats = (chapters: Chapter[]) => {
   const totalChapters = chapters.length;
-  if (cachedStats && cachedChaptersLength === totalChapters && chapters.length > 0) {
+  const currentKey = getChaptersKey(chapters);
+
+  if (cachedStats && cachedKey === currentKey && chapters.length > 0) {
     return cachedStats;
   }
-  
-  cachedChaptersLength = totalChapters;
+
+  cachedKey = currentKey;
   let totalWords = 0;
-  
+
   for (let i = 0; i < chapters.length; i++) {
     const ch = chapters[i];
     if (ch.html) {
@@ -201,7 +212,7 @@ const calculateStats = (chapters: Chapter[]) => {
       totalWords += text.split(' ').filter(w => w.length > 0).length;
     }
   }
-  
+
   cachedStats = {
     chapters: totalChapters,
     words: totalWords,
@@ -209,7 +220,7 @@ const calculateStats = (chapters: Chapter[]) => {
     pages: Math.ceil(totalWords / 275),
     readingTime: Math.ceil(totalWords / 250)
   };
-  
+
   return cachedStats;
 };
 

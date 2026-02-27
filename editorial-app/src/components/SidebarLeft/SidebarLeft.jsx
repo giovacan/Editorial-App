@@ -233,6 +233,11 @@ function SidebarLeft() {
     setConfig({ chapterTitle: { ...currentChapterTitle, layout } });
   }, [setConfig, config?.chapterTitle]);
 
+  const updateQuote = useCallback((key, value) => {
+    const currentQuote = config?.quote || { enabled: true, indentLeft: 2, indentRight: 2, showLine: true, italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1, template: 'classic', autoDetect: true, detectedQuotes: [] };
+    setConfig({ quote: { ...currentQuote, [key]: value } });
+  }, [setConfig, config?.quote]);
+
   const updateSubheader = useCallback((key, value) => {
     const currentSubheaders = config?.subheaders || { h1: {}, h2: {}, h3: {}, h4: {}, h5: {}, h6: {} };
     const currentSubheader = currentSubheaders[selectedSubheaderLevel] || {};

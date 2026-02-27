@@ -1,4 +1,5 @@
 import { useRef, memo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import useEditorStore from '../../store/useEditorStore';
 import { usePagination, usePageNavigation } from '../../hooks/usePagination';
@@ -66,9 +67,9 @@ const DEFAULT_CONFIG = {
 };
 
 function Preview() {
-  const bookData = useEditorStore((s) => s.bookData);
-  const config = useEditorStore((s) => s.config);
-  const editing = useEditorStore((s) => s.editing);
+  const bookData = useEditorStore(useShallow((s) => s.bookData));
+  const config = useEditorStore(useShallow((s) => s.config));
+  const editing = useEditorStore(useShallow((s) => s.editing));
   
   const activeChapterId = editing?.activeChapterId;
   
