@@ -16,6 +16,8 @@ export function LandingPage() {
     return <Navigate to="/books" replace />;
   }
 
+  // Show landing page (don't wait for auth loading in mock mode)
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
