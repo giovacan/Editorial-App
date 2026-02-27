@@ -6,6 +6,7 @@ import { usePagination, usePageNavigation } from '../../hooks/usePagination';
 import { useMagnifier } from '../../hooks/useMagnifier';
 import { useHeaderFooter, buildHeaderHtml } from '../../hooks/useHeaderFooter';
 import { calculateContentDimensions } from '../../utils/textMeasurer';
+import { resolveHeaderPageNumberConflicts } from '../../utils/headerConflictResolver';
 import './Preview.css';
 
 const AVAILABLE_SIDEBAR_WIDTH = 220;
@@ -159,7 +160,10 @@ function Preview() {
     headerCenter,
     headerRight,
     isEvenPage,
-    headerConfig
+    headerConfig,
+    truncatedSubheader,
+    subtopicBehavior,
+    subtopicSeparator
   } = useHeaderFooter(safeConfig, currentPageData, totalPages, safeBookData.title);
   
   const baseFontSize = (safeConfig.fontSize || bookConfig.fontSize) * previewScale;

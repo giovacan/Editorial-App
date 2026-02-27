@@ -7,35 +7,32 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
   const quoteMatch = html.match(/class="quote\s+(\w+)"/);
   const quoteTemplate = quoteMatch ? quoteMatch[1] : 'classic';
 
-  const getBlockquoteTestStyle = (template, isFirst) => {
-    const baseStyle = 'font-style:italic;font-size:11.4pt;line-height:1.6;';
-    switch (template) {
-      case 'classic':
-        return `margin:1em 2em 1em 2em;padding:0.5em 1em;border-left:3px solid #444;${baseStyle}`;
-      case 'bar':
-        return 'margin:1em 0 1em 0;padding:0.5em 0 0.5em 1.5em;border-left:4px solid #666;';
-      case 'italic':
-        return 'margin:1em 2em 1em 2em;padding:0.5em;font-style:italic;';
-      case 'indent':
-        return 'margin:1em 3em 1em 3em;padding:0.5em;';
-      case 'minimal':
-        return 'margin:1em 2em 1em 2em;padding:0.25em 0.5em;opacity:0.85;';
-      default:
-        return 'margin:1em 2em 1em 2em;padding:0.5em 1em;border-left:3px solid #444;';
-    }
+  // Create default quote config if none provided to ensure consistent styling
+  const defaultQuoteConfig = {
+    enabled: true,
+    indentLeft: 2,
+    indentRight: 2,
+    showLine: true,
+    italic: true,
+    sizeMultiplier: 0.95,
+    marginTop: 1,
+    marginBottom: 1
   };
+  
+  const effectiveQuoteConfig = quoteConfig?.config || defaultQuoteConfig;
+  const effectiveBaseFontSize = quoteConfig?.baseFontSize || 12;
+  const effectiveBaseLineHeight = quoteConfig?.baseLineHeight || 1.6;
+  const effectiveTextAlign = quoteConfig?.textAlign || textAlign;
   
   while (remainingHtml) {
     const testStyle = isBlockquote
-      ? (quoteConfig
-          ? getQuoteStyle(
-              quoteConfig.config,
-              quoteTemplate,
-              quoteConfig.baseFontSize,
-              quoteConfig.baseLineHeight,
-              quoteConfig.textAlign
-            )
-          : getBlockquoteTestStyle(quoteTemplate, isFirstChunk))
+      ? getQuoteStyle(
+          effectiveQuoteConfig,
+          quoteTemplate,
+          effectiveBaseFontSize,
+          effectiveBaseLineHeight,
+          effectiveTextAlign
+        )
       : `margin:0;padding:0;text-align:${textAlign};text-indent:${(hasIndent && isFirstChunk && preserveFirstIndent) ? indentValue + 'em' : '0'};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`;
     
     measureDiv.innerHTML = remainingHtml;
@@ -99,10 +96,14 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
     
     if (remainingHtml) {
       if (isBlockquote) {
-        // Use getQuoteStyle for continuation if quoteConfig available, else fallback to hardcoded style
-        const continuationStyle = quoteConfig
-          ? getQuoteStyle(quoteConfig.config, quoteTemplate, quoteConfig.baseFontSize, quoteConfig.baseLineHeight, quoteConfig.textAlign)
-          : getBlockquoteTestStyle(quoteTemplate, false);
+        // Use getQuoteStyle for continuation with effective config
+        const continuationStyle = getQuoteStyle(
+          effectiveQuoteConfig,
+          quoteTemplate,
+          effectiveBaseFontSize,
+          effectiveBaseLineHeight,
+          effectiveTextAlign
+        );
         remainingHtml = `<blockquote class="quote ${quoteTemplate}" style="${continuationStyle}">${remainingHtml}</blockquote>`;
       } else {
         remainingHtml = `<p style="margin:0;padding:0;text-align:${textAlign};text-indent:0;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;">${remainingHtml}</p>`;

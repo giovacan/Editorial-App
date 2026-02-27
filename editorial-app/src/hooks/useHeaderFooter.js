@@ -6,16 +6,18 @@ export const useHeaderFooter = (config, currentPageData, totalPages, bookTitle) 
   const showHeaders = headerConfig.enabled !== false;
   
   const isEvenPage = safePageData.pageNumber ? safePageData.pageNumber % 2 === 0 : false;
+  const subtopicMaxLength = headerConfig.subtopicMaxLength || 60;
+  const subtopicSeparator = headerConfig.subtopicSeparator || ' | ';
+  
   const truncatedSubheader = useMemo(() => {
     const subheader = safePageData?.currentSubheader || '';
-    if (subheader.length > 40) {
-      return subheader.substring(0, 37) + '...';
+    if (subheader.length > subtopicMaxLength) {
+      return subheader.substring(0, subtopicMaxLength - 3) + '...';
     }
     return subheader;
-  }, [safePageData?.currentSubheader]);
+  }, [safePageData?.currentSubheader, subtopicMaxLength]);
   
-  const subtopicBehavior = headerConfig.subtopicBehavior || 'combine';
-  const subtopicSeparator = headerConfig.subtopicSeparator || ' - ';
+  const subtopicBehavior = headerConfig.subtopicBehavior || 'none';
   
   const getHeaderContent = (contentType) => {
     const baseContent = (() => {
@@ -108,7 +110,7 @@ export const useHeaderFooter = (config, currentPageData, totalPages, bookTitle) 
       return safePageData?.chapterTitle || '';
     }
     return '';
-  }, [showHeaders, safePageData, shouldShowHeader, headerConfig, pageConfig, isEvenPage]);
+  }, [showHeaders, safePageData, shouldShowHeader, headerConfig, isEvenPage]);
   
   const shouldSkipHeader = () => {
     if (!headerConfig.skipFirstChapterPage) return false;
@@ -125,7 +127,10 @@ export const useHeaderFooter = (config, currentPageData, totalPages, bookTitle) 
     headerRight,
     shouldShowHeader,
     isEvenPage,
-    headerConfig
+    headerConfig,
+    truncatedSubheader,
+    subtopicBehavior,
+    subtopicSeparator
   };
 };
 

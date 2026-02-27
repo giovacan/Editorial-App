@@ -69,6 +69,138 @@ const TemplatePreviewLarge = memo(function TemplatePreviewLarge({
 });
 
 /**
+ * Subtopic configuration panel
+ */
+const SubtopicConfigPanel = memo(function SubtopicConfigPanel({ 
+  config, 
+  onChange 
+}) {
+  const handleSubtopicBehaviorChange = (behavior) => {
+    onChange({ ...config, subtopicBehavior: behavior });
+  };
+
+  const handleSeparatorChange = (separator) => {
+    onChange({ ...config, subtopicSeparator: separator });
+  };
+
+  const handleMaxLengthChange = (e) => {
+    const value = parseInt(e.target.value) || 60;
+    onChange({ ...config, subtopicMaxLength: value });
+  };
+
+  return (
+    <div className="subtopic-config-panel">
+      <div className="config-group">
+        <legend>Comportamiento de Subtemas</legend>
+        <div className="radio-group">
+          <label>
+            <input
+              type="radio"
+              value="none"
+              checked={config.subtopicBehavior === 'none'}
+              onChange={(e) => handleSubtopicBehaviorChange(e.target.value)}
+            />
+            No mostrar
+          </label>
+          <label>
+            <input
+              type="radio"
+              value="combine"
+              checked={config.subtopicBehavior === 'combine'}
+              onChange={(e) => handleSubtopicBehaviorChange(e.target.value)}
+            />
+            Combinar con contenido
+          </label>
+          <label>
+            <input
+              type="radio"
+              value="replace"
+              checked={config.subtopicBehavior === 'replace'}
+              onChange={(e) => handleSubtopicBehaviorChange(e.target.value)}
+            />
+            Reemplazar contenido
+          </label>
+          <label>
+            <input
+              type="radio"
+              value="odd-only"
+              checked={config.subtopicBehavior === 'odd-only'}
+              onChange={(e) => handleSubtopicBehaviorChange(e.target.value)}
+            />
+            Solo páginas impares
+          </label>
+          <label>
+            <input
+              type="radio"
+              value="even-only"
+              checked={config.subtopicBehavior === 'even-only'}
+              onChange={(e) => handleSubtopicBehaviorChange(e.target.value)}
+            />
+            Solo páginas pares
+          </label>
+        </div>
+      </div>
+
+      <div className="config-group">
+        <legend>Separador de Subtemas</legend>
+        <div className="radio-group">
+          <label>
+            <input
+              type="radio"
+              value=" | "
+              checked={config.subtopicSeparator === ' | '}
+              onChange={() => handleSeparatorChange(' | ')}
+            />
+            Barra vertical (|)
+          </label>
+          <label>
+            <input
+              type="radio"
+              value=" • "
+              checked={config.subtopicSeparator === ' • '}
+              onChange={() => handleSeparatorChange(' • ')}
+            />
+            Punto medio (•)
+          </label>
+          <label>
+            <input
+              type="radio"
+              value=" — "
+              checked={config.subtopicSeparator === ' — '}
+              onChange={() => handleSeparatorChange(' — ')}
+            />
+            Guión largo (—)
+          </label>
+          <label>
+            <input
+              type="radio"
+              value=" / "
+              checked={config.subtopicSeparator === ' / '}
+              onChange={() => handleSeparatorChange(' / ')}
+            />
+            Diagonal (/)
+          </label>
+        </div>
+      </div>
+
+      <div className="config-group">
+        <legend>Longitud Máxima</legend>
+        <div className="number-row">
+          <label>Caracteres máximos:</label>
+          <input
+            type="number"
+            min="20"
+            max="100"
+            value={config.subtopicMaxLength || 60}
+            onChange={handleMaxLengthChange}
+          />
+        </div>
+      </div>
+    </div>
+  );
+});
+
+/**
  * Compact button for sidebar
  */
 function HeaderTemplateButton({ currentTemplate, onClick }) {
@@ -86,16 +218,22 @@ function HeaderTemplateButton({ currentTemplate, onClick }) {
 }
 
 /**
- * Modal component for template selection
+ * Modal component for template selection with subtopic configuration
  */
 function HeaderTemplateModal({ 
   isOpen, 
   onClose, 
   templates, 
   selectedId, 
-  onSelect 
+  onSelect,
+  headerConfig,
+  onHeaderConfigChange
 }) {
   if (!isOpen) return null;
+
+  const currentTemplate = templates.find(t => t.id === selectedId);
+  const hasSubtopicFeatures = currentTemplate?.trackSubheaders || 
+                             currentTemplate?.subtopicBehavior !== 'none';
 
   return (
     <div className="header-template-modal-overlay" onClick={onClose}>
@@ -122,6 +260,16 @@ function HeaderTemplateModal({
               />
             ))}
           </div>
+          
+          {hasSubtopicFeatures && (
+            <div className="subtopic-config-section">
+              <h4>Configuración de Subtemas</h4>
+              <SubtopicConfigPanel 
+                config={headerConfig}
+                onChange={onHeaderConfigChange}
+              />
+            </div>
+          )}
         </div>
         <div className="modal-footer">
           <button 
@@ -145,22 +293,36 @@ function HeaderTemplateModal({
 }
 
 /**
- * Main Header Template Selector Component
+ * Main Header Template Selector Component with subtopic support
  */
 function HeaderTemplateSelector({ 
   value, 
   onChange,
-  templates
+  templates,
+  headerConfig,
+  onHeaderConfigChange
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   
   const currentTemplate = templates.find(t => t.id === value) || templates[0];
+  const hasSubtopicFeatures = currentTemplate?.trackSubheaders || 
+                             currentTemplate?.subtopicBehavior !== 'none';
 
   const handleOpenModal = () => setIsModalOpen(true);
   const handleCloseModal = () => setIsModalOpen(false);
   
   const handleSelect = (templateId) => {
     onChange(templateId);
+    // Apply template defaults to header config
+    const template = templates.find(t => t.id === templateId);
+    if (template) {
+      onHeaderConfigChange({
+        ...headerConfig,
+        subtopicBehavior: template.subtopicBehavior || 'none',
+        subtopicSeparator: template.subtopicSeparator || ' | ',
+        subtopicMaxLength: template.subtopicMaxLength || 60
+      });
+    }
   };
 
   return (
@@ -170,12 +332,20 @@ function HeaderTemplateSelector({
         onClick={handleOpenModal}
       />
       
+      {hasSubtopicFeatures && (
+        <div className="subtopic-indicator">
+          <span className="subtopic-badge">🏷️ Subtemas</span>
+        </div>
+      )}
+      
       <HeaderTemplateModal
         isOpen={isModalOpen}
         onClose={handleCloseModal}
         templates={templates}
         selectedId={value}
         onSelect={handleSelect}
+        headerConfig={headerConfig}
+        onHeaderConfigChange={onHeaderConfigChange}
       />
     </div>
   );

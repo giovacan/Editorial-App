@@ -1,4 +1,7 @@
+import { useSearchParams } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 import useEditorStore from '../../store/useEditorStore';
+import { useBookSync } from '../../hooks/useBookSync';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import Header from '../Header/Header';
 import SidebarLeft from '../SidebarLeft/SidebarLeft';
@@ -8,6 +11,13 @@ import Editor from '../Editor/Editor';
 import './Layout.css';
 
 function Layout() {
+  const { user, isAdmin, logOut } = useAuth();
+  const [searchParams] = useSearchParams();
+  const bookId = searchParams.get('bookId');
+
+  // Sync with Firestore if bookId is provided
+  useBookSync(bookId);
+
   const chapters = useEditorStore((s) => s.bookData?.chapters);
   const ui = useEditorStore((s) => s.ui);
   const loadContent = useEditorStore((s) => s.loadContent);

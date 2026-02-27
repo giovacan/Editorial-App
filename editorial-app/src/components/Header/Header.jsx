@@ -1,6 +1,12 @@
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import { UserMenu } from '../Auth/UserMenu';
 import './Header.css';
 
 function Header({ onNewProject, onSaveProject, onOpenProject }) {
+  const navigate = useNavigate();
+  const { user, isAdmin, logOut } = useAuth();
+
   return (
     <header className="app-header" role="banner">
       <div className="header-content">
@@ -12,6 +18,9 @@ function Header({ onNewProject, onSaveProject, onOpenProject }) {
         </div>
 
         <nav className="header-nav" role="navigation" aria-label="Navegación principal">
+          <button className="btn btn-secondary" onClick={() => navigate('/books')} aria-label="Ver mis libros">
+            Mis Libros
+          </button>
           <button className="btn btn-primary" onClick={onNewProject} aria-label="Crear nuevo proyecto">
             + Nuevo
           </button>
@@ -30,6 +39,18 @@ function Header({ onNewProject, onSaveProject, onOpenProject }) {
           <button className="btn btn-icon" aria-label="Ayuda">
             ?
           </button>
+
+          {user ? (
+            <UserMenu user={user} isAdmin={isAdmin} onSignOut={logOut} />
+          ) : (
+            <button
+              className="btn btn-primary"
+              onClick={() => navigate('/login')}
+              aria-label="Iniciar sesión"
+            >
+              Iniciar sesión
+            </button>
+          )}
         </div>
       </div>
     </header>

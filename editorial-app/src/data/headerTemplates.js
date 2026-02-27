@@ -73,7 +73,10 @@ export const HEADER_TEMPLATES = {
     lineWidth: 0.5,
     lineColor: 'black',
     fontSize: 70,
-    fontFamily: 'same'
+    fontFamily: 'same',
+    subtopicBehavior: 'none',
+    subtopicSeparator: ' | ',
+    subtopicMaxLength: 60
   },
   
   modern: {
@@ -96,7 +99,10 @@ export const HEADER_TEMPLATES = {
     lineWidth: 0.25,
     lineColor: 'gray',
     fontSize: 65,
-    fontFamily: 'sans'
+    fontFamily: 'sans',
+    subtopicBehavior: 'none',
+    subtopicSeparator: ' | ',
+    subtopicMaxLength: 60
   },
   
   minimal: {
@@ -119,7 +125,10 @@ export const HEADER_TEMPLATES = {
     lineWidth: 0,
     lineColor: 'light-gray',
     fontSize: 70,
-    fontFamily: 'same'
+    fontFamily: 'same',
+    subtopicBehavior: 'none',
+    subtopicSeparator: ' | ',
+    subtopicMaxLength: 60
   },
   
   academic: {
@@ -145,7 +154,10 @@ export const HEADER_TEMPLATES = {
     fontFamily: 'same',
     trackSubheaders: true,
     subheaderLevels: ['h1', 'h2'],
-    subheaderFormat: 'numbered'
+    subheaderFormat: 'numbered',
+    subtopicBehavior: 'combine',
+    subtopicSeparator: ' • ',
+    subtopicMaxLength: 40
   },
   
   literary: {
@@ -168,7 +180,39 @@ export const HEADER_TEMPLATES = {
     lineWidth: 0.5,
     lineColor: 'gray',
     fontSize: 65,
-    fontFamily: 'small-caps'
+    fontFamily: 'small-caps',
+    subtopicBehavior: 'replace',
+    subtopicSeparator: ' — ',
+    subtopicMaxLength: 50
+  },
+  
+  subtopic: {
+    id: 'subtopic',
+    name: 'Con Subtemas',
+    description: 'Enfocado en subtemas detectados automáticamente',
+    icon: '🏷️',
+    evenPage: {
+      leftContent: 'subheader',
+      centerContent: 'none',
+      rightContent: 'title'
+    },
+    oddPage: {
+      leftContent: 'title',
+      centerContent: 'none',
+      rightContent: 'subheader'
+    },
+    showLine: true,
+    lineStyle: 'solid',
+    lineWidth: 0.5,
+    lineColor: 'black',
+    fontSize: 70,
+    fontFamily: 'same',
+    trackSubheaders: true,
+    subheaderLevels: ['h1', 'h2', 'h3'],
+    subheaderFormat: 'full',
+    subtopicBehavior: 'combine',
+    subtopicSeparator: ' | ',
+    subtopicMaxLength: 60
   },
   
   custom: {
@@ -191,7 +235,10 @@ export const HEADER_TEMPLATES = {
     lineWidth: 0.5,
     lineColor: 'black',
     fontSize: 70,
-    fontFamily: 'same'
+    fontFamily: 'same',
+    subtopicBehavior: 'none',
+    subtopicSeparator: ' | ',
+    subtopicMaxLength: 60
   }
 };
 

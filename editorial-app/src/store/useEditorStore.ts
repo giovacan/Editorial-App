@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
+import { nanoid } from 'nanoid';
 import type { EditorState, Chapter } from '../types';
 
 const STORAGE_KEY = 'editorial-app-storage';
@@ -41,6 +42,7 @@ const saveToStorage = (state: EditorState) => {
 
 const initialState = {
   bookData: {
+    id: nanoid(),
     title: '',
     author: '',
     chapters: [],
@@ -391,9 +393,23 @@ const useEditorStore = create<EditorState>()(
     loadContent: (chapters) => set((state) => {
       const newState = {
         bookData: { ...state.bookData, chapters },
-        editing: { 
-          ...state.editing, 
-          activeChapterId: chapters[0]?.id || null 
+        editing: {
+          ...state.editing,
+          activeChapterId: chapters[0]?.id || null
+        },
+        ui: { ...state.ui, showUpload: false, showPreview: true }
+      };
+      saveToStorage(newState as EditorState);
+      return newState;
+    }),
+
+    loadBook: (document) => set((state) => {
+      const newState = {
+        bookData: document,
+        editing: {
+          ...state.editing,
+          activeChapterId: document.chapters[0]?.id || null,
+          isDirty: false
         },
         ui: { ...state.ui, showUpload: false, showPreview: true }
       };
@@ -406,6 +422,7 @@ const useEditorStore = create<EditorState>()(
       const freshState = getInitialState();
       set({
         bookData: {
+          id: nanoid(),
           title: '',
           author: '',
           chapters: [],

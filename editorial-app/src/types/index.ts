@@ -111,6 +111,7 @@ export interface Chapter {
 }
 
 export interface Document {
+  id?: string;
   title: string;
   author: string;
   chapters: Chapter[];
@@ -199,4 +200,46 @@ export interface EditorState {
   loadContent: (chapters: Chapter[]) => void;
   newProject: () => void;
   getStats: () => Stats;
+}
+
+// ===== AUTH & USER TYPES =====
+
+export interface User {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
+}
+
+export type SubscriptionPlan = 'free' | 'pro' | 'premium';
+
+export interface Subscription {
+  plan: SubscriptionPlan;
+  credits: number;
+  stripeCustomerId?: string;
+  expiresAt?: Date | null;
+}
+
+export interface PlanConfig {
+  maxBooks: number;      // -1 = unlimited
+  maxExports: number;    // -1 = unlimited
+  features: string[];
+  price?: number;
+}
+
+export interface SystemConfig {
+  stripePublishableKey: string;
+  stripeWebhookSecret?: string;
+  stripePriceIdPro: string;
+  stripePriceIdPremium: string;
+  plans: {
+    free: PlanConfig;
+    pro: PlanConfig;
+    premium: PlanConfig;
+  };
+  maintenanceMode: boolean;
+  registrationEnabled: boolean;
+  appVersion: string;
+  updatedAt: Date;
+  updatedBy: string;
 }

@@ -173,10 +173,22 @@ export const usePagination = (bookData, config, measureRef) => {
     const minWidowLines = safeConfig.pagination?.minWidowLines || 1;
     const splitLongParagraphs = safeConfig.pagination?.splitLongParagraphs !== false;
 
-    // Quote config for consistent split measurement (fix: 2.4x font size mismatch)
-    const quoteOptions = safeConfig.quote?.enabled
-      ? { config: safeConfig.quote, baseFontSize, baseLineHeight, textAlign }
-      : null;
+    // Quote config for consistent split measurement - always provide config to prevent style degradation
+    const quoteOptions = {
+      config: safeConfig.quote || {
+        enabled: true,
+        indentLeft: 2,
+        indentRight: 2,
+        showLine: true,
+        italic: true,
+        sizeMultiplier: 0.95,
+        marginTop: 1,
+        marginBottom: 1
+      },
+      baseFontSize,
+      baseLineHeight,
+      textAlign
+    };
 
     const generatedPages = [];
     let cancelled = false;
