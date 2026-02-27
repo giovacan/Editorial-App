@@ -62,9 +62,9 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
       const mid = Math.floor((low + high + 1) / 2);
       const trialText = text.substring(0, mid);
       const wrapper = isBlockquote
-        ? `<blockquote style="${getBlockquoteTestStyle(quoteTemplate, isFirstChunk)}">${trialText}</blockquote>`
+        ? `<blockquote style="${testStyle}">${trialText}</blockquote>`
         : `<p style="${testStyle}">${trialText}</p>`;
-      
+
       measureDiv.innerHTML = wrapper;
       
       if (measureDiv.offsetHeight <= maxHeight) {
@@ -86,10 +86,10 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
     const chunkText = text.substring(0, breakPoint);
     const endsWithSentence = /[.!?]\s*$/.test(chunkText);
     const indent = (hasIndent && isFirstChunk && preserveFirstIndent) ? indentValue + 'em' : '0';
-    
+
     let chunkHtml;
     if (isBlockquote) {
-      chunkHtml = `<blockquote class="quote ${quoteTemplate}" style="${getBlockquoteTestStyle(quoteTemplate, isFirstChunk)}">${chunkText}</blockquote>`;
+      chunkHtml = `<blockquote class="quote ${quoteTemplate}" style="${testStyle}">${chunkText}</blockquote>`;
     } else {
       chunkHtml = `<p style="margin:0;padding:0;text-align:${textAlign};text-indent:${indent};text-justify:inter-word;hyphens:auto;text-align-last:${endsWithSentence ? 'left' : 'justify'};overflow-wrap:break-word;">${chunkText}</p>`;
     }
@@ -99,7 +99,11 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
     
     if (remainingHtml) {
       if (isBlockquote) {
-        remainingHtml = `<blockquote class="quote ${quoteTemplate}" style="${getBlockquoteTestStyle(quoteTemplate, false)}">${remainingHtml}</blockquote>`;
+        // Use getQuoteStyle for continuation if quoteConfig available, else fallback to hardcoded style
+        const continuationStyle = quoteConfig
+          ? getQuoteStyle(quoteConfig.config, quoteTemplate, quoteConfig.baseFontSize, quoteConfig.baseLineHeight, quoteConfig.textAlign)
+          : getBlockquoteTestStyle(quoteTemplate, false);
+        remainingHtml = `<blockquote class="quote ${quoteTemplate}" style="${continuationStyle}">${remainingHtml}</blockquote>`;
       } else {
         remainingHtml = `<p style="margin:0;padding:0;text-align:${textAlign};text-indent:0;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;">${remainingHtml}</p>`;
       }
