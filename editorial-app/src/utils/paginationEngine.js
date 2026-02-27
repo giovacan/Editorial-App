@@ -1,12 +1,12 @@
-export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, hasIndent = false, indentValue = 1.5, preserveFirstIndent = false) => {
+export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, hasIndent = false, indentValue = 1.5, preserveFirstIndent = false, quoteConfig = null) => {
   const lines = [];
   let remainingHtml = html;
   let isFirstChunk = true;
-  
+
   const isBlockquote = html.toLowerCase().includes('<blockquote');
   const quoteMatch = html.match(/class="quote\s+(\w+)"/);
   const quoteTemplate = quoteMatch ? quoteMatch[1] : 'classic';
-  
+
   const getBlockquoteTestStyle = (template, isFirst) => {
     const baseStyle = 'font-style:italic;font-size:11.4pt;line-height:1.6;';
     switch (template) {
@@ -26,8 +26,16 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
   };
   
   while (remainingHtml) {
-    const testStyle = isBlockquote 
-      ? getBlockquoteTestStyle(quoteTemplate, isFirstChunk)
+    const testStyle = isBlockquote
+      ? (quoteConfig
+          ? getQuoteStyle(
+              quoteConfig.config,
+              quoteTemplate,
+              quoteConfig.baseFontSize,
+              quoteConfig.baseLineHeight,
+              quoteConfig.textAlign
+            )
+          : getBlockquoteTestStyle(quoteTemplate, isFirstChunk))
       : `margin:0;padding:0;text-align:${textAlign};text-indent:${(hasIndent && isFirstChunk && preserveFirstIndent) ? indentValue + 'em' : '0'};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`;
     
     measureDiv.innerHTML = remainingHtml;

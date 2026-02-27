@@ -172,7 +172,12 @@ export const usePagination = (bookData, config, measureRef) => {
     const minOrphanLines = safeConfig.pagination?.minOrphanLines || 1;
     const minWidowLines = safeConfig.pagination?.minWidowLines || 1;
     const splitLongParagraphs = safeConfig.pagination?.splitLongParagraphs !== false;
-    
+
+    // Quote config for consistent split measurement (fix: 2.4x font size mismatch)
+    const quoteOptions = safeConfig.quote?.enabled
+      ? { config: safeConfig.quote, baseFontSize, baseLineHeight, textAlign }
+      : null;
+
     const generatedPages = [];
     let cancelled = false;
     
@@ -277,7 +282,7 @@ export const usePagination = (bookData, config, measureRef) => {
           
           if (splitLongParagraphs) {
             const indentValue = safeConfig.paragraph?.firstLineIndent || 1.5;
-            const lines = splitParagraphByLines(elHtml, measureDiv, contentHeight, textAlign, !isFirstParagraph, indentValue, true);
+            const lines = splitParagraphByLines(elHtml, measureDiv, contentHeight, textAlign, !isFirstParagraph, indentValue, true, quoteOptions);
             let lineHtml = '';
             
             lines.forEach((line, idx) => {
@@ -370,7 +375,7 @@ export const usePagination = (bookData, config, measureRef) => {
 
           if (splitLongParagraphs) {
             const indentValue = safeConfig.paragraph?.firstLineIndent || 1.5;
-            const splitArr = splitParagraphByLines(elHtml, measureDiv, remainingSpace, textAlign, !isFirstParagraph, indentValue, true);
+            const splitArr = splitParagraphByLines(elHtml, measureDiv, remainingSpace, textAlign, !isFirstParagraph, indentValue, true, quoteOptions);
 
             if (splitArr.length > 1) {
               const firstChunk = splitArr[0];
@@ -519,7 +524,7 @@ export const usePagination = (bookData, config, measureRef) => {
             const pageHasBlockquote = /<blockquote/i.test(page.html);
             const isFirstParagraphOfChapter = !pageHasParagraph && !pageHasBlockquote && firstEl.tagName === 'P';
             
-            const splitArr = splitParagraphByLines(firstElOuter, measureDiv, fillSpace, textAlign, !isFirstParagraphOfChapter, safeConfig.paragraph?.firstLineIndent || 1.5, true);
+            const splitArr = splitParagraphByLines(firstElOuter, measureDiv, fillSpace, textAlign, !isFirstParagraphOfChapter, safeConfig.paragraph?.firstLineIndent || 1.5, true, quoteOptions);
 
             if (splitArr.length > 1) {
               const chunk = splitArr[0];
