@@ -1,0 +1,155 @@
+.upgrade-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.upgrade-modal {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  max-width: 450px;
+  width: 90%;
+  position: relative;
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.upgrade-modal-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.upgrade-modal-close:hover {
+  background: #f0f0f0;
+  color: #000;
+}
+
+.upgrade-modal-header {
+  padding: 24px 24px 16px;
+  border-bottom: 1px solid #eee;
+}
+
+.upgrade-modal-header h2 {
+  margin: 0;
+  font-size: 20px;
+  color: #222;
+}
+
+.upgrade-modal-body {
+  padding: 24px;
+}
+
+.upgrade-modal-message {
+  margin: 0 0 20px;
+  color: #666;
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+.upgrade-modal-benefits {
+  background: #f9f9f9;
+  border-left: 4px solid #0070f3;
+  padding: 16px;
+  border-radius: 4px;
+  margin-bottom: 16px;
+}
+
+.upgrade-modal-benefits h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: #222;
+  font-weight: 600;
+}
+
+.upgrade-modal-benefits ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.upgrade-modal-benefits li {
+  color: #666;
+  font-size: 13px;
+  padding: 4px 0;
+  line-height: 1.5;
+}
+
+.upgrade-modal-benefits li:last-child {
+  color: #0070f3;
+  font-weight: 600;
+  border-top: 1px solid #ddd;
+  padding-top: 8px;
+  margin-top: 8px;
+}
+
+.upgrade-modal-footer {
+  padding: 16px 24px 24px;
+  display: flex;
+  gap: 12px;
+}
+
+.upgrade-modal-btn-secondary,
+.upgrade-modal-btn-primary {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.upgrade-modal-btn-secondary {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.upgrade-modal-btn-secondary:hover {
+  background: #e0e0e0;
+}
+
+.upgrade-modal-btn-primary {
+  background: #0070f3;
+  color: white;
+}
+
+.upgrade-modal-btn-primary:hover {
+  background: #0056d2;
+}
+
+.upgrade-modal-btn-primary:active {
+  transform: scale(0.98);
+}

@@ -217,6 +217,9 @@ export interface Subscription {
   plan: SubscriptionPlan;
   credits: number;
   stripeCustomerId?: string;
+  stripeSubscriptionId?: string;
+  status?: 'active' | 'past_due' | 'canceled' | 'trialing';
+  currentPeriodEnd?: Date | null;
   expiresAt?: Date | null;
 }
 

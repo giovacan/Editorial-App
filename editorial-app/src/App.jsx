@@ -6,6 +6,7 @@ import { RegisterPage } from './components/Auth/RegisterPage';
 import { ProtectedRoute } from './components/Auth/ProtectedRoute';
 import { AdminRoute } from './components/Auth/AdminRoute';
 import BooksPage from './pages/BooksPage';
+import { PricingPage } from './pages/PricingPage';
 import AdminLayout from './pages/admin/AdminLayout';
 import AdminConfig from './pages/admin/AdminConfig';
 import AdminUsers from './pages/admin/AdminUsers';
@@ -20,6 +21,7 @@ function App() {
         {/* Public routes */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/pricing" element={<PricingPage />} />
 
         {/* Protected routes - requires authentication */}
         <Route element={<ProtectedRoute />}>

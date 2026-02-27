@@ -1,14 +1,26 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { redirectToCustomerPortal } from '../../services/stripe';
 
 export function UserMenu({ user, isAdmin, onSignOut }) {
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const handleSignOut = async () => {
     setIsOpen(false);
     await onSignOut();
     navigate('/login');
+  };
+
+  const handleCustomerPortal = async () => {
+    setLoading(true);
+    try {
+      await redirectToCustomerPortal(user.uid);
+    } catch (err) {
+      console.error('Error opening customer portal:', err);
+      setLoading(false);
+    }
   };
 
   const getInitial = (name) => {
@@ -43,6 +55,20 @@ export function UserMenu({ user, isAdmin, onSignOut }) {
             </p>
             <p style={styles.menuEmail}>{user?.email}</p>
           </div>
+
+          <div style={styles.divider}></div>
+
+          <button
+            onClick={handleCustomerPortal}
+            disabled={loading}
+            style={{
+              ...styles.menuItem,
+              opacity: loading ? 0.6 : 1,
+              cursor: loading ? 'not-allowed' : 'pointer'
+            }}
+          >
+            💳 {loading ? 'Cargando...' : 'Gestionar suscripción'}
+          </button>
 
           <div style={styles.divider}></div>
 

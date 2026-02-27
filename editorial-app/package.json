@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@stripe/stripe-js": "^8.8.0",
     "epubjs": "^0.3.93",
     "firebase": "^12.10.0",
     "html2pdf.js": "^0.14.0",

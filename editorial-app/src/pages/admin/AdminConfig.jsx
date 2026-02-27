@@ -18,8 +18,12 @@ export default function AdminConfig() {
       if (newConfig) {
         setFormData({
           stripePublishableKey: newConfig.stripePublishableKey || '',
+          stripeWebhookSecret: newConfig.stripeWebhookSecret || '',
           stripePriceIdPro: newConfig.stripePriceIdPro || '',
           stripePriceIdPremium: newConfig.stripePriceIdPremium || '',
+          stripePriceIdCredits10: newConfig.stripePriceIdCredits10 || '',
+          stripePriceIdCredits50: newConfig.stripePriceIdCredits50 || '',
+          stripePriceIdCredits100: newConfig.stripePriceIdCredits100 || '',
           maintenanceMode: newConfig.maintenanceMode || false,
           registrationEnabled: newConfig.registrationEnabled !== false,
         });
@@ -141,6 +145,85 @@ export default function AdminConfig() {
               Plan Premium: $19.99/mes. ID encontrado en Products → Prices
             </p>
           </div>
+
+          <div style={styles.formGroup}>
+            <label style={styles.label} htmlFor="stripeWebhookSecret">
+              Stripe Webhook Secret
+            </label>
+            <div style={styles.passwordWrapper}>
+              <input
+                id="stripeWebhookSecret"
+                type={showPasswords ? 'text' : 'password'}
+                name="stripeWebhookSecret"
+                value={formData.stripeWebhookSecret}
+                onChange={handleInputChange}
+                placeholder="whsec_xxx"
+                style={styles.input}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPasswords(!showPasswords)}
+                style={styles.toggleButton}
+              >
+                {showPasswords ? '🙈' : '👁'}
+              </button>
+            </div>
+            <p style={styles.hint}>
+              Encontrado en Stripe Dashboard → Webhooks → Signing secret
+            </p>
+          </div>
+
+          <div style={styles.divider}></div>
+
+          <h4 style={styles.subTitle}>Price IDs para Paquetes de Créditos</h4>
+
+          <div style={styles.formGroup}>
+            <label style={styles.label} htmlFor="stripePriceIdCredits10">
+              10 Exportaciones ($4.99)
+            </label>
+            <input
+              id="stripePriceIdCredits10"
+              type="text"
+              name="stripePriceIdCredits10"
+              value={formData.stripePriceIdCredits10}
+              onChange={handleInputChange}
+              placeholder="price_xxx"
+              style={styles.input}
+            />
+            <p style={styles.hint}>ID del producto de 10 créditos</p>
+          </div>
+
+          <div style={styles.formGroup}>
+            <label style={styles.label} htmlFor="stripePriceIdCredits50">
+              50 Exportaciones ($19.99)
+            </label>
+            <input
+              id="stripePriceIdCredits50"
+              type="text"
+              name="stripePriceIdCredits50"
+              value={formData.stripePriceIdCredits50}
+              onChange={handleInputChange}
+              placeholder="price_xxx"
+              style={styles.input}
+            />
+            <p style={styles.hint}>ID del producto de 50 créditos</p>
+          </div>
+
+          <div style={styles.formGroup}>
+            <label style={styles.label} htmlFor="stripePriceIdCredits100">
+              100 Exportaciones ($34.99)
+            </label>
+            <input
+              id="stripePriceIdCredits100"
+              type="text"
+              name="stripePriceIdCredits100"
+              value={formData.stripePriceIdCredits100}
+              onChange={handleInputChange}
+              placeholder="price_xxx"
+              style={styles.input}
+            />
+            <p style={styles.hint}>ID del producto de 100 créditos</p>
+          </div>
         </section>
 
         {/* App Settings Section */}
@@ -245,6 +328,17 @@ const styles = {
     margin: '0 0 20px 0',
     paddingBottom: '10px',
     borderBottom: '1px solid #e5e7eb',
+  },
+  subTitle: {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#4b5563',
+    margin: '20px 0 15px 0',
+  },
+  divider: {
+    height: '1px',
+    backgroundColor: '#e5e7eb',
+    margin: '20px 0',
   },
   formGroup: {
     marginBottom: '20px',

@@ -1,15 +1,20 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useSubscription } from '../hooks/useSubscription';
 import { createBook, getUserBooks, deleteBook } from '../services/books';
+import { UpgradeModal } from '../components/UpgradeModal';
+import { SubscriptionBadge } from '../components/SubscriptionBadge';
 
 export default function BooksPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { subscription, planConfig, canCreateBook } = useSubscription();
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   // Load user's books
   useEffect(() => {
@@ -33,6 +38,12 @@ export default function BooksPage() {
   // Create new book
   const handleNewBook = async () => {
     if (!user) return;
+
+    // Check subscription limits
+    if (!canCreateBook(books.length)) {
+      setShowUpgradeModal(true);
+      return;
+    }
 
     setCreating(true);
     try {
@@ -87,7 +98,11 @@ export default function BooksPage() {
           <p style={styles.subtitle}>
             Tienes {books.length} libro{books.length !== 1 ? 's' : ''} guardado
             {books.length !== 1 ? 's' : ''}
+            {planConfig.maxBooks !== -1 && ` de ${planConfig.maxBooks}`}
           </p>
+          <div style={styles.badge}>
+            <SubscriptionBadge />
+          </div>
         </div>
         <button
           onClick={handleNewBook}
@@ -104,6 +119,16 @@ export default function BooksPage() {
 
       {/* Error message */}
       {error && <div style={styles.error}>{error}</div>}
+
+      {/* Upgrade Modal */}
+      {showUpgradeModal && (
+        <UpgradeModal
+          type="books"
+          currentPlan={subscription.plan}
+          planConfig={planConfig}
+          onClose={() => setShowUpgradeModal(false)}
+        />
+      )}
 
       {/* Books grid or empty state */}
       {books.length === 0 ? (
@@ -179,7 +204,10 @@ const styles = {
   subtitle: {
     fontSize: '16px',
     color: '#6b7280',
-    margin: '0',
+    margin: '0 0 12px 0',
+  },
+  badge: {
+    display: 'inline-block',
   },
   newButton: {
     padding: '12px 24px',

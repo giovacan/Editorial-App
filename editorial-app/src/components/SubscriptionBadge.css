@@ -1,0 +1,39 @@
+.subscription-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.subscription-badge--loading {
+  background: #f0f0f0;
+  color: #666;
+}
+
+.subscription-badge--gray {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.subscription-badge--blue {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.subscription-badge--purple {
+  background: #f3e5f5;
+  color: #7b1fa2;
+}
+
+.subscription-badge-plan {
+  font-weight: 600;
+}
+
+.subscription-badge-credits {
+  font-size: 11px;
+  opacity: 0.8;
+}
