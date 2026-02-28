@@ -37,22 +37,24 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
   const effectiveBaseLineHeight = quoteConfig?.baseLineHeight || 1.6;
   const effectiveTextAlign = quoteConfig?.textAlign || textAlign;
   
-  // Función para generar estilos con la sangría correcta según si es el primer chunk o no
+  // Compute correct text-indent for a chunk:
+  // - first chunk with preserveFirstIndent: '0' (indent already appeared at paragraph start, earlier on page)
+  // - first chunk without preserveFirstIndent: apply original indent (paragraph starts fresh here)
+  // - continuation chunks (isFirst=false): always '0' (never indent a mid-paragraph continuation)
+  const computeIndent = (isFirst) =>
+    isFirst
+      ? (preserveFirstIndent ? '0' : (hasIndent ? indentValue + 'em' : '0'))
+      : '0';
+
   const getChunkStyle = (isFirst) => {
-    // Si hay estilos originales, ajustamos solo el text-indent
+    const indent = computeIndent(isFirst);
     if (originalStyles) {
-      const indent = (hasIndent && isFirst && preserveFirstIndent) ? '0' : (hasIndent ? indentValue + 'em' : '0');
-      // Preservar todos los estilos originales pero ajustar text-indent
       const cleanStyles = originalStyles.replace(/text-indent:[^;]+;?/gi, '');
       return `${cleanStyles}text-indent:${indent};`.replace(/;;/g, ';');
     }
-    
-    // Si no hay estilos originales, usar los estilos por defecto
     if (isBlockquote) {
       return getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSize, effectiveBaseLineHeight, effectiveTextAlign);
     }
-    
-    const indent = (hasIndent && isFirst && preserveFirstIndent) ? '0' : (hasIndent ? indentValue + 'em' : '0');
     return `margin:0;padding:0;text-align:${textAlign};text-indent:${indent};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`;
   };
   
@@ -143,7 +145,7 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
     const lastSpace = text.substring(0, fitLength).lastIndexOf(' ');
     const breakPoint = lastSpace > fitLength * 0.5 ? lastSpace : fitLength;
 
-    const indent = (hasIndent && isFirstChunk && preserveFirstIndent) ? indentValue + 'em' : '0';
+    const indent = computeIndent(isFirstChunk);
     const endsWithSentence = /[.!?]\s*$/.test(text.substring(0, breakPoint));
 
     // ============ FIX 1: DOM-aware split that preserves inline HTML ============
@@ -203,10 +205,13 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
       newRemainingHtml = text.substring(breakPoint);
     }
 
-    // Wrap chunk in proper element with correct style
-    const finalStyle = originalStyles || (isBlockquote
-      ? getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSize, effectiveBaseLineHeight, effectiveTextAlign)
-      : `margin:0;padding:0;text-align:${textAlign};text-indent:${indent};text-justify:inter-word;hyphens:auto;text-align-last:${endsWithSentence ? 'left' : 'justify'};overflow-wrap:break-word;`);
+    // Wrap chunk with the same style used in the binary search measurement (testStyle = getChunkStyle).
+    // Using raw originalStyles here would cause a testStyle/finalStyle mismatch that leads to overflow.
+    const finalStyle = originalStyles
+      ? getChunkStyle(isFirstChunk)
+      : (isBlockquote
+        ? getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSize, effectiveBaseLineHeight, effectiveTextAlign)
+        : `margin:0;padding:0;text-align:${textAlign};text-indent:${indent};text-justify:inter-word;hyphens:auto;text-align-last:${endsWithSentence ? 'left' : 'justify'};overflow-wrap:break-word;`);
 
     if (isBlockquote) {
       chunkHtml = `<blockquote class="quote ${quoteTemplate}" style="${finalStyle}">${chunkHtml}</blockquote>`;
