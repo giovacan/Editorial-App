@@ -209,8 +209,10 @@ export const usePagination = (bookData, config, measureRef) => {
     const totalContentLength = safeBookData.chapters.reduce((sum, ch) => sum + (ch.html?.length || 0), 0);
     const estimatedPages = Math.ceil(totalContentLength / 3000); // Rough estimate: ~3000 chars per page
 
-    const dimsOdd = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterValueRef.current, false, estimatedPages);
-    const dimsEven = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterValueRef.current, true, estimatedPages);
+    // Apply dynamic margins only if user hasn't switched to custom mode
+    const applyDynamicMargins = (safeConfig.marginStrategy || 'auto') === 'auto';
+    const dimsOdd = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterValueRef.current, false, estimatedPages, applyDynamicMargins);
+    const dimsEven = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterValueRef.current, true, estimatedPages, applyDynamicMargins);
 
     const contentWidth = Math.min(dimsOdd.contentWidth, dimsEven.contentWidth);
     const pageWidthPx = dimsOdd.pageWidthPx;

@@ -34,7 +34,7 @@ export const calculateDynamicMargins = (marginTop, marginBottom, estimatedPageCo
   return { top: marginTop, bottom: marginBottom };
 };
 
-export const calculateContentDimensions = (pageFormat, bookConfig, previewScale, gutterValue = null, isEvenPage = false, estimatedPageCount = null) => {
+export const calculateContentDimensions = (pageFormat, bookConfig, previewScale, gutterValue = null, isEvenPage = false, estimatedPageCount = null, applyDynamicMargins = true) => {
   const pageWidthPx = pageFormat.width * PX_PER_MM * previewScale;
   const pageHeightPx = pageFormat.height * PX_PER_MM * previewScale;
 
@@ -43,8 +43,8 @@ export const calculateContentDimensions = (pageFormat, bookConfig, previewScale,
   let marginTop = bookConfig.marginTop * PX_PER_INCH * previewScale;
   let marginBottom = bookConfig.marginBottom * PX_PER_INCH * previewScale;
 
-  // Apply dynamic margins if page count is known
-  if (estimatedPageCount !== null) {
+  // Apply dynamic margins only if enabled and page count is known
+  if (applyDynamicMargins && estimatedPageCount !== null) {
     const dynamicMargins = calculateDynamicMargins(marginTop, marginBottom, estimatedPageCount);
     marginTop = dynamicMargins.top;
     marginBottom = dynamicMargins.bottom;

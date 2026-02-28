@@ -255,6 +255,7 @@ function Preview() {
   
   const previewScale = Math.min(0.42, AVAILABLE_SIDEBAR_WIDTH / (pageFormat.width * PX_PER_MM));
 
+  const applyDynamicMargins = (safeConfig.marginStrategy || 'auto') === 'auto';
   const {
     pageWidthPx,
     pageHeightPx,
@@ -264,7 +265,7 @@ function Preview() {
     marginRight,
     contentWidth,
     contentHeight
-  } = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterForPage, isCurrentPageEven, totalPages);
+  } = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterForPage, isCurrentPageEven, totalPages, applyDynamicMargins);
 
   const {
     showMagnifier,

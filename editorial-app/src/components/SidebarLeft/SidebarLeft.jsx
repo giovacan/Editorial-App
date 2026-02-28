@@ -456,6 +456,83 @@ function SidebarLeft() {
           </fieldset>
 
           <fieldset className="config-group">
+            <legend>Márgenes</legend>
+            <div className="margins-toggle">
+              <label className="radio-label">
+                <input
+                  type="radio"
+                  name="marginStrategy"
+                  value="auto"
+                  checked={(safeConfig.marginStrategy || 'auto') === 'auto'}
+                  onChange={(e) => setConfig({ marginStrategy: 'auto' })}
+                /> Automático
+              </label>
+              <label className="radio-label">
+                <input
+                  type="radio"
+                  name="marginStrategy"
+                  value="custom"
+                  checked={(safeConfig.marginStrategy || 'auto') === 'custom'}
+                  onChange={(e) => setConfig({ marginStrategy: 'custom' })}
+                /> Personalizado
+              </label>
+            </div>
+            {(safeConfig.marginStrategy || 'auto') === 'custom' && (
+              <div className="margins-custom">
+                <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '12px', fontStyle: 'italic' }}>
+                  En una hoja de libro: arriba = superior, abajo = inferior, izquierda = interior, derecha = exterior
+                </div>
+                <div className="margins-inputs">
+                  <div className="margin-input-group">
+                    <label>Superior</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.125"
+                      value={safeConfig.marginTop || 0.5}
+                      onChange={(e) => setConfig({ marginTop: parseFloat(e.target.value) || 0 })}
+                    />
+                    <span>in</span>
+                  </div>
+                  <div className="margin-input-group">
+                    <label>Inferior</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.125"
+                      value={safeConfig.marginBottom || 0.5}
+                      onChange={(e) => setConfig({ marginBottom: parseFloat(e.target.value) || 0 })}
+                    />
+                    <span>in</span>
+                  </div>
+                  <div className="margin-input-group">
+                    <label>Interior (lomo)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.125"
+                      value={safeConfig.marginLeft || 0.75}
+                      onChange={(e) => setConfig({ marginLeft: parseFloat(e.target.value) || 0 })}
+                    />
+                    <span>in</span>
+                  </div>
+                  <div className="margin-input-group">
+                    <label>Exterior</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.125"
+                      value={safeConfig.marginRight || 0.75}
+                      onChange={(e) => setConfig({ marginRight: parseFloat(e.target.value) || 0 })}
+                    />
+                    <span>in</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </fieldset>
+
+          <fieldset className="config-group">
             <legend>Páginas extras al final</legend>
             <div className="number-row">
               <input 
