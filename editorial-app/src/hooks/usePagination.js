@@ -734,11 +734,24 @@ export const usePagination = (bookData, config, measureRef) => {
       useEditorStore.getState().setPaginationProgress(100);
     }
     
-    return () => { 
-      cancelled = true; 
+    return () => {
+      cancelled = true;
       useEditorStore.getState().endPagination();
     };
-  }, [bookData, config, measureRef, bookConfig, pageFormat, extraEndPages, extraEndPagesNumbered]);
+  }, [
+    bookData,
+    config,
+    measureRef,
+    bookConfig,
+    pageFormat,
+    extraEndPages,
+    extraEndPagesNumbered,
+    safeConfig.marginTop,
+    safeConfig.marginBottom,
+    safeConfig.marginLeft,
+    safeConfig.marginRight,
+    safeConfig.marginStrategy
+  ]);
   
   const confirmedChapterTitles = useEditorStore(s => s.confirmedChapterTitles ?? []);
 
