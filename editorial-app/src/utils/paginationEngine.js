@@ -7,6 +7,19 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
   const quoteMatch = html.match(/class="quote\s+(\w+)"/);
   const quoteTemplate = quoteMatch ? quoteMatch[1] : 'classic';
 
+  // Extraer estilos inline existentes del HTML original (solo para referencia, no para aplicar directamente)
+  const extractInlineStyles = (htmlString) => {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = htmlString;
+    const el = tmp.firstElementChild;
+    if (el && el.style && el.style.cssText) {
+      return el.style.cssText;
+    }
+    return null;
+  };
+  
+  const originalStyles = extractInlineStyles(html);
+  
   // Create default quote config if none provided to ensure consistent styling
   const defaultQuoteConfig = {
     enabled: true,
@@ -24,16 +37,29 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
   const effectiveBaseLineHeight = quoteConfig?.baseLineHeight || 1.6;
   const effectiveTextAlign = quoteConfig?.textAlign || textAlign;
   
+  // Función para generar estilos con la sangría correcta según si es el primer chunk o no
+  const getChunkStyle = (isFirst) => {
+    // Si hay estilos originales, ajustamos solo el text-indent
+    if (originalStyles) {
+      const indent = (hasIndent && isFirst && preserveFirstIndent) ? '0' : (hasIndent ? indentValue + 'em' : '0');
+      // Preservar todos los estilos originales pero ajustar text-indent
+      const cleanStyles = originalStyles.replace(/text-indent:[^;]+;?/gi, '');
+      return `${cleanStyles}text-indent:${indent};`.replace(/;;/g, ';');
+    }
+    
+    // Si no hay estilos originales, usar los estilos por defecto
+    if (isBlockquote) {
+      return getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSize, effectiveBaseLineHeight, effectiveTextAlign);
+    }
+    
+    const indent = (hasIndent && isFirst && preserveFirstIndent) ? '0' : (hasIndent ? indentValue + 'em' : '0');
+    return `margin:0;padding:0;text-align:${textAlign};text-indent:${indent};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`;
+  };
+  
+  const getDefaultStyle = () => getChunkStyle(isFirstChunk);
+  
   while (remainingHtml) {
-    const testStyle = isBlockquote
-      ? getQuoteStyle(
-          effectiveQuoteConfig,
-          quoteTemplate,
-          effectiveBaseFontSize,
-          effectiveBaseLineHeight,
-          effectiveTextAlign
-        )
-      : `margin:0;padding:0;text-align:${textAlign};text-indent:${(hasIndent && isFirstChunk && preserveFirstIndent) ? indentValue + 'em' : '0'};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`;
+    const testStyle = getDefaultStyle();
     
     let measuredHeight = 0;
     try {
@@ -95,33 +121,96 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
     const lastSpace = text.substring(0, fitLength).lastIndexOf(' ');
     const breakPoint = lastSpace > fitLength * 0.5 ? lastSpace : fitLength;
 
-    const chunkText = text.substring(0, breakPoint);
-    const endsWithSentence = /[.!?]\s*$/.test(chunkText);
     const indent = (hasIndent && isFirstChunk && preserveFirstIndent) ? indentValue + 'em' : '0';
+    const endsWithSentence = /[.!?]\s*$/.test(text.substring(0, breakPoint));
+
+    // ============ FIX 1: DOM-aware split that preserves inline HTML ============
+    // Instead of using text.substring() which loses HTML, walk the DOM to split at exact character
+    const splitDiv = window.document.createElement('div');
+    splitDiv.innerHTML = remainingHtml;
+    const innerEl = splitDiv.firstElementChild || splitDiv;
 
     let chunkHtml;
+    let newRemainingHtml = '';
+
+    try {
+      const walker = window.document.createTreeWalker(innerEl, NodeFilter.SHOW_TEXT);
+      let accumulated = 0;
+      let cutNode = null;
+      let cutOffset = 0;
+      let node;
+
+      // Find the text node that contains our breakPoint
+      while ((node = walker.nextNode())) {
+        if (accumulated + node.length >= breakPoint) {
+          cutNode = node;
+          cutOffset = breakPoint - accumulated;
+          break;
+        }
+        accumulated += node.length;
+      }
+
+      if (cutNode) {
+        // Split the text node at the exact character offset
+        const afterNode = cutNode.splitText(cutOffset);
+        // The chunk is now everything before afterNode in innerEl
+        chunkHtml = innerEl.innerHTML;
+
+        // Reconstruct the continuation from afterNode onwards
+        if (afterNode && afterNode.parentNode) {
+          const range = window.document.createRange();
+          range.setStartBefore(afterNode);
+          range.setEndAfter(innerEl.lastChild || afterNode);
+          const frag = range.extractContents();
+
+          const contDiv = window.document.createElement('div');
+          contDiv.appendChild(frag);
+          newRemainingHtml = contDiv.innerHTML.trim();
+        }
+      } else {
+        // If no cutNode found, use the entire HTML as chunk
+        chunkHtml = innerEl.innerHTML;
+        newRemainingHtml = '';
+      }
+    } catch (e) {
+      console.warn('DOM split error, falling back to text split:', e);
+      // Fallback to text-based split if DOM manipulation fails
+      const chunkText = text.substring(0, breakPoint);
+      chunkHtml = chunkText;
+      newRemainingHtml = text.substring(breakPoint);
+    }
+
+    // Wrap chunk in proper element with correct style
+    const finalStyle = originalStyles || (isBlockquote
+      ? getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSize, effectiveBaseLineHeight, effectiveTextAlign)
+      : `margin:0;padding:0;text-align:${textAlign};text-indent:${indent};text-justify:inter-word;hyphens:auto;text-align-last:${endsWithSentence ? 'left' : 'justify'};overflow-wrap:break-word;`);
+
     if (isBlockquote) {
-      chunkHtml = `<blockquote class="quote ${quoteTemplate}" style="${testStyle}">${chunkText}</blockquote>`;
+      chunkHtml = `<blockquote class="quote ${quoteTemplate}" style="${finalStyle}">${chunkHtml}</blockquote>`;
     } else {
-      chunkHtml = `<p style="margin:0;padding:0;text-align:${textAlign};text-indent:${indent};text-justify:inter-word;hyphens:auto;text-align-last:${endsWithSentence ? 'left' : 'justify'};overflow-wrap:break-word;">${chunkText}</p>`;
+      chunkHtml = `<p style="${finalStyle}">${chunkHtml}</p>`;
     }
     lines.push(chunkHtml);
     isFirstChunk = false;
-    remainingHtml = text.substring(breakPoint);
-    
+    remainingHtml = newRemainingHtml;
+
     if (remainingHtml) {
+      // ============ FIX 2: Force text-indent: 0 for continuations ============
+      // Even if originalStyles exists, continuation should NOT have the first-line indent
+      let continuationStyle;
+      if (originalStyles) {
+        // Remove any existing text-indent and force to 0
+        continuationStyle = originalStyles.replace(/text-indent:[^;]+;?/gi, '') + 'text-indent:0;';
+      } else if (isBlockquote) {
+        continuationStyle = getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSize, effectiveBaseLineHeight, effectiveTextAlign);
+      } else {
+        continuationStyle = `margin:0;padding:0;text-align:${textAlign};text-indent:0;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`;
+      }
+
       if (isBlockquote) {
-        // Use getQuoteStyle for continuation with effective config
-        const continuationStyle = getQuoteStyle(
-          effectiveQuoteConfig,
-          quoteTemplate,
-          effectiveBaseFontSize,
-          effectiveBaseLineHeight,
-          effectiveTextAlign
-        );
         remainingHtml = `<blockquote class="quote ${quoteTemplate}" style="${continuationStyle}">${remainingHtml}</blockquote>`;
       } else {
-        remainingHtml = `<p style="margin:0;padding:0;text-align:${textAlign};text-indent:0;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;">${remainingHtml}</p>`;
+        remainingHtml = `<p style="${continuationStyle}">${remainingHtml}</p>`;
       }
     }
   }
