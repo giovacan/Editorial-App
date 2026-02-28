@@ -1,11 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
+import ChapterDetectionDialog from '../ChapterDetectionDialog/ChapterDetectionDialog';
+import { useParagraphValidation } from '../../hooks/useParagraphValidation';
 import './UploadArea.css';
 
-function UploadArea({ onContentLoaded }) {
+function UploadArea({ onContentLoaded, onChaptersDetected }) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [mammothReady, setMammothReady] = useState(() => !!window.mammoth);
   const fileInputRef = useRef(null);
+
+  const { detectChapters, confirmChapters } = useParagraphValidation();
+  const [pendingChapters, setPendingChapters] = useState(null);
+  const [showChapterDetection, setShowChapterDetection] = useState(false);
 
   useEffect(() => {
     if (mammothReady) return;
@@ -210,7 +216,40 @@ function UploadArea({ onContentLoaded }) {
       ch.wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
     });
 
-    onContentLoaded(chapters);
+    // Detectar capítulos antes de cargar
+    showChapterDetectionDialog(chapters);
+  };
+
+  const showChapterDetectionDialog = (chapters) => {
+    const detected = detectChapters(chapters);
+    if (detected && detected.length > 0) {
+      setPendingChapters(chapters);
+      setShowChapterDetection(true);
+    } else {
+      // Sin capítulos detectados, cargar directamente
+      onContentLoaded(chapters);
+    }
+  };
+
+  const handleChaptersConfirm = (confirmedChaptersList) => {
+    confirmChapters(confirmedChaptersList);
+    setShowChapterDetection(false);
+
+    // Notificar al componente padre sobre los capítulos confirmados
+    if (onChaptersDetected) {
+      onChaptersDetected(confirmedChaptersList);
+    }
+
+    // Cargar contenido
+    if (pendingChapters) {
+      onContentLoaded(pendingChapters);
+      setPendingChapters(null);
+    }
+  };
+
+  const handleChaptersCancel = () => {
+    setShowChapterDetection(false);
+    setPendingChapters(null);
   };
 
   const parseAndLoadContentFromHtml = (htmlContent) => {
@@ -379,11 +418,20 @@ function UploadArea({ onContentLoaded }) {
       ch.wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
     });
 
-    onContentLoaded(chapters);
+    // Detectar capítulos antes de cargar
+    showChapterDetectionDialog(chapters);
   };
 
   return (
-    <div className="upload-area" role="region" aria-label="Área de carga de archivos">
+    <>
+      {showChapterDetection && (
+        <ChapterDetectionDialog
+          chapters={pendingChapters || []}
+          onConfirm={handleChaptersConfirm}
+          onCancel={handleChaptersCancel}
+        />
+      )}
+      <div className="upload-area" role="region" aria-label="Área de carga de archivos">
       <div className="upload-column">
         <div 
           className={`upload-box ${isDragOver ? 'drag-over' : ''}`}
@@ -453,6 +501,7 @@ function UploadArea({ onContentLoaded }) {
         </div>
       </div>
     </div>
+    </>
   );
 }
 
