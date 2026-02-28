@@ -231,11 +231,8 @@ export const usePagination = (bookData, config, measureRef) => {
     measureDiv.innerHTML = 'Ag';
     const lineHeightPx = measureDiv.offsetHeight;
 
-    // Safety margin accounts for:
-    // 1. Sub-pixel rendering (1-2px)
-    // 2. Header margin (0.5em + gap) in render but not in pagination measure (~12px)
-    // 3. Boundary inconsistencies between < and <= checks
-    const contentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight) - Math.round(lineHeightPx * 0.75);
+    // Safety margin: 1px buffer to prevent sub-pixel rendering overflow
+    const contentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight) - 1;
     const minOrphanLines = safeConfig.pagination?.minOrphanLines || 1;
     const minWidowLines = safeConfig.pagination?.minWidowLines || 1;
     const splitLongParagraphs = safeConfig.pagination?.splitLongParagraphs !== false;
