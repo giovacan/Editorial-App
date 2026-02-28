@@ -119,6 +119,16 @@
   color: #212529;
   margin: 0;
   word-break: break-word;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.validation-dialog-column p.full-text {
+  max-height: 300px;
+  padding: 8px;
+  background: white;
+  border-radius: 4px;
+  border: 1px solid #dee2e6;
 }
 
 .validation-dialog-stats {
@@ -177,4 +187,19 @@
 
 .validation-btn-primary:hover {
   background: #0056b3;
+}
+
+.validation-btn-text {
+  flex: none;
+  width: 100%;
+  background: #f0f0f0;
+  color: #495057;
+  border: 1px solid #ced4da;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.validation-btn-text:hover {
+  background: #e9ecef;
+  border-color: #adb5bd;
 }

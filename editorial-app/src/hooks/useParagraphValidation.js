@@ -192,6 +192,8 @@ export const useParagraphValidation = () => {
           charDiff,
           originalText: orig.text.substring(0, 50) + '...',
           previewText: prev.text.substring(0, 50) + '...',
+          originalTextFull: orig.text,
+          previewTextFull: prev.text,
           message: `Párrafo ${i + 1}: Original=${orig.words} palabras, Preview=${prev.words} palabras`
         });
       }

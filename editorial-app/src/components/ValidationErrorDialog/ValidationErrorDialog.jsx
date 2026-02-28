@@ -1,11 +1,13 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import './ValidationErrorDialog.css';
 
-const ValidationErrorDialog = memo(function ValidationErrorDialog({ 
-  error, 
-  onAction, 
-  onClose 
+const ValidationErrorDialog = memo(function ValidationErrorDialog({
+  error,
+  onAction,
+  onClose
 }) {
+  const [showFullText, setShowFullText] = useState(false);
+
   if (!error) return null;
 
   const getErrorTitle = (type) => {
@@ -73,16 +75,29 @@ const ValidationErrorDialog = memo(function ValidationErrorDialog({
           )}
 
           {(error.originalText || error.previewText) && (
-            <div className="validation-dialog-comparison">
-              <div className="validation-dialog-column">
-                <strong>Original:</strong>
-                <p>{error.originalText || 'N/A'}</p>
+            <>
+              <button
+                className="validation-btn validation-btn-text"
+                onClick={() => setShowFullText(!showFullText)}
+              >
+                {showFullText ? '← Ocultar texto completo' : '→ Ver texto completo'}
+              </button>
+
+              <div className="validation-dialog-comparison">
+                <div className="validation-dialog-column">
+                  <strong>Original:</strong>
+                  <p className={showFullText ? 'full-text' : ''}>
+                    {showFullText ? (error.originalTextFull || error.originalText || 'N/A') : (error.originalText || 'N/A')}
+                  </p>
+                </div>
+                <div className="validation-dialog-column">
+                  <strong>Preview:</strong>
+                  <p className={showFullText ? 'full-text' : ''}>
+                    {showFullText ? (error.previewTextFull || error.previewText || 'N/A') : (error.previewText || 'N/A')}
+                  </p>
+                </div>
               </div>
-              <div className="validation-dialog-column">
-                <strong>Preview:</strong>
-                <p>{error.previewText || 'N/A'}</p>
-              </div>
-            </div>
+            </>
           )}
 
           {error.originalWords && error.previewWords && (
