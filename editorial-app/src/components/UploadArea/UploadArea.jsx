@@ -24,7 +24,9 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
       const temp = document.createElement('div');
       temp.innerHTML = chapter.html;
 
-      // Check for headers first (H1, H2, etc.)
+      let found = false;
+
+      // Check for headers first (H1-H6)
       const headers = Array.from(temp.querySelectorAll('h1, h2, h3, h4, h5, h6'));
       for (const header of headers) {
         const headerText = header.textContent?.trim() || '';
@@ -36,12 +38,13 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
             detectedTitle: headerText,
             confirmed: true
           });
+          found = true;
           break;
         }
       }
 
-      // If no header matched, check paragraphs
-      if (detected.length === 0) {
+      // If no header matched, check paragraphs (only first 3)
+      if (!found) {
         const paragraphs = Array.from(temp.querySelectorAll('p'));
         for (let i = 0; i < Math.min(paragraphs.length, 3); i++) {
           const p = paragraphs[i];
@@ -62,6 +65,7 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
               detectedTitle: titleText,
               confirmed: true
             });
+            found = true;
             break;
           }
         }
