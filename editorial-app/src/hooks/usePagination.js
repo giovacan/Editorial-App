@@ -621,20 +621,19 @@ export const usePagination = (bookData, config, measureRef) => {
               break;
             }
           } else if (!isHeader && !isList && splitLongParagraphs && !isBlockquote) {
-            const fillSpace = remainingLines * lineHeightPx;
-            
             const pageHasParagraph = /<p[^>]*>/i.test(page.html);
             const pageHasBlockquote = /<blockquote/i.test(page.html);
             const isFirstParagraphOfChapter = !pageHasParagraph && !pageHasBlockquote && firstEl.tagName === 'P';
-            
-            const splitArr = splitParagraphByLines(firstElOuter, measureDiv, fillSpace, textAlign, !isFirstParagraphOfChapter, safeConfig.paragraph?.firstLineIndent || 1.5, true, quoteOptions);
+
+            // Use remainingSpace directly instead of truncating to line multiples
+            const splitArr = splitParagraphByLines(firstElOuter, measureDiv, remainingSpace, textAlign, !isFirstParagraphOfChapter, safeConfig.paragraph?.firstLineIndent || 1.5, true, quoteOptions);
 
             if (splitArr.length > 1) {
               const chunk = splitArr[0];
               const rest = splitArr.slice(1).join('');
 
               measureDiv.innerHTML = page.html + chunk;
-              if (measureDiv.offsetHeight <= contentHeight) {
+              if (measureDiv.offsetHeight < contentHeight) {
                 measureDiv.innerHTML = chunk;
                 const chunkLines = Math.round(measureDiv.offsetHeight / lineHeightPx);
 
