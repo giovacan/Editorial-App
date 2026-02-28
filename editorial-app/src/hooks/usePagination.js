@@ -209,7 +209,11 @@ export const usePagination = (bookData, config, measureRef) => {
     const dimsEven = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterValueRef.current, true);
     
     const contentWidth = Math.min(dimsOdd.contentWidth, dimsEven.contentWidth);
-    const contentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight) - 1;
+    // Safety margin accounts for:
+    // 1. Sub-pixel rendering (1-2px)
+    // 2. Header margin (0.5em + gap) in render but not in pagination measure (~12px)
+    // 3. Boundary inconsistencies between < and <= checks
+    const contentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight) - Math.round(lineHeightPx * 0.75);
     const pageWidthPx = dimsOdd.pageWidthPx;
     const pageHeightPx = dimsOdd.pageHeightPx;
     const marginTop = dimsOdd.marginTop;
