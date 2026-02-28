@@ -256,7 +256,12 @@ export const usePagination = (bookData, config, measureRef) => {
 
     const generatedPages = [];
     let cancelled = false;
-    
+
+    // Determine header margin impact: if headers are enabled, reserve space on first page
+    const headerMarginPx = safeConfig.header?.enabled
+      ? Math.round(baseFontSize * 0.5 * previewScale)
+      : 0; // 0.5em margin in pixels
+
     const processChapter = (chapter, chapterIndex) => {
       const isSection = chapter.type === 'section';
       const shouldStartOnRight = shouldStartOnRightPage(chapter, chapterIndex, safeConfig);
@@ -326,17 +331,23 @@ export const usePagination = (bookData, config, measureRef) => {
         currentHtml = titleHtml;
         currentHeight = titleHeight;
       }
-      
+
+      // For the first page with title, reduce contentHeight if headers will be shown
+      let isFirstPageOfChapter = currentHtml === titleHtml;
+      const effectiveContentHeight = (isFirstPageOfChapter && headerMarginPx > 0)
+        ? contentHeight - headerMarginPx
+        : contentHeight;
+
       for (let childIdx = 0; childIdx < children.length; childIdx++) {
         if (cancelled) return;
-        
+
         const el = children[childIdx];
         const isFirstParagraph = paragraphCount === 0;
         if (el.tagName === 'P' || el.tagName === 'DIV') {
           paragraphCount++;
         }
         const elHtml = buildParagraphHtml(el, safeConfig, baseFontSize, baseLineHeight, textAlign, isFirstParagraph);
-        
+
         if (headerConfig.trackSubheaders && el.tagName.match(/^H[1-6]$/i)) {
           const level = el.tagName.slice(1).toLowerCase();
           const subheaderLevels = headerConfig.subheaderLevels || ['h1', 'h2'];
@@ -344,7 +355,7 @@ export const usePagination = (bookData, config, measureRef) => {
             currentSubheader = el.textContent || '';
           }
         }
-        
+
         if (trackPseudoHeaders && (el.tagName === 'P' || el.tagName === 'DIV')) {
           if (!currentSubheader) {
             const boldElements = el.querySelectorAll('strong, b');
@@ -355,7 +366,7 @@ export const usePagination = (bookData, config, measureRef) => {
                 break;
               }
             }
-            
+
             if (!currentSubheader) {
               const style = el.getAttribute('style') || '';
               if (style.includes('font-weight: bold') || style.includes('font-weight:700') || style.includes('font-weight:600')) {
@@ -367,56 +378,62 @@ export const usePagination = (bookData, config, measureRef) => {
             }
           }
         }
-        
+
         measureDiv.innerHTML = elHtml;
         const elHeight = measureDiv.offsetHeight;
-        
-        if (elHeight > contentHeight) {
+
+        // Use effectiveContentHeight for first page (accounts for header margin)
+        const pageContentHeight = isFirstPageOfChapter ? effectiveContentHeight : contentHeight;
+
+        if (elHeight > pageContentHeight) {
           if (currentHtml) {
-            generatedPages.push({ 
-              html: currentHtml, 
-              pageNumber: generatedPages.length + 1, 
-              chapterTitle: chapter.title, 
+            generatedPages.push({
+              html: currentHtml,
+              pageNumber: generatedPages.length + 1,
+              chapterTitle: chapter.title,
               isBlank: false,
               isTitleOnlyPage: false,
               currentSubheader
             });
             currentHtml = '';
             currentHeight = 0;
+            isFirstPageOfChapter = false; // Next pages don't have header
           }
           
           if (splitLongParagraphs) {
             const indentValue = safeConfig.paragraph?.firstLineIndent || 1.5;
-            const lines = splitParagraphByLines(elHtml, measureDiv, contentHeight, textAlign, !isFirstParagraph, indentValue, true, quoteOptions);
+            const lines = splitParagraphByLines(elHtml, measureDiv, pageContentHeight, textAlign, !isFirstParagraph, indentValue, true, quoteOptions);
             let lineHtml = '';
-            
+
             lines.forEach((line, idx) => {
               if (cancelled) return;
               const isLastLine = idx === lines.length - 1;
-              
+
               if (isLastLine) {
                 lineHtml += line;
-                generatedPages.push({ 
-                  html: lineHtml, 
-                  pageNumber: generatedPages.length + 1, 
-                  chapterTitle: chapter.title, 
+                generatedPages.push({
+                  html: lineHtml,
+                  pageNumber: generatedPages.length + 1,
+                  chapterTitle: chapter.title,
                   isBlank: false,
                   currentSubheader
                 });
                 lineHtml = '';
+                isFirstPageOfChapter = false;
               } else {
                 const testHtml = lineHtml + line;
                 measureDiv.innerHTML = testHtml;
-                
-                if (measureDiv.offsetHeight > contentHeight) {
+
+                if (measureDiv.offsetHeight > pageContentHeight) {
                   if (lineHtml) {
-                    generatedPages.push({ 
-                      html: lineHtml, 
-                      pageNumber: generatedPages.length + 1, 
-                      chapterTitle: chapter.title, 
+                    generatedPages.push({
+                      html: lineHtml,
+                      pageNumber: generatedPages.length + 1,
+                      chapterTitle: chapter.title,
                       isBlank: false,
                       currentSubheader
                     });
+                    isFirstPageOfChapter = false;
                   }
                   lineHtml = line;
                   measureDiv.innerHTML = line;
@@ -451,9 +468,9 @@ export const usePagination = (bookData, config, measureRef) => {
         const candidateHtml = currentHtml + elHtml;
         measureDiv.innerHTML = candidateHtml;
         const candidateHeight = measureDiv.offsetHeight;
-        
-        if (candidateHeight > contentHeight) {
-          const remainingSpace = contentHeight - currentHeight;
+
+        if (candidateHeight > pageContentHeight) {
+          const remainingSpace = pageContentHeight - currentHeight;
           const remainingLinesOnPage = Math.round(remainingSpace / lineHeightPx);
 
           const shouldBreakPage = (el) => {
@@ -506,46 +523,50 @@ export const usePagination = (bookData, config, measureRef) => {
               const widowLines = Math.round(measureDiv.offsetHeight / lineHeightPx);
 
               if (orphanLines >= minOrphanLines && widowLines >= minWidowLines) {
-                generatedPages.push({ 
-                  html: currentHtml + firstChunk, 
-                  pageNumber: generatedPages.length + 1, 
-                  chapterTitle: chapter.title, 
+                generatedPages.push({
+                  html: currentHtml + firstChunk,
+                  pageNumber: generatedPages.length + 1,
+                  chapterTitle: chapter.title,
                   isBlank: false,
                   currentSubheader
                 });
+                isFirstPageOfChapter = false; // Moving to next page
                 currentHtml = restHtml;
                 measureDiv.innerHTML = currentHtml;
                 currentHeight = measureDiv.offsetHeight;
               } else {
-                generatedPages.push({ 
-                  html: currentHtml, 
-                  pageNumber: generatedPages.length + 1, 
-                  chapterTitle: chapter.title, 
+                generatedPages.push({
+                  html: currentHtml,
+                  pageNumber: generatedPages.length + 1,
+                  chapterTitle: chapter.title,
                   isBlank: false,
                   currentSubheader
                 });
+                isFirstPageOfChapter = false; // Moving to next page
                 currentHtml = elHtml;
                 currentHeight = elHeight;
               }
             } else {
-              generatedPages.push({ 
-                html: currentHtml, 
-                pageNumber: generatedPages.length + 1, 
-                chapterTitle: chapter.title, 
+              generatedPages.push({
+                html: currentHtml,
+                pageNumber: generatedPages.length + 1,
+                chapterTitle: chapter.title,
                 isBlank: false,
                 currentSubheader
               });
+              isFirstPageOfChapter = false; // Moving to next page
               currentHtml = elHtml;
               currentHeight = elHeight;
             }
           } else {
-            generatedPages.push({ 
-              html: currentHtml, 
-              pageNumber: generatedPages.length + 1, 
-              chapterTitle: chapter.title, 
+            generatedPages.push({
+              html: currentHtml,
+              pageNumber: generatedPages.length + 1,
+              chapterTitle: chapter.title,
               isBlank: false,
               currentSubheader
             });
+            isFirstPageOfChapter = false; // Moving to next page
             currentHtml = elHtml;
             measureDiv.innerHTML = elHtml;
             currentHeight = measureDiv.offsetHeight;
