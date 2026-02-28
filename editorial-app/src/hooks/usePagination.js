@@ -211,7 +211,7 @@ export const usePagination = (bookData, config, measureRef) => {
 
     const dimsOdd = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterValueRef.current, false, estimatedPages);
     const dimsEven = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterValueRef.current, true, estimatedPages);
-    
+
     const contentWidth = Math.min(dimsOdd.contentWidth, dimsEven.contentWidth);
     const pageWidthPx = dimsOdd.pageWidthPx;
     const pageHeightPx = dimsOdd.pageHeightPx;
@@ -235,9 +235,15 @@ export const usePagination = (bookData, config, measureRef) => {
     measureDiv.innerHTML = 'Ag';
     const lineHeightPx = measureDiv.offsetHeight;
 
-    // Safety margin: 1px buffer to prevent sub-pixel rendering overflow
-    // Header is positioned absolutely in render, so doesn't affect content height calculation
-    const contentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight) - 1;
+    // Safety margin calculation:
+    // - Headers are rendered but not measured in pagination
+    // - Estimated header space: baseFontSize * lineHeight + 0.5em margin
+    // - Use conservative buffer: 2 * lineHeightPx to ensure no overflow
+    const headerSpaceEstimate = safeConfig.header?.enabled ? Math.round(lineHeightPx * 1.5) : 0;
+    const safetyMargin = 1 + headerSpaceEstimate;
+    const contentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight) - safetyMargin;
+
+    console.log(`[PAGINATION] estimatedPages=${estimatedPages}, headerEnabled=${safeConfig.header?.enabled}, lineHeightPx=${lineHeightPx}, safetyMargin=${safetyMargin}, contentHeight=${contentHeight}`);
     const minOrphanLines = safeConfig.pagination?.minOrphanLines || 1;
     const minWidowLines = safeConfig.pagination?.minWidowLines || 1;
     const splitLongParagraphs = safeConfig.pagination?.splitLongParagraphs !== false;
