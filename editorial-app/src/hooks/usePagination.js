@@ -208,7 +208,7 @@ export const usePagination = (bookData, config, measureRef) => {
     const dimsEven = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterValueRef.current, true);
     
     const contentWidth = Math.min(dimsOdd.contentWidth, dimsEven.contentWidth);
-    const contentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight);
+    const contentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight) - 1;
     const pageWidthPx = dimsOdd.pageWidthPx;
     const pageHeightPx = dimsOdd.pageHeightPx;
     const marginTop = dimsOdd.marginTop;
