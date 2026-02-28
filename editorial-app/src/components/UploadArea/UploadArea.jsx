@@ -14,6 +14,41 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
   const [pendingChapters, setPendingChapters] = useState(null);
   const [showChapterDetection, setShowChapterDetection] = useState(false);
 
+  // Chapter heading detection with comprehensive patterns
+  const isChapterHeading = (el) => {
+    const tag = el.tagName?.toLowerCase();
+    const text = el.textContent?.trim() || '';
+
+    if (tag === 'h1' || tag === 'h2') return true;
+
+    if (tag === 'p' || tag === 'div') {
+      const lowerText = text.toLowerCase();
+
+      if (/^(capítulo|chapter|cap\.?)\s*#?\d+/i.test(text)) return true;
+      if (/^(capítulo|chapter|cap\.?)\s*#?\d+\s*[-–—:]\s*/i.test(text)) return true;
+      if (/^(capítulo|chapter|cap\.?)\s+[ivxlcdm]+/i.test(text)) return true;
+      if (/^(capítulo|chapter|cap\.?)\s+(primero|segundo|tercero|cuarto|quinto|sexto|séptimo|octavo|noveno|décimo|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)/i.test(text)) return true;
+
+      if (/^(parte|part|book)\s+\d+/i.test(text)) return true;
+      if (/^(parte|part|book)\s+[ivxlcdm]+/i.test(text)) return true;
+      if (/^(parte|part|book)\s+(primera|segunda|tercera|cuarta|quinta|sexta|séptima|octava|novena|décima|first|second|third|fourth|fifth)/i.test(text)) return true;
+
+      if (/^libro\s+\d+/i.test(text)) return true;
+
+      if (/^capítulo\s+\d+/i.test(text)) return true;
+
+      if (/^capitulo\s+\d+/i.test(text)) return true;
+
+      if (/^CAPÍTULO\s+/i.test(text)) return true;
+      if (/^CAPITULO\s+/i.test(text)) return true;
+      if (/^CHAPTER\s+/i.test(text)) return true;
+
+      const specialChapters = ['prólogo', 'prologo', 'epílogo', 'epilogo', 'introducción', 'introduccion', 'conclusión', 'conclusion', 'dedicatoria', 'agradecimientos', 'bibliografía', 'bibliografia', 'prefacio', 'colofón', 'colofon'];
+      if (specialChapters.includes(lowerText)) return true;
+    }
+    return false;
+  };
+
   // Local detection function (only for UI, doesn't interact with validation hook)
   const detectChaptersLocal = (chapters) => {
     const detected = [];
@@ -24,70 +59,23 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
       const temp = document.createElement('div');
       temp.innerHTML = chapter.html;
 
-      let found = false;
-
-      // Check for headers first (H1-H6)
-      const headers = Array.from(temp.querySelectorAll('h1, h2, h3, h4, h5, h6'));
-      for (const header of headers) {
-        const headerText = header.textContent?.trim() || '';
-        if (headerText && isChapterTitle(headerText)) {
+      const allElements = Array.from(temp.querySelectorAll('p, h1, h2, h3, h4, h5, h6, div'));
+      for (const el of allElements) {
+        if (isChapterHeading(el)) {
+          const titleText = el.textContent?.trim() || '';
           detected.push({
             chapterId: chapter.id,
             chapterIndex,
-            chapterTitle: chapter.title || headerText,
-            detectedTitle: headerText,
+            chapterTitle: chapter.title || titleText,
+            detectedTitle: titleText,
             confirmed: true
           });
-          found = true;
-          break;
-        }
-      }
-
-      // If no header matched, check paragraphs (only first 3)
-      if (!found) {
-        const paragraphs = Array.from(temp.querySelectorAll('p'));
-        for (let i = 0; i < Math.min(paragraphs.length, 3); i++) {
-          const p = paragraphs[i];
-          const strong = p.querySelector('strong, b');
-          let titleText = '';
-
-          if (strong) {
-            titleText = strong.textContent?.trim() || '';
-          } else if (i === 0) {
-            titleText = p.textContent?.trim() || '';
-          }
-
-          if (titleText && isChapterTitle(titleText)) {
-            detected.push({
-              chapterId: chapter.id,
-              chapterIndex,
-              chapterTitle: chapter.title || titleText,
-              detectedTitle: titleText,
-              confirmed: true
-            });
-            found = true;
-            break;
-          }
+          break; // one match per chapter, move to next
         }
       }
     });
 
     return detected;
-  };
-
-  const isChapterTitle = (text) => {
-    if (!text) return false;
-    const patterns = [
-      /^(cap[ií]tulo|chapter|cap\.?)\s+\d+/i,
-      /^(parte|part|book)\s+\d+/i,
-      /^(introducci[ó]n|introduction|pr[ó]logo|prologue|prefacio|ep[ií]logo)/i,
-      /^\d+\.\s+[A-ZÁÉÍÓÚÑ]/,
-      /^secci[ó]n\s+\d+/i,
-      /^apartado\s+\d+/i,
-      /^\w+\s+\d{4}/,
-      /^parte\s+\w+/i
-    ];
-    return patterns.some(p => p.test(text.trim()));
   };
 
   useEffect(() => {
@@ -340,42 +328,8 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
   const parseAndLoadContentFromHtml = (htmlContent) => {
     const tempDiv = window.document.createElement('div');
     tempDiv.innerHTML = htmlContent;
-    
+
     const chapters = [];
-    
-    const isChapterHeading = (el) => {
-      const tag = el.tagName?.toLowerCase();
-      const text = el.textContent?.trim() || '';
-      
-      if (tag === 'h1' || tag === 'h2') return true;
-      
-      if (tag === 'p' || tag === 'div') {
-        const lowerText = text.toLowerCase();
-        
-        if (/^(capítulo|chapter|cap\.?)\s*#?\d+/i.test(text)) return true;
-        if (/^(capítulo|chapter|cap\.?)\s*#?\d+\s*[-–—:]\s*/i.test(text)) return true;
-        if (/^(capítulo|chapter|cap\.?)\s+[ivxlcdm]+/i.test(text)) return true;
-        if (/^(capítulo|chapter|cap\.?)\s+(primero|segundo|tercero|cuarto|quinto|sexto|séptimo|octavo|noveno|décimo|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)/i.test(text)) return true;
-        
-        if (/^(parte|part|book)\s+\d+/i.test(text)) return true;
-        if (/^(parte|part|book)\s+[ivxlcdm]+/i.test(text)) return true;
-        if (/^(parte|part|book)\s+(primera|segunda|tercera|cuarta|quinta|sexta|séptima|octava|novena|décima|first|second|third|fourth|fifth)/i.test(text)) return true;
-        
-        if (/^libro\s+\d+/i.test(text)) return true;
-        
-        if (/^capítulo\s+\d+/i.test(text)) return true;
-        
-        if (/^capitulo\s+\d+/i.test(text)) return true;
-        
-        if (/^CAPÍTULO\s+/i.test(text)) return true;
-        if (/^CAPITULO\s+/i.test(text)) return true;
-        if (/^CHAPTER\s+/i.test(text)) return true;
-        
-        const specialChapters = ['prólogo', 'prologo', 'epílogo', 'epilogo', 'introducción', 'introduccion', 'conclusión', 'conclusion', 'dedicatoria', 'agradecimientos', 'bibliografía', 'bibliografia', 'prefacio', 'colofón', 'colofon'];
-        if (specialChapters.includes(lowerText)) return true;
-      }
-      return false;
-    };
     
     const isSubtitle = (el) => {
       const tag = el.tagName?.toLowerCase();
