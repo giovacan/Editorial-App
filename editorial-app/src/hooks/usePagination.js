@@ -163,10 +163,21 @@ export const usePagination = (bookData, config, measureRef) => {
   }, [pages, safeConfig.gutterStrategy, calculateGutter]);
   
   useEffect(() => {
-    if (!safeBookData?.chapters?.length || !measureRef.current) {
-      setPages([]);
+    // Only run pagination if there's actual content
+    const hasContent = safeBookData?.chapters?.some(ch => ch.html && ch.html.trim().length > 0);
+    if (!hasContent || !measureRef.current) {
+      if (!hasContent) {
+        setPages([]);
+      }
       return;
     }
+
+    // Skip if we've already paginated this exact data
+    const contentHash = JSON.stringify(safeBookData.chapters.map(ch => ch.id + (ch.html?.length || 0)));
+    if (measureRef.current._lastContentHash === contentHash) {
+      return;
+    }
+    measureRef.current._lastContentHash = contentHash;
 
     useEditorStore.getState().startPagination();
 
@@ -175,6 +186,19 @@ export const usePagination = (bookData, config, measureRef) => {
     try {
       measureDiv.innerHTML = '';
       measureDiv.style.cssText = '';
+      // Asegurar estilos consistentes para medición
+      measureDiv.style.position = 'absolute';
+      measureDiv.style.visibility = 'hidden';
+      measureDiv.style.left = '-9999px';
+      measureDiv.style.top = '0';
+      measureDiv.style.width = '1px';
+      measureDiv.style.height = 'auto';
+      measureDiv.style.minHeight = '0';
+      measureDiv.style.maxHeight = 'none';
+      measureDiv.style.overflow = 'visible';
+      measureDiv.style.whiteSpace = 'normal';
+      measureDiv.style.wordWrap = 'break-word';
+      measureDiv.style.boxSizing = 'border-box';
     } catch (e) {
       console.warn('Error resetting measureDiv:', e);
     }
@@ -254,6 +278,11 @@ export const usePagination = (bookData, config, measureRef) => {
       const tmp = window.document.createElement('div');
       tmp.innerHTML = chapter.html || '<p></p>';
       const children = Array.from(tmp.children).filter(el => el.textContent.trim() || el.tagName === 'HR');
+      
+      console.log(`[CHAPTER ${chapter.title}] HTML length:`, chapter.html?.length);
+      console.log(`[CHAPTER ${chapter.title}] Children count:`, children.length);
+      console.log(`[CHAPTER ${chapter.title}] First child tag:`, children[0]?.tagName);
+      console.log(`[CHAPTER ${chapter.title}] First child HTML:`, children[0]?.outerHTML?.substring(0, 200));
       
       let currentHtml = '';
       let currentHeight = 0;
@@ -509,12 +538,12 @@ export const usePagination = (bookData, config, measureRef) => {
     
     const applyFillPass = () => {
       let totalIterations = 0;
-      const maxIterations = 5000;
+      const maxIterations = 10000;
       
       for (let pageIdx = 0; pageIdx < generatedPages.length - 1; pageIdx++) {
         if (totalIterations >= maxIterations) break;
         
-        for (let fillAttempts = 0; fillAttempts < 10; fillAttempts++) {
+        for (let fillAttempts = 0; fillAttempts < 50; fillAttempts++) {
           if (totalIterations >= maxIterations) break;
           totalIterations++;
           

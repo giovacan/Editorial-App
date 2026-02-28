@@ -173,7 +173,7 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
         newRemainingHtml = '';
       }
     } catch (e) {
-      console.warn('DOM split error, falling back to text split:', e);
+      console.error('❌ DOM split error in splitParagraphByLines, falling back to text split:', e, 'remainingHtml:', remainingHtml.substring(0, 100));
       // Fallback to text-based split if DOM manipulation fails
       const chunkText = text.substring(0, breakPoint);
       chunkHtml = chunkText;

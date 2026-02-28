@@ -6,7 +6,6 @@ import { usePagination, usePageNavigation } from '../../hooks/usePagination';
 import { useMagnifier } from '../../hooks/useMagnifier';
 import { useHeaderFooter, buildHeaderHtml } from '../../hooks/useHeaderFooter';
 import { calculateContentDimensions } from '../../utils/textMeasurer';
-import { resolveHeaderPageNumberConflicts } from '../../utils/headerConflictResolver';
 import './Preview.css';
 
 const AVAILABLE_SIDEBAR_WIDTH = 220;
@@ -196,8 +195,11 @@ function Preview() {
   
   const showPageNumber = (showNums && !currentPageData.isBlank) || (currentPageData.isExtraEndPage && currentPageData.shouldShowPageNumber);
   
+  const pageNumBottom = marginBottom + 12;
+  const pageNumRight = marginRight + 24;
+  
   const pageNumHtml = showPageNumber ? (
-    <span className="page-number" style={{ position: 'absolute', bottom: '12px', right: '24px', fontSize: `${fontSize * 0.8}pt` }}>
+    <span className="page-number" style={{ position: 'absolute', bottom: `${pageNumBottom}px`, right: `${pageNumRight}px`, fontSize: `${fontSize * 0.8}pt` }}>
       {currentPageData.pageNumber}
     </span>
   ) : null;

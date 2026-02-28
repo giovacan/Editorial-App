@@ -8,7 +8,9 @@
       "Bash(npm run dev)",
       "Bash(git add -A)",
       "Bash(git commit:*)",
-      "Bash(npm run dev -- --port 5174)"
+      "Bash(npm run dev -- --port 5174)",
+      "Bash(curl -s http://localhost:5174/ -H \"Cache-Control: no-cache\")",
+      "Bash(git add editorial-app/src/utils/paginationEngine.js)"
     ]
   }
 }

@@ -149,10 +149,10 @@ function UploadArea({ onContentLoaded }) {
 
     lines.forEach((line) => {
       const trimmed = line.trim();
-      
+
       if (isChapterHeader(trimmed)) {
         if (currentSection && currentChapter) {
-          currentChapter.html += `<div class="section">${currentSection.html}</div>`;
+          currentChapter.html += `<h3>${currentSection.title}</h3>${currentSection.html}`;
           currentSection = null;
         }
         if (currentChapter) {
@@ -169,7 +169,7 @@ function UploadArea({ onContentLoaded }) {
       } else if (isSectionHeader(trimmed)) {
         if (currentChapter) {
           if (currentSection) {
-            currentChapter.html += `<div class="section">${currentSection.html}</div>`;
+            currentChapter.html += `<h3>${currentSection.title}</h3>${currentSection.html}`;
           }
           currentSection = {
             id: `section-${Date.now()}-${chapters.length}-${Math.random()}`,
@@ -188,7 +188,7 @@ function UploadArea({ onContentLoaded }) {
     });
 
     if (currentSection && currentChapter) {
-      currentChapter.html += `<div class="section">${currentSection.html}</div>`;
+      currentChapter.html += `<h3>${currentSection.title}</h3>${currentSection.html}`;
     }
 
     if (currentChapter) {
@@ -256,15 +256,19 @@ function UploadArea({ onContentLoaded }) {
     const isSubtitle = (el) => {
       const tag = el.tagName?.toLowerCase();
       const text = el.textContent?.trim() || '';
-      
+
       if (tag === 'h3' || tag === 'h4') return true;
-      
+
       if (tag === 'p' || tag === 'div') {
         if (/^subtítulo|subtitle/i.test(text)) return true;
         if (/^nota\s+/i.test(text)) return true;
         if (/^reseña/i.test(text)) return true;
         if (/^\d+\.\d+/.test(text)) return true;
-        
+
+        // Solo es subtitle si es corto (títulos/secciones típicamente < 80 chars)
+        // Párrafos largos en bold son énfasis, no títulos
+        if (text.length > 80) return false;
+
         try {
           const computedStyle = el.ownerDocument.defaultView?.getComputedStyle(el);
           const fontWeight = computedStyle?.fontWeight;
@@ -272,7 +276,7 @@ function UploadArea({ onContentLoaded }) {
             return true;
           }
         } catch { /* ignore computedStyle errors */ }
-        
+
         const style = el.getAttribute('style') || '';
         if (style.includes('font-weight: bold') || style.includes('font-weight:700') || style.includes('font-weight:bold')) {
           return true;
@@ -281,19 +285,43 @@ function UploadArea({ onContentLoaded }) {
       return false;
     };
     
-    const allElements = tempDiv.querySelectorAll('p, h1, h2, h3, h4, h5, h6');
+    const allElements = tempDiv.querySelectorAll('p, h1, h2, h3, h4, h5, h6, div, section, article');
+    
+    // Si no hay suficientes elementos, el contenido puede estar todo en un solo div/p
+    // En ese caso, dividir por saltos de línea
+    if (allElements.length < 5 && htmlContent.length > 5000) {
+      // Dividir el contenido por párrafos naturales
+      const paragraphs = htmlContent
+        .split(/(?:<br\s*\/?>|\n|\r\n|\r|(?:<\/p>)|(?:<div>)|(?:<\/div>)|(?:<hr\s*\/?>))/i)
+        .map(p => p.trim())
+        .filter(p => p.length > 0);
+      
+      // Convertir cada párrafo en un elemento HTML
+      const processedHtml = paragraphs
+        .map(p => {
+          // Si ya tiene tags, dejarlos
+          if (/<[a-z]/i.test(p)) return p;
+          // Si no, envolver en <p>
+          return `<p>${p}</p>`;
+        })
+        .join('');
+      
+      tempDiv.innerHTML = processedHtml;
+    }
+    
+    const elementsToProcess = Array.from(tempDiv.children);
     
     let currentChapter = null;
     let currentSection = null;
     
-    allElements.forEach((el, index) => {
+    elementsToProcess.forEach((el, index) => {
       const text = el.textContent?.trim() || '';
-      if (!text) return;
-      
+      if (!text || text.length < 2) return;
+
       if (isChapterHeading(el)) {
         if (currentChapter) {
           if (currentSection) {
-            currentChapter.html += `<div class="section">${currentSection.html}</div>`;
+            currentChapter.html += `<h3>${currentSection.title}</h3>${currentSection.html}`;
             currentSection = null;
           }
           chapters.push(currentChapter);
@@ -309,7 +337,7 @@ function UploadArea({ onContentLoaded }) {
       } else if (isSubtitle(el)) {
         if (currentChapter) {
           if (currentSection) {
-            currentChapter.html += `<div class="section">${currentSection.html}</div>`;
+            currentChapter.html += `<h3>${currentSection.title}</h3>${currentSection.html}`;
           }
           currentSection = {
             id: `section-${Date.now()}-${index}`,
@@ -326,9 +354,9 @@ function UploadArea({ onContentLoaded }) {
         }
       }
     });
-    
+
     if (currentSection && currentChapter) {
-      currentChapter.html += `<div class="section">${currentSection.html}</div>`;
+      currentChapter.html += `<h3>${currentSection.title}</h3>${currentSection.html}`;
     }
     
     if (currentChapter) {
