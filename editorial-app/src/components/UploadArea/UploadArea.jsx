@@ -49,6 +49,30 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
     return false;
   };
 
+  // Detect chapters in raw HTML before processing
+  const detectChaptersInRawHtml = (htmlContent) => {
+    const temp = document.createElement('div');
+    temp.innerHTML = htmlContent;
+    const detected = [];
+
+    const allElements = Array.from(temp.querySelectorAll('p, h1, h2, h3, h4, h5, h6, div'));
+    console.log(`[detectChaptersInRawHtml] Found ${allElements.length} elements in raw HTML`);
+
+    allElements.forEach((el, index) => {
+      if (isChapterHeading(el)) {
+        const titleText = el.textContent?.trim() || '';
+        console.log(`[detectChaptersInRawHtml] Element ${index}: "${titleText}"`);
+        detected.push({
+          detectedTitle: titleText,
+          elementIndex: index
+        });
+      }
+    });
+
+    console.log(`[detectChaptersInRawHtml] Total detected: ${detected.length}`);
+    return detected;
+  };
+
   // Local detection function (only for UI, doesn't interact with validation hook)
   const detectChaptersLocal = (chapters) => {
     const detected = [];
@@ -60,9 +84,12 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
       temp.innerHTML = chapter.html;
 
       const allElements = Array.from(temp.querySelectorAll('p, h1, h2, h3, h4, h5, h6, div'));
+      console.log(`[detectChaptersLocal] Chapter ${chapterIndex} (${chapter.title}): Found ${allElements.length} elements`);
+
       for (const el of allElements) {
         if (isChapterHeading(el)) {
           const titleText = el.textContent?.trim() || '';
+          console.log(`[detectChaptersLocal] Found heading: "${titleText}"`);
           detected.push({
             chapterId: chapter.id,
             chapterIndex,
@@ -75,6 +102,7 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
       }
     });
 
+    console.log(`[detectChaptersLocal] Total detected: ${detected.length}`, detected);
     return detected;
   };
 
@@ -286,13 +314,17 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
   };
 
   const showChapterDetectionDialog = (chapters) => {
+    console.log(`[showChapterDetectionDialog] Processing ${chapters.length} chapters`);
     const detected = detectChaptersLocal(chapters);
+    console.log(`[showChapterDetectionDialog] Detected ${detected.length} chapter headings`);
     if (detected && detected.length > 0) {
+      console.log(`[showChapterDetectionDialog] Showing detection dialog`);
       setDetectedChaptersLocal(detected);
       setPendingChapters(chapters);
       setShowChapterDetection(true);
     } else {
       // Sin capítulos detectados, cargar directamente
+      console.log(`[showChapterDetectionDialog] No headings detected, loading directly`);
       setConfirmedChapterTitles([]);
       onContentLoaded(chapters);
     }
@@ -326,11 +358,14 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
   };
 
   const parseAndLoadContentFromHtml = (htmlContent) => {
+    // Detectar capítulos ANTES de procesarlos
+    const detectedHeadings = detectChaptersInRawHtml(htmlContent);
+
     const tempDiv = window.document.createElement('div');
     tempDiv.innerHTML = htmlContent;
 
     const chapters = [];
-    
+
     const isSubtitle = (el) => {
       const tag = el.tagName?.toLowerCase();
       const text = el.textContent?.trim() || '';
@@ -457,8 +492,24 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
       ch.wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
     });
 
-    // Detectar capítulos antes de cargar
-    showChapterDetectionDialog(chapters);
+    // Mostrar dialog de detección con los capítulos detectados en el HTML original
+    if (detectedHeadings && detectedHeadings.length > 0) {
+      const chapterDetections = chapters.map((ch, idx) => ({
+        chapterId: ch.id,
+        chapterIndex: idx,
+        chapterTitle: ch.title,
+        detectedTitle: ch.title,
+        confirmed: true
+      }));
+      console.log(`[parseAndLoadContentFromHtml] Showing ${chapterDetections.length} chapters for confirmation`);
+      setDetectedChaptersLocal(chapterDetections);
+      setPendingChapters(chapters);
+      setShowChapterDetection(true);
+    } else {
+      console.log(`[parseAndLoadContentFromHtml] No chapter headings detected, loading directly`);
+      setConfirmedChapterTitles([]);
+      onContentLoaded(chapters);
+    }
   };
 
   return (

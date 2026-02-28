@@ -89,8 +89,14 @@ export const useParagraphValidation = () => {
     );
   }, []);
 
-  const extractOriginalParagraphs = useCallback((html) => {
+  const extractOriginalParagraphs = useCallback((html, excludedTexts = []) => {
     if (!html) return [];
+    const normalizedExcluded = excludedTexts.map(t => t.trim().toLowerCase());
+    const isExcluded = (text) => {
+      if (!text || normalizedExcluded.length === 0) return false;
+      const normalized = text.trim().toLowerCase();
+      return normalizedExcluded.some(t => normalized.includes(t) || t.includes(normalized));
+    };
     const temp = document.createElement('div');
     temp.innerHTML = html;
     const paragraphs = Array.from(temp.querySelectorAll('p, div'))
@@ -106,12 +112,18 @@ export const useParagraphValidation = () => {
           tag: p.tagName.toLowerCase()
         };
       })
-      .filter(p => p.text.length > 0);
+      .filter(p => p.text.length > 0 && !isExcluded(p.text));
     return paragraphs;
   }, []);
 
-  const extractPreviewParagraphs = useCallback((pages) => {
+  const extractPreviewParagraphs = useCallback((pages, excludedTexts = []) => {
     if (!pages || pages.length === 0) return [];
+    const normalizedExcluded = excludedTexts.map(t => t.trim().toLowerCase());
+    const isExcluded = (text) => {
+      if (!text || normalizedExcluded.length === 0) return false;
+      const normalized = text.trim().toLowerCase();
+      return normalizedExcluded.some(t => normalized.includes(t) || t.includes(normalized));
+    };
     const paragraphs = [];
     pages.forEach(page => {
       const temp = document.createElement('div');
@@ -131,34 +143,19 @@ export const useParagraphValidation = () => {
             chapterTitle: page.chapterTitle
           };
         })
-        .filter(p => p.text.length > 0);
+        .filter(p => p.text.length > 0 && !isExcluded(p.text));
       paragraphs.push(...pageParagraphs);
     });
     return paragraphs;
   }, []);
 
-  const compareParagraphs = useCallback((original, preview, confirmedTitles = []) => {
+  const compareParagraphs = useCallback((original, preview) => {
     const issues = [];
     const maxLen = Math.max(original.length, preview.length);
-
-    // Normalizar títulos confirmados para comparación
-    const normalizedTitles = confirmedTitles.map(t => t.trim().toLowerCase());
-
-    const isConfirmedTitle = (text) => {
-      if (!text) return false;
-      const normalized = text.trim().toLowerCase();
-      return normalizedTitles.some(t =>
-        normalized.includes(t) || t.includes(normalized)
-      );
-    };
 
     for (let i = 0; i < maxLen; i++) {
       const orig = original[i];
       const prev = preview[i];
-
-      // Skip si el texto coincide con un título confirmado
-      if (orig && isConfirmedTitle(orig.text)) continue;
-      if (prev && isConfirmedTitle(prev.text)) continue;
 
       if (!orig) {
         issues.push({
@@ -372,12 +369,12 @@ export const useParagraphValidation = () => {
     const allIssues = [];
 
     chapters.forEach((chapter, chapterIndex) => {
-      const originalParagraphs = extractOriginalParagraphs(chapter.html);
+      const originalParagraphs = extractOriginalParagraphs(chapter.html, confirmedTitles);
 
       const chapterPages = pages.filter(p => p.chapterTitle === chapter.title);
-      const previewParagraphs = extractPreviewParagraphs(chapterPages);
+      const previewParagraphs = extractPreviewParagraphs(chapterPages, confirmedTitles);
 
-      const paragraphIssues = compareParagraphs(originalParagraphs, previewParagraphs, confirmedTitles);
+      const paragraphIssues = compareParagraphs(originalParagraphs, previewParagraphs);
       paragraphIssues.forEach(i => ({ ...i, chapter: chapter.title, chapterIndex }));
       allIssues.push(...paragraphIssues);
 
