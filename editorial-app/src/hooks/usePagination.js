@@ -209,20 +209,15 @@ export const usePagination = (bookData, config, measureRef) => {
     const dimsEven = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterValueRef.current, true);
     
     const contentWidth = Math.min(dimsOdd.contentWidth, dimsEven.contentWidth);
-    // Safety margin accounts for:
-    // 1. Sub-pixel rendering (1-2px)
-    // 2. Header margin (0.5em + gap) in render but not in pagination measure (~12px)
-    // 3. Boundary inconsistencies between < and <= checks
-    const contentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight) - Math.round(lineHeightPx * 0.75);
     const pageWidthPx = dimsOdd.pageWidthPx;
     const pageHeightPx = dimsOdd.pageHeightPx;
     const marginTop = dimsOdd.marginTop;
     const marginBottom = dimsOdd.marginBottom;
-    
+
     const baseFontSize = (safeConfig.fontSize || bookConfig.fontSize) * previewScale;
     const baseLineHeight = safeConfig.lineHeight || bookConfig.lineHeight;
     const textAlign = safeConfig.paragraph?.align || 'justify';
-    
+
     measureDiv.style.width = `${contentWidth}px`;
     measureDiv.style.fontFamily = safeConfig.fontFamily || bookConfig.fontFamily;
     measureDiv.style.fontSize = `${baseFontSize}pt`;
@@ -232,9 +227,15 @@ export const usePagination = (bookData, config, measureRef) => {
     measureDiv.style.hyphens = 'auto';
     measureDiv.style.wordBreak = 'break-word';
     measureDiv.style.padding = '0';
-    
+
     measureDiv.innerHTML = 'Ag';
     const lineHeightPx = measureDiv.offsetHeight;
+
+    // Safety margin accounts for:
+    // 1. Sub-pixel rendering (1-2px)
+    // 2. Header margin (0.5em + gap) in render but not in pagination measure (~12px)
+    // 3. Boundary inconsistencies between < and <= checks
+    const contentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight) - Math.round(lineHeightPx * 0.75);
     const minOrphanLines = safeConfig.pagination?.minOrphanLines || 1;
     const minWidowLines = safeConfig.pagination?.minWidowLines || 1;
     const splitLongParagraphs = safeConfig.pagination?.splitLongParagraphs !== false;
