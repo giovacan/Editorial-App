@@ -452,6 +452,20 @@ export const usePagination = (bookData, config, measureRef) => {
           }
 
           if (splitLongParagraphs) {
+            // GUARD: If paragraph fits on a complete new page, move it without splitting
+            if (elHeight <= contentHeight) {
+              generatedPages.push({
+                html: currentHtml,
+                pageNumber: generatedPages.length + 1,
+                chapterTitle: chapter.title,
+                isBlank: false,
+                currentSubheader
+              });
+              currentHtml = elHtml;
+              currentHeight = elHeight;
+              continue;
+            }
+
             const indentValue = safeConfig.paragraph?.firstLineIndent || 1.5;
             const splitArr = splitParagraphByLines(elHtml, measureDiv, remainingSpace, textAlign, !isFirstParagraph, indentValue, true, quoteOptions);
 
@@ -593,8 +607,8 @@ export const usePagination = (bookData, config, measureRef) => {
 
           measureDiv.innerHTML = page.html + firstElOuter;
           const pageWithElHeight = measureDiv.offsetHeight;
-          
-          if (pageWithElHeight <= contentHeight) {
+
+          if (pageWithElHeight < contentHeight) {
             firstEl.remove();
             const restHtml = tmp.innerHTML;
             measureDiv.innerHTML = restHtml;

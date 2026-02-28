@@ -88,13 +88,35 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
     let low = 0;
     let high = text.length;
     let fitLength = 0;
-    
+
+    // Helper: Clone element and truncate textContent to maxChars, preserving HTML structure
+    const truncateHtmlClone = (htmlElement, maxChars) => {
+      const clone = htmlElement.cloneNode(true);
+      let remaining = maxChars;
+      const walker = window.document.createTreeWalker(clone, NodeFilter.SHOW_TEXT);
+      const toRemove = [];
+      let node;
+      while ((node = walker.nextNode())) {
+        if (remaining <= 0) {
+          toRemove.push(node);
+        } else if (node.length > remaining) {
+          node.textContent = node.textContent.substring(0, remaining);
+          remaining = 0;
+        } else {
+          remaining -= node.length;
+        }
+      }
+      toRemove.forEach(n => n.parentNode && n.parentNode.removeChild(n));
+      return clone.innerHTML;
+    };
+
     while (low < high) {
       const mid = Math.floor((low + high + 1) / 2);
-      const trialText = text.substring(0, mid);
+      // Measure HTML (with inline formatting) instead of plain text
+      const trialHtml = truncateHtmlClone(tmp, mid);
       const wrapper = isBlockquote
-        ? `<blockquote style="${testStyle}">${trialText}</blockquote>`
-        : `<p style="${testStyle}">${trialText}</p>`;
+        ? `<blockquote style="${testStyle}">${trialHtml}</blockquote>`
+        : `<p style="${testStyle}">${trialHtml}</p>`;
 
       try {
         measureDiv.innerHTML = wrapper;
@@ -104,7 +126,7 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
         high = mid - 1;
         continue;
       }
-      
+
       if (measuredHeight <= maxHeight) {
         fitLength = mid;
         low = mid;
