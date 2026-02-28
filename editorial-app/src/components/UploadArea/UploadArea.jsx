@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import ChapterDetectionDialog from '../ChapterDetectionDialog/ChapterDetectionDialog';
-import { useParagraphValidation } from '../../hooks/useParagraphValidation';
+import useEditorStore from '../../store/useEditorStore';
 import './UploadArea.css';
 
 function UploadArea({ onContentLoaded, onChaptersDetected }) {
@@ -9,9 +9,62 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
   const [mammothReady, setMammothReady] = useState(() => !!window.mammoth);
   const fileInputRef = useRef(null);
 
-  const { detectChapters, confirmChapters } = useParagraphValidation();
+  const setConfirmedChapterTitles = useEditorStore(s => s.setConfirmedChapterTitles);
+  const [detectedChaptersLocal, setDetectedChaptersLocal] = useState([]);
   const [pendingChapters, setPendingChapters] = useState(null);
   const [showChapterDetection, setShowChapterDetection] = useState(false);
+
+  // Local detection function (only for UI, doesn't interact with validation hook)
+  const detectChaptersLocal = (chapters) => {
+    const detected = [];
+
+    chapters.forEach((chapter, chapterIndex) => {
+      if (!chapter.html) return;
+
+      const temp = document.createElement('div');
+      temp.innerHTML = chapter.html;
+      const paragraphs = Array.from(temp.querySelectorAll('p'));
+
+      for (let i = 0; i < Math.min(paragraphs.length, 3); i++) {
+        const p = paragraphs[i];
+        const strong = p.querySelector('strong, b');
+        let titleText = '';
+        if (strong) {
+          titleText = strong.textContent?.trim() || '';
+        } else if (i === 0) {
+          titleText = p.textContent?.trim() || '';
+        }
+
+        if (titleText && isChapterTitle(titleText)) {
+          detected.push({
+            chapterId: chapter.id,
+            chapterIndex,
+            chapterTitle: chapter.title || titleText,
+            detectedTitle: titleText,
+            confirmed: true
+          });
+          break;
+        }
+      }
+    });
+
+    return detected;
+  };
+
+  const isChapterTitle = (text) => {
+    if (!text) return false;
+    const patterns = [
+      /^(cap[ií]tulo|chapter|cap\.?)\s+\d+/i,
+      /^(parte|part|book)\s+\d+/i,
+      /^(introducci[ó]n|introduction|pr[ó]logo|prologue|prefacio|ep[ií]logo)/i,
+      /^\d+\.\s+[A-ZÁÉÍÓÚÑ]/,
+      /^secci[ó]n\s+\d+/i,
+      /^apartado\s+\d+/i,
+      /^\w+\s+\d{4}/,
+      /^parte\s+\w+/i
+    ];
+    return patterns.some(p => p.test(text.trim()));
+  };
 
   useEffect(() => {
     if (mammothReady) return;
@@ -221,18 +274,25 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
   };
 
   const showChapterDetectionDialog = (chapters) => {
-    const detected = detectChapters(chapters);
+    const detected = detectChaptersLocal(chapters);
     if (detected && detected.length > 0) {
+      setDetectedChaptersLocal(detected);
       setPendingChapters(chapters);
       setShowChapterDetection(true);
     } else {
       // Sin capítulos detectados, cargar directamente
+      setConfirmedChapterTitles([]);
       onContentLoaded(chapters);
     }
   };
 
   const handleChaptersConfirm = (confirmedChaptersList) => {
-    confirmChapters(confirmedChaptersList);
+    // Extraer los títulos detectados confirmados y guardarlos en el store
+    const confirmedTitles = confirmedChaptersList
+      .filter(ch => ch.confirmed)
+      .map(ch => ch.detectedTitle);
+
+    setConfirmedChapterTitles(confirmedTitles);
     setShowChapterDetection(false);
 
     // Notificar al componente padre sobre los capítulos confirmados
@@ -250,6 +310,7 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
   const handleChaptersCancel = () => {
     setShowChapterDetection(false);
     setPendingChapters(null);
+    setConfirmedChapterTitles([]);
   };
 
   const parseAndLoadContentFromHtml = (htmlContent) => {
@@ -426,7 +487,7 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
     <>
       {showChapterDetection && (
         <ChapterDetectionDialog
-          chapters={pendingChapters || []}
+          chapters={detectedChaptersLocal}
           onConfirm={handleChaptersConfirm}
           onCancel={handleChaptersCancel}
         />

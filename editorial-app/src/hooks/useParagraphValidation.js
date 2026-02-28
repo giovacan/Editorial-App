@@ -137,21 +137,28 @@ export const useParagraphValidation = () => {
     return paragraphs;
   }, []);
 
-  const compareParagraphs = useCallback((original, preview, chapterDetectedIndices = []) => {
+  const compareParagraphs = useCallback((original, preview, confirmedTitles = []) => {
     const issues = [];
     const maxLen = Math.max(original.length, preview.length);
-    
-    const confirmedChapterIndices = chapterDetectedIndices
-      .filter(ch => ch.confirmed)
-      .map(ch => ch.paragraphIndex);
+
+    // Normalizar títulos confirmados para comparación
+    const normalizedTitles = confirmedTitles.map(t => t.trim().toLowerCase());
+
+    const isConfirmedTitle = (text) => {
+      if (!text) return false;
+      const normalized = text.trim().toLowerCase();
+      return normalizedTitles.some(t =>
+        normalized.includes(t) || t.includes(normalized)
+      );
+    };
 
     for (let i = 0; i < maxLen; i++) {
-      if (confirmedChapterIndices.includes(i)) {
-        continue;
-      }
-      
       const orig = original[i];
       const prev = preview[i];
+
+      // Skip si el texto coincide con un título confirmado
+      if (orig && isConfirmedTitle(orig.text)) continue;
+      if (prev && isConfirmedTitle(prev.text)) continue;
 
       if (!orig) {
         issues.push({
@@ -359,12 +366,10 @@ export const useParagraphValidation = () => {
     return corrected;
   }, []);
 
-  const validateAll = useCallback(async (chapters, pages, config) => {
+  const validateAll = useCallback(async (chapters, pages, config, confirmedTitles = []) => {
     setValidationState(prev => ({ ...prev, isValidating: true, issues: [], corrections: [] }));
 
     const allIssues = [];
-    
-    const confirmedChapters = detectedChapters.filter(ch => ch.confirmed);
 
     chapters.forEach((chapter, chapterIndex) => {
       const originalParagraphs = extractOriginalParagraphs(chapter.html);
@@ -372,8 +377,7 @@ export const useParagraphValidation = () => {
       const chapterPages = pages.filter(p => p.chapterTitle === chapter.title);
       const previewParagraphs = extractPreviewParagraphs(chapterPages);
 
-      const chapterDetectedIndices = confirmedChapters.filter(ch => ch.chapterId === chapter.id);
-      const paragraphIssues = compareParagraphs(originalParagraphs, previewParagraphs, chapterDetectedIndices);
+      const paragraphIssues = compareParagraphs(originalParagraphs, previewParagraphs, confirmedTitles);
       paragraphIssues.forEach(i => ({ ...i, chapter: chapter.title, chapterIndex }));
       allIssues.push(...paragraphIssues);
 
@@ -451,15 +455,7 @@ export const useParagraphValidation = () => {
     validateHeaders,
     validateQuotes,
     validateIndentations,
-    validatePageBreaks,
-    detectChapters,
-    confirmChapters,
-    updateChapterConfirmation,
-    detectedChapters,
-    showChapterDialog,
-    setShowChapterDialog,
-    chaptersConfirmed,
-    isChapterTitle
+    validatePageBreaks
   };
 };
 

@@ -218,6 +218,7 @@ export interface EditorState {
   config: Config;
   ui: UI;
   paginationProgress: PaginationProgress;
+  confirmedChapterTitles: string[];
   setBookData: (doc: Partial<Document>) => void;
   setConfig: (config: Partial<Config>) => void;
   setUi: (ui: Partial<UI>) => void;
@@ -232,6 +233,7 @@ export interface EditorState {
   loadContent: (chapters: Chapter[]) => void;
   newProject: () => void;
   getStats: () => Stats;
+  setConfirmedChapterTitles: (titles: string[]) => void;
 }
 
 // ===== AUTH & USER TYPES =====

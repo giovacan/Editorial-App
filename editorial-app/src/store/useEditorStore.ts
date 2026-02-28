@@ -186,7 +186,8 @@ const initialState = {
   paginationProgress: {
     isActive: false,
     percent: 0
-  }
+  },
+  confirmedChapterTitles: [] as string[]
 };
 
 const mergeDeep = (target: any, source: any): any => {
@@ -486,7 +487,11 @@ const useEditorStore = create<EditorState>()(
 
     endPagination: () => set((state) => ({
       paginationProgress: { isActive: false, percent: 0 }
-    }))
+    })),
+
+    setConfirmedChapterTitles: (titles: string[]) => set({
+      confirmedChapterTitles: titles
+    })
   })
   )
 );

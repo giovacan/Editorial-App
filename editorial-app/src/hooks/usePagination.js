@@ -722,24 +722,26 @@ export const usePagination = (bookData, config, measureRef) => {
     };
   }, [bookData, config, measureRef, bookConfig, pageFormat, extraEndPages, extraEndPagesNumbered]);
   
-  const { 
-    validateAll, 
-    validationState, 
-    showErrorDialog, 
-    currentError, 
-    handleErrorAction, 
-    closeErrorDialog 
+  const confirmedChapterTitles = useEditorStore(s => s.confirmedChapterTitles ?? []);
+
+  const {
+    validateAll,
+    validationState,
+    showErrorDialog,
+    currentError,
+    handleErrorAction,
+    closeErrorDialog
   } = useParagraphValidation();
 
   useEffect(() => {
     if (pages.length > 0 && safeBookData.chapters) {
-      const validation = validateAll(safeBookData.chapters, pages, safeConfig);
-      
+      const validation = validateAll(safeBookData.chapters, pages, safeConfig, confirmedChapterTitles);
+
       if (process.env.NODE_ENV === 'development') {
         console.log('[ParagraphValidation] Result:', validation);
       }
     }
-  }, [pages, safeBookData.chapters, safeConfig]);
+  }, [pages, safeBookData.chapters, safeConfig, confirmedChapterTitles]);
   
   return { 
     pages,
