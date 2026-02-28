@@ -151,52 +151,86 @@ export const useParagraphValidation = () => {
 
   const compareParagraphs = useCallback((original, preview) => {
     const issues = [];
-    const maxLen = Math.max(original.length, preview.length);
+    let j = 0; // cursor independiente sobre preview
 
-    for (let i = 0; i < maxLen; i++) {
-      const orig = original[i];
-      const prev = preview[i];
-
-      if (!orig) {
-        issues.push({
-          type: 'MISSING_ORIGINAL',
-          index: i,
-          message: `Párrafo ${i + 1} faltante en original`
-        });
-        continue;
-      }
-
-      if (!prev) {
+    for (let i = 0; i < original.length; i++) {
+      if (j >= preview.length) {
         issues.push({
           type: 'MISSING_PREVIEW',
           index: i,
-          originalIndex: i,
-          originalText: orig.text.substring(0, 50) + '...',
+          originalText: original[i].text.substring(0, 50) + '...',
+          originalTextFull: original[i].text,
           message: `Párrafo ${i + 1} no aparece en preview`
         });
         continue;
       }
 
-      const wordDiff = Math.abs(orig.words - prev.words);
-      const charDiff = Math.abs(orig.length - prev.length);
+      const orig = original[i];
+      const origText = orig.text.trim();
 
-      if (wordDiff > 0 || charDiff > 0) {
+      // Acumular fragmentos de preview que sean continuaciones del párrafo original
+      let combinedText = '';
+      let combinedWords = 0;
+      let fragmentsConsumed = 0;
+
+      while (j + fragmentsConsumed < preview.length) {
+        const frag = preview[j + fragmentsConsumed];
+        const candidate = (combinedText + ' ' + frag.text).trim();
+
+        // Si el texto acumulado ya no es prefijo del original → parar
+        if (!origText.startsWith(candidate) && !candidate.startsWith(origText)) {
+          // Primer fragmento: checar si al menos el original empieza con este fragmento
+          if (fragmentsConsumed === 0) {
+            // No hay match en absoluto → usar este fragmento solo
+            combinedText = frag.text;
+            combinedWords = frag.words;
+            fragmentsConsumed = 1;
+          }
+          break;
+        }
+
+        combinedText = candidate;
+        combinedWords += frag.words;
+        fragmentsConsumed++;
+
+        // Si ya acumulamos suficientes palabras → parar
+        if (combinedWords >= orig.words) break;
+      }
+
+      j += fragmentsConsumed;
+
+      // Comparar palabras totales acumuladas vs original
+      const wordDiff = Math.abs(orig.words - combinedWords);
+      const charDiff = Math.abs(orig.length - combinedText.length);
+
+      // Tolerancia: diferencia <= 2 palabras (puntuación, guiones, etc.)
+      if (wordDiff > 2 || charDiff > 10) {
         issues.push({
           type: 'INCONSISTENT',
           index: i,
           originalWords: orig.words,
-          previewWords: prev.words,
+          previewWords: combinedWords,
           originalChars: orig.length,
-          previewChars: prev.length,
+          previewChars: combinedText.length,
           wordDiff,
           charDiff,
           originalText: orig.text.substring(0, 50) + '...',
-          previewText: prev.text.substring(0, 50) + '...',
+          previewText: combinedText.substring(0, 50) + '...',
           originalTextFull: orig.text,
-          previewTextFull: prev.text,
-          message: `Párrafo ${i + 1}: Original=${orig.words} palabras, Preview=${prev.words} palabras`
+          previewTextFull: combinedText,
+          message: `Párrafo ${i + 1}: Original=${orig.words} palabras, Preview=${combinedWords} palabras`
         });
       }
+    }
+
+    // Fragmentos sobrantes en preview que no coinciden con ningún original
+    while (j < preview.length) {
+      issues.push({
+        type: 'MISSING_ORIGINAL',
+        index: j,
+        message: `Párrafo extra en preview (posición ${j + 1})`
+      });
+      j++;
     }
 
     return issues;
