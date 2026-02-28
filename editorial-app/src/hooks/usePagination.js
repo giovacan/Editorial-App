@@ -231,8 +231,9 @@ export const usePagination = (bookData, config, measureRef) => {
     measureDiv.innerHTML = 'Ag';
     const lineHeightPx = measureDiv.offsetHeight;
 
-    // Safety margin: 1px buffer to prevent sub-pixel rendering overflow
-    const contentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight) - 1;
+    // Safety margin: account for sub-pixel rendering and header margin (0.5em ≈ 8px)
+    // Use conservative estimate: 10px buffer covers both sub-pixel variance and header space
+    const contentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight) - 10;
     const minOrphanLines = safeConfig.pagination?.minOrphanLines || 1;
     const minWidowLines = safeConfig.pagination?.minWidowLines || 1;
     const splitLongParagraphs = safeConfig.pagination?.splitLongParagraphs !== false;
@@ -256,11 +257,6 @@ export const usePagination = (bookData, config, measureRef) => {
 
     const generatedPages = [];
     let cancelled = false;
-
-    // Determine header margin impact: if headers are enabled, reserve space on first page
-    const headerMarginPx = safeConfig.header?.enabled
-      ? Math.round(baseFontSize * 0.5 * previewScale)
-      : 0; // 0.5em margin in pixels
 
     const processChapter = (chapter, chapterIndex) => {
       const isSection = chapter.type === 'section';
@@ -332,12 +328,6 @@ export const usePagination = (bookData, config, measureRef) => {
         currentHeight = titleHeight;
       }
 
-      // For the first page with title, reduce contentHeight if headers will be shown
-      let isFirstPageOfChapter = currentHtml === titleHtml;
-      const effectiveContentHeight = (isFirstPageOfChapter && headerMarginPx > 0)
-        ? contentHeight - headerMarginPx
-        : contentHeight;
-
       for (let childIdx = 0; childIdx < children.length; childIdx++) {
         if (cancelled) return;
 
@@ -382,10 +372,7 @@ export const usePagination = (bookData, config, measureRef) => {
         measureDiv.innerHTML = elHtml;
         const elHeight = measureDiv.offsetHeight;
 
-        // Use effectiveContentHeight for first page (accounts for header margin)
-        const pageContentHeight = isFirstPageOfChapter ? effectiveContentHeight : contentHeight;
-
-        if (elHeight > pageContentHeight) {
+        if (elHeight > contentHeight) {
           if (currentHtml) {
             generatedPages.push({
               html: currentHtml,
@@ -397,12 +384,11 @@ export const usePagination = (bookData, config, measureRef) => {
             });
             currentHtml = '';
             currentHeight = 0;
-            isFirstPageOfChapter = false; // Next pages don't have header
           }
           
           if (splitLongParagraphs) {
             const indentValue = safeConfig.paragraph?.firstLineIndent || 1.5;
-            const lines = splitParagraphByLines(elHtml, measureDiv, pageContentHeight, textAlign, !isFirstParagraph, indentValue, true, quoteOptions);
+            const lines = splitParagraphByLines(elHtml, measureDiv, contentHeight, textAlign, !isFirstParagraph, indentValue, true, quoteOptions);
             let lineHtml = '';
 
             lines.forEach((line, idx) => {
@@ -419,12 +405,11 @@ export const usePagination = (bookData, config, measureRef) => {
                   currentSubheader
                 });
                 lineHtml = '';
-                isFirstPageOfChapter = false;
               } else {
                 const testHtml = lineHtml + line;
                 measureDiv.innerHTML = testHtml;
 
-                if (measureDiv.offsetHeight > pageContentHeight) {
+                if (measureDiv.offsetHeight > contentHeight) {
                   if (lineHtml) {
                     generatedPages.push({
                       html: lineHtml,
@@ -469,8 +454,8 @@ export const usePagination = (bookData, config, measureRef) => {
         measureDiv.innerHTML = candidateHtml;
         const candidateHeight = measureDiv.offsetHeight;
 
-        if (candidateHeight > pageContentHeight) {
-          const remainingSpace = pageContentHeight - currentHeight;
+        if (candidateHeight > contentHeight) {
+          const remainingSpace = contentHeight - currentHeight;
           const remainingLinesOnPage = Math.round(remainingSpace / lineHeightPx);
 
           const shouldBreakPage = (el) => {
@@ -530,7 +515,6 @@ export const usePagination = (bookData, config, measureRef) => {
                   isBlank: false,
                   currentSubheader
                 });
-                isFirstPageOfChapter = false; // Moving to next page
                 currentHtml = restHtml;
                 measureDiv.innerHTML = currentHtml;
                 currentHeight = measureDiv.offsetHeight;
@@ -542,7 +526,6 @@ export const usePagination = (bookData, config, measureRef) => {
                   isBlank: false,
                   currentSubheader
                 });
-                isFirstPageOfChapter = false; // Moving to next page
                 currentHtml = elHtml;
                 currentHeight = elHeight;
               }
