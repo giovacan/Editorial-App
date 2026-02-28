@@ -23,27 +23,47 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
 
       const temp = document.createElement('div');
       temp.innerHTML = chapter.html;
-      const paragraphs = Array.from(temp.querySelectorAll('p'));
 
-      for (let i = 0; i < Math.min(paragraphs.length, 3); i++) {
-        const p = paragraphs[i];
-        const strong = p.querySelector('strong, b');
-        let titleText = '';
-        if (strong) {
-          titleText = strong.textContent?.trim() || '';
-        } else if (i === 0) {
-          titleText = p.textContent?.trim() || '';
-        }
-
-        if (titleText && isChapterTitle(titleText)) {
+      // Check for headers first (H1, H2, etc.)
+      const headers = Array.from(temp.querySelectorAll('h1, h2, h3, h4, h5, h6'));
+      for (const header of headers) {
+        const headerText = header.textContent?.trim() || '';
+        if (headerText && isChapterTitle(headerText)) {
           detected.push({
             chapterId: chapter.id,
             chapterIndex,
-            chapterTitle: chapter.title || titleText,
-            detectedTitle: titleText,
+            chapterTitle: chapter.title || headerText,
+            detectedTitle: headerText,
             confirmed: true
           });
           break;
+        }
+      }
+
+      // If no header matched, check paragraphs
+      if (detected.length === 0) {
+        const paragraphs = Array.from(temp.querySelectorAll('p'));
+        for (let i = 0; i < Math.min(paragraphs.length, 3); i++) {
+          const p = paragraphs[i];
+          const strong = p.querySelector('strong, b');
+          let titleText = '';
+
+          if (strong) {
+            titleText = strong.textContent?.trim() || '';
+          } else if (i === 0) {
+            titleText = p.textContent?.trim() || '';
+          }
+
+          if (titleText && isChapterTitle(titleText)) {
+            detected.push({
+              chapterId: chapter.id,
+              chapterIndex,
+              chapterTitle: chapter.title || titleText,
+              detectedTitle: titleText,
+              confirmed: true
+            });
+            break;
+          }
         }
       }
     });
