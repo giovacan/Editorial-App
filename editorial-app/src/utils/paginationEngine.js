@@ -153,20 +153,21 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
       if (cutNode) {
         // Split the text node at the exact character offset
         const afterNode = cutNode.splitText(cutOffset);
-        // The chunk is now everything before afterNode in innerEl
-        chunkHtml = innerEl.innerHTML;
 
-        // Reconstruct the continuation from afterNode onwards
+        // FIRST: extract the continuation from the DOM (this modifies innerEl)
         if (afterNode && afterNode.parentNode) {
           const range = window.document.createRange();
           range.setStartBefore(afterNode);
-          range.setEndAfter(innerEl.lastChild || afterNode);
+          range.setEnd(innerEl, innerEl.childNodes.length);
           const frag = range.extractContents();
 
           const contDiv = window.document.createElement('div');
           contDiv.appendChild(frag);
           newRemainingHtml = contDiv.innerHTML.trim();
         }
+
+        // SECOND: capture the chunk (now innerEl only contains what fits)
+        chunkHtml = innerEl.innerHTML;
       } else {
         // If no cutNode found, use the entire HTML as chunk
         chunkHtml = innerEl.innerHTML;
