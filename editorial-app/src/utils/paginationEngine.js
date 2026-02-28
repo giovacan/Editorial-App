@@ -112,10 +112,15 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
       return clone.innerHTML;
     };
 
+    // The inner element (<p> or <blockquote>) — we clone its CONTENT, not the outer wrapper div,
+    // so we don't produce nested <p> tags when wrapping with testStyle below.
+    const tmpInner = tmp.firstElementChild || tmp;
+
     while (low < high) {
       const mid = Math.floor((low + high + 1) / 2);
-      // Measure HTML (with inline formatting) instead of plain text
-      const trialHtml = truncateHtmlClone(tmp, mid);
+      // Measure HTML (with inline formatting) instead of plain text.
+      // truncateHtmlClone returns clone.innerHTML (inner content only, no outer tag).
+      const trialHtml = truncateHtmlClone(tmpInner, mid);
       const wrapper = isBlockquote
         ? `<blockquote style="${testStyle}">${trialHtml}</blockquote>`
         : `<p style="${testStyle}">${trialHtml}</p>`;
