@@ -477,19 +477,28 @@ function Preview() {
           onMouseEnter={handleMouseEnterPreview}
           onMouseLeave={handleMouseLeavePreview}
         >
-          {showHeaders && !currentPageData.isBlank && !skipHeader && hasHeaderContent && (
-            <div 
-              className="preview-header"
-              dangerouslySetInnerHTML={{ __html: headerHtml }}
-              style={{ marginBottom: '0.5em' }}
-            />
-          )}
-          
-          <div 
+          <div
             className="preview-content"
             dangerouslySetInnerHTML={{ __html: debugHtml || '' }}
+            style={{ flex: 1, overflow: 'hidden', position: 'relative' }}
           />
-          
+
+          {showHeaders && !currentPageData.isBlank && !skipHeader && hasHeaderContent && (
+            <div
+              className="preview-header"
+              dangerouslySetInnerHTML={{ __html: headerHtml }}
+              style={{
+                position: 'absolute',
+                top: `${marginTop}px`,
+                left: `${marginLeft}px`,
+                right: `${marginRight}px`,
+                marginBottom: '0.5em',
+                zIndex: 10,
+                pointerEvents: 'none'
+              }}
+            />
+          )}
+
           {pageNumHtml}
         </div>
       </div>
