@@ -73,6 +73,11 @@ const initialState = {
     headerContent: 'both' as const,
     headerPosition: 'top' as const,
     headerLine: true,
+    autoDetectHeaders: {
+      enabled: false,
+      targetLevel: 'h2',
+      preserveFormatting: true
+    },
     header: {
       enabled: false,
       template: 'classic' as const,
@@ -150,6 +155,27 @@ const initialState = {
       minOrphanLines: 2,
       minWidowLines: 2,
       splitLongParagraphs: true
+    },
+    previewDebug: {
+      enabled: false,
+      elements: {
+        headers: true,
+        paragraphs: true,
+        quotes: true
+      },
+      spacing: {
+        indent: true,
+        paragraphGap: true
+      },
+      pageBreaks: {
+        showEndOfPage: true,
+        showContinued: true
+      },
+      dimensions: {
+        margins: false,
+        gutter: false,
+        pageSize: false
+      }
     }
   },
   ui: {

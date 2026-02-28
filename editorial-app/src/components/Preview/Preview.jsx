@@ -1,4 +1,4 @@
-import { useRef, memo, useEffect } from 'react';
+import { useRef, memo, useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import useEditorStore from '../../store/useEditorStore';
@@ -6,6 +6,8 @@ import { usePagination, usePageNavigation } from '../../hooks/usePagination';
 import { useMagnifier } from '../../hooks/useMagnifier';
 import { useHeaderFooter, buildHeaderHtml } from '../../hooks/useHeaderFooter';
 import { calculateContentDimensions } from '../../utils/textMeasurer';
+import PreviewDebugPanel from './PreviewDebugPanel';
+import ValidationErrorDialog from '../ValidationErrorDialog/ValidationErrorDialog';
 import './Preview.css';
 
 const AVAILABLE_SIDEBAR_WIDTH = 220;
@@ -67,9 +69,12 @@ const DEFAULT_CONFIG = {
 };
 
 function Preview() {
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+  
   const bookData = useEditorStore(useShallow((s) => s.bookData));
   const config = useEditorStore(useShallow((s) => s.config));
   const editing = useEditorStore(useShallow((s) => s.editing));
+  const setConfig = useEditorStore((s) => s.setConfig);
   
   const activeChapterId = editing?.activeChapterId;
   
@@ -101,6 +106,105 @@ function Preview() {
 
   const safeBookData = bookData || { bookType: 'novela', chapters: [], title: '' };
   const safeConfig = config || DEFAULT_CONFIG;
+  const debugConfig = safeConfig.previewDebug || { 
+    enabled: false,
+    elements: { headers: true, paragraphs: true, quotes: true },
+    spacing: { indent: true, paragraphGap: true },
+    pageBreaks: { showEndOfPage: true, showContinued: true },
+    dimensions: { margins: false, gutter: false, pageSize: false }
+  };
+
+  const addDebugTags = (html) => {
+    if (!debugConfig.enabled || !html) return html;
+    
+    const isChapterTitle = (text) => {
+      const patterns = [
+        /^(cap[ií]tulo|chapter|cap\.?)\s+\d+/i,
+        /^(parte|part|book)\s+\d+/i,
+        /^(introducci[ó]n|introduction|pr[ó]logo|prologue)/i,
+        /^\d+\.\s+[A-ZÁÉÍÓÚÑ]/,
+        /^secci[ó]n\s+\d+/i
+      ];
+      return patterns.some(p => p.test(text.trim()));
+    };
+    
+    let processedHtml = html;
+    
+    if (debugConfig.elements.headers) {
+      processedHtml = processedHtml.replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi, (match, level, content) => {
+        const tag = 'h' + level;
+        const label = tag.toUpperCase();
+        return `<span class="debug-tag ${tag}">[${label}]</span>${match}`;
+      });
+      
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = html;
+      
+      let maxFontSize = 0;
+      const boldElements = tempDiv.querySelectorAll('p strong, p b');
+      boldElements.forEach(el => {
+        const style = window.getComputedStyle(el);
+        const fontSize = parseFloat(style.fontSize) || 0;
+        if (fontSize > maxFontSize) maxFontSize = fontSize;
+      });
+      
+      const sizeThreshold = maxFontSize * 0.9;
+      
+      processedHtml = processedHtml.replace(/<p[^>]*>\s*<(strong|b)[^>]*>([\s\S]*?)<\/\1>\s*<\/p>/gi, (match, tag, content) => {
+        const textContent = content.replace(/<[^>]+>/g, '').trim();
+        const isChapter = isChapterTitle(textContent);
+        
+        const tempP = document.createElement('p');
+        tempP.innerHTML = match;
+        const strongEl = tempP.querySelector('strong, b');
+        let isLargest = false;
+        if (strongEl) {
+          const style = window.getComputedStyle(strongEl);
+          const fontSize = parseFloat(style.fontSize) || 0;
+          isLargest = fontSize >= sizeThreshold;
+        }
+        
+        if (textContent.length > 2) {
+          const label = isChapter || isLargest ? 'h1' : 'h2';
+          return `<span class="debug-tag ${label}">[${label.toUpperCase()}]</span>${match}`;
+        }
+        return match;
+      });
+    }
+    
+    if (debugConfig.elements.quotes) {
+      processedHtml = processedHtml.replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, (match) => {
+        return `<span class="debug-tag quote">[Q]</span>${match}`;
+      });
+      
+      processedHtml = processedHtml.replace(/<p[^>]*class="[^"]*quote[^"]*"[^>]*>([\s\S]*?)<\/p>/gi, (match) => {
+        return `<span class="debug-tag quote">[Q]</span>${match}`;
+      });
+      
+      processedHtml = processedHtml.replace(/<em[^>]*>([\s\S]*?)<\/em>/gi, (match, content) => {
+        const textContent = match.replace(/<[^>]+>/g, '').trim();
+        if (textContent.length > 10 && textContent.length < 500) {
+          return `<span class="debug-tag quote">[Q]</span>${match}`;
+        }
+        return match;
+      });
+    }
+    
+    if (debugConfig.elements.paragraphs) {
+      processedHtml = processedHtml.replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, (match, content) => {
+        const textContent = content.replace(/<[^>]+>/g, '').trim();
+        const hasBold = /<strong[^>]*>|<\/?b[^>]*>/i.test(content);
+        if (textContent.length > 0 && !hasBold) {
+          const hasIndent = safeConfig.paragraph?.firstLineIndent > 0;
+          const indentLabel = hasIndent ? `[SANG:${safeConfig.paragraph.firstLineIndent}em]` : '';
+          return `<span class="debug-tag paragraph">[P]${indentLabel}</span>${match}`;
+        }
+        return match;
+      });
+    }
+    
+    return processedHtml;
+  };
   
   const bookConfig = KDP_STANDARDS.getBookTypeConfig(safeBookData.bookType);
   
@@ -126,7 +230,14 @@ function Preview() {
     pageFormat = KDP_STANDARDS.getPageFormat(safeConfig.pageFormat || bookConfig.recommendedFormat);
   }
   
-  const { pages = [] } = usePagination(bookData, config, measureRef);
+  const { 
+    pages = [],
+    validationState,
+    showErrorDialog,
+    currentError,
+    handleErrorAction,
+    closeErrorDialog
+  } = usePagination(bookData, config, measureRef);
   const totalPageCount = pages.length;
   
   const gutterValue = safeConfig.gutterStrategy === 'custom'
@@ -135,6 +246,8 @@ function Preview() {
   const { currentPage, goToPage, goToNextPage, goToPrevPage, goToFirstPage, goToLastPage, totalPages } = usePageNavigation(pages.length);
   
   const currentPageData = (pages && pages.length > 0 && pages[currentPage]) ? pages[currentPage] : { html: '', pageNumber: 1, isBlank: false, chapterTitle: '', currentSubheader: '' };
+  
+  const debugHtml = debugConfig.enabled ? addDebugTags(currentPageData.html) : currentPageData.html;
   
   const isCurrentPageEven = currentPageData.pageNumber % 2 === 0;
   const isTitleOnlyPage = currentPageData.isTitleOnlyPage === true;
@@ -187,19 +300,62 @@ function Preview() {
   const fontFamily = safeConfig.fontFamily || bookConfig.fontFamily;
   const lineHeight = safeConfig.lineHeight || bookConfig.lineHeight;
   const textAlign = safeConfig.paragraph?.align || 'justify';
-  const showNums = safeConfig.header?.showPageNumbers !== false;
-  
+  const showNums = safeConfig.showPageNumbers !== false;
+   
   const skipHeader = headerConfig.skipFirstChapterPage && currentPageData.isFirstChapterPage;
   const hasHeaderContent = headerLeft || headerCenter || headerRight;
   const showHeaderLine = (headerConfig.showLine !== false) && hasHeaderContent;
-  
+   
   const showPageNumber = (showNums && !currentPageData.isBlank) || (currentPageData.isExtraEndPage && currentPageData.shouldShowPageNumber);
+   
+  const pageNumberPos = safeConfig.pageNumberPos || 'bottom';
+  const pageNumberAlign = safeConfig.pageNumberAlign || 'center';
+   
+  const pageNumY = 12;
+  let pageNumX = 0;
+  let pageNumHorizontalStyle = {};
+   
+  switch (pageNumberAlign) {
+    case 'paragraph-edge':
+      if (isCurrentPageEven) {
+        pageNumHorizontalStyle = { left: `${marginLeft}px` };
+      } else {
+        pageNumHorizontalStyle = { right: `${marginRight}px` };
+      }
+      break;
+    case 'paragraph':
+      if (isCurrentPageEven) {
+        pageNumX = marginLeft + 12;
+        pageNumHorizontalStyle = { left: `${pageNumX}px` };
+      } else {
+        pageNumX = marginRight + 12;
+        pageNumHorizontalStyle = { right: `${pageNumX}px` };
+      }
+      break;
+    case 'outer':
+      if (isCurrentPageEven) {
+        pageNumHorizontalStyle = { left: '12px' };
+      } else {
+        pageNumHorizontalStyle = { right: '12px' };
+      }
+      break;
+    case 'center':
+    default:
+      pageNumHorizontalStyle = { left: '50%', transform: 'translateX(-50%)' };
+      break;
+  }
   
-  const pageNumBottom = marginBottom + 12;
-  const pageNumRight = marginRight + 24;
+  const pageNumVerticalStyle = pageNumberPos === 'top' ? { top: `${pageNumY}px` } : { bottom: `${pageNumY}px` };
   
+  const pageNumStyle = {
+    position: 'absolute',
+    ...pageNumVerticalStyle,
+    ...pageNumHorizontalStyle,
+    fontSize: `${fontSize * 0.8}pt`
+  };
+   
   const pageNumHtml = showPageNumber ? (
-    <span className="page-number" style={{ position: 'absolute', bottom: `${pageNumBottom}px`, right: `${pageNumRight}px`, fontSize: `${fontSize * 0.8}pt` }}>
+    <span className="page-number" style={pageNumStyle}>
       {currentPageData.pageNumber}
     </span>
   ) : null;
@@ -281,8 +437,24 @@ function Preview() {
           >
             300%
           </button>
+          <button 
+            className={`zoom-btn ${showDebugPanel ? 'active' : ''}`}
+            onClick={() => setShowDebugPanel(!showDebugPanel)}
+            title="Modo Developer"
+            style={{ fontSize: '12px', padding: '4px 6px' }}
+          >
+            ⚙️
+          </button>
         </div>
       </div>
+
+      {showDebugPanel && (
+        <PreviewDebugPanel 
+          config={config}
+          onChange={setConfig}
+          onClose={() => setShowDebugPanel(false)}
+        />
+      )}
 
       <div className="preview-scroll" ref={previewScrollRef}>
         <div
@@ -315,7 +487,7 @@ function Preview() {
           
           <div 
             className="preview-content"
-            dangerouslySetInnerHTML={{ __html: currentPageData.html || '' }}
+            dangerouslySetInnerHTML={{ __html: debugHtml || '' }}
           />
           
           {pageNumHtml}
@@ -401,16 +573,24 @@ function Preview() {
                 )}
                 <div 
                   className="preview-content"
-                  dangerouslySetInnerHTML={{ __html: currentPageData.html || '' }}
+                  dangerouslySetInnerHTML={{ __html: debugHtml || '' }}
                 />
                 {pageNumHtml}
               </div>
             </div>
-          </div>
-        );
-      })() : null}
-    </div>
-  );
-}
+            </div>
+          );
+        })() : null}
 
-export default memo(Preview);
+        {showErrorDialog && currentError && (
+          <ValidationErrorDialog
+            error={currentError}
+            onAction={(action) => handleErrorAction(action, currentError)}
+            onClose={closeErrorDialog}
+          />
+        )}
+      </div>
+    );
+  }
+
+  export default memo(Preview);

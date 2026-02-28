@@ -5,7 +5,7 @@ export type PageFormatUnit = 'mm' | 'cm' | 'in';
 export type ChapterType = 'chapter' | 'section';
 export type TabName = 'structure' | 'config' | 'preview' | 'export';
 export type PageNumberPos = 'top' | 'bottom';
-export type PageNumberAlign = 'left' | 'center' | 'right' | 'outer';
+export type PageNumberAlign = 'paragraph-edge' | 'paragraph' | 'outer' | 'center';
 export type HeaderContent = 'title' | 'chapter' | 'both';
 export type TextAlign = 'left' | 'center' | 'right' | 'justify';
 export type ChapterLayout = 'continuous' | 'spaced' | 'halfPage' | 'fullPage';
@@ -168,6 +168,29 @@ export interface Config {
   paragraph: ParagraphConfig;
   quote: QuoteConfig;
   pagination: PaginationRules;
+  previewDebug: PreviewDebugConfig;
+}
+
+export interface PreviewDebugConfig {
+  enabled: boolean;
+  elements: {
+    headers: boolean;
+    paragraphs: boolean;
+    quotes: boolean;
+  };
+  spacing: {
+    indent: boolean;
+    paragraphGap: boolean;
+  };
+  pageBreaks: {
+    showEndOfPage: boolean;
+    showContinued: boolean;
+  };
+  dimensions: {
+    margins: boolean;
+    gutter: boolean;
+    pageSize: boolean;
+  };
 }
 
 export interface UI {

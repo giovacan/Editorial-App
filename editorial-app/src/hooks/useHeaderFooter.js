@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 export const useHeaderFooter = (config, currentPageData, totalPages, bookTitle) => {
   const safePageData = currentPageData || { pageNumber: 1, chapterTitle: '', currentSubheader: '', isBlank: false, isFirstChapterPage: false };
   const headerConfig = config?.header || {};
-  const showHeaders = headerConfig.enabled !== false;
+  const showHeaders = config?.showHeaders !== false && headerConfig.enabled !== false;
   
   const isEvenPage = safePageData.pageNumber ? safePageData.pageNumber % 2 === 0 : false;
   const subtopicMaxLength = headerConfig.subtopicMaxLength || 60;
@@ -19,6 +19,11 @@ export const useHeaderFooter = (config, currentPageData, totalPages, bookTitle) 
   
   const subtopicBehavior = headerConfig.subtopicBehavior || 'none';
   
+  // Si trackPseudoHeaders está activo pero subtopicBehavior es 'none', usar 'replace' por defecto
+  const effectiveSubtopicBehavior = (headerConfig.trackPseudoHeaders && subtopicBehavior === 'none') 
+    ? 'replace' 
+    : subtopicBehavior;
+  
   const getHeaderContent = (contentType) => {
     const baseContent = (() => {
       switch (contentType) {
@@ -30,8 +35,8 @@ export const useHeaderFooter = (config, currentPageData, totalPages, bookTitle) 
       }
     })();
     
-    if (truncatedSubheader && subtopicBehavior !== 'none' && contentType !== 'page') {
-      switch (subtopicBehavior) {
+    if (truncatedSubheader && effectiveSubtopicBehavior !== 'none' && contentType !== 'page') {
+      switch (effectiveSubtopicBehavior) {
         case 'replace':
           return truncatedSubheader;
         case 'combine':
@@ -51,6 +56,11 @@ export const useHeaderFooter = (config, currentPageData, totalPages, bookTitle) 
   };
   
   const displayMode = headerConfig.displayMode || 'alternate';
+  
+  const shouldSkipHeader = () => {
+    if (!headerConfig.skipFirstChapterPage) return false;
+    return safePageData?.isFirstChapterPage === true;
+  };
   
   let shouldShowHeader = false;
   let pageConfig;
@@ -112,11 +122,6 @@ export const useHeaderFooter = (config, currentPageData, totalPages, bookTitle) 
     return '';
   }, [showHeaders, safePageData, shouldShowHeader, headerConfig, isEvenPage]);
   
-  const shouldSkipHeader = () => {
-    if (!headerConfig.skipFirstChapterPage) return false;
-    return safePageData?.isFirstChapterPage === true;
-  };
-  
   const showFooter = headerConfig.enabled !== false && headerConfig.showPageNumbers !== false;
   
   return {
@@ -129,7 +134,7 @@ export const useHeaderFooter = (config, currentPageData, totalPages, bookTitle) 
     isEvenPage,
     headerConfig,
     truncatedSubheader,
-    subtopicBehavior,
+    subtopicBehavior: effectiveSubtopicBehavior,
     subtopicSeparator
   };
 };

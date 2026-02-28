@@ -15,14 +15,17 @@
 
 .preview-controls {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   margin-bottom: 10px;
-  padding: 6px;
+  padding: 6px 10px;
   background: #f8f9fa;
   border-radius: 6px;
   border: 1px solid #e9ecef;
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  flex-wrap: wrap;
 }
 
 .preview-controls-left {
@@ -30,19 +33,12 @@
   align-items: center;
   gap: 2px;
   flex-wrap: wrap;
-  justify-content: flex-start;
 }
 
 .preview-controls-right {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
   gap: 4px;
-  background: white;
-  padding: 4px;
-  border-radius: 5px;
-  border: 1px solid #dee2e6;
-  box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
   flex-wrap: wrap;
 }
 
@@ -117,13 +113,13 @@
   background: #6c757d;
   color: white;
   border: none;
-  padding: 6px 10px;
-  border-radius: 4px;
+  padding: 4px 6px;
+  border-radius: 3px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 600;
   transition: all 0.2s ease;
-  min-width: 45px;
+  min-width: 32px;
 }
 
 .zoom-btn:hover {
@@ -249,12 +245,8 @@
 }
 
 .page-number {
-  position: absolute;
-  bottom: 8px;
   font-size: 0.8em;
   color: #888;
-  left: 50%;
-  transform: translateX(-50%);
 }
 
 .preview-info {
@@ -353,4 +345,59 @@
 
 .magnifier-panel .preview-content {
   overflow: hidden;
+}
+
+/* Debug Tags */
+.debug-tag {
+  display: inline-block !important;
+  padding: 1px 3px !important;
+  margin-right: 3px !important;
+  margin-bottom: 1px !important;
+  border-radius: 2px !important;
+  font-size: 7px !important;
+  font-weight: bold !important;
+  color: white !important;
+  text-shadow: 0 1px 1px rgba(0,0,0,0.3) !important;
+  vertical-align: middle !important;
+  line-height: 1.2 !important;
+}
+
+.debug-tag.h1 { background: #e74c3c; }
+.debug-tag.h2 { background: #e67e22; }
+.debug-tag.h3 { background: #f1c40f; color: #333; }
+.debug-tag.h4, .debug-tag.h5, .debug-tag.h6 { background: #27ae60; }
+.debug-tag.paragraph { background: #3498db; }
+.debug-tag.quote { background: #9b59b6; }
+
+/* Debug dimensions overlay */
+.debug-dimensions {
+  position: absolute;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.debug-margin {
+  position: absolute;
+  border: 1px dashed rgba(231, 76, 60, 0.5);
+  background: rgba(231, 76, 60, 0.1);
+}
+
+.debug-gutter {
+  position: absolute;
+  background: rgba(241, 196, 15, 0.3);
+  border-left: 1px dashed #f39c12;
+  border-right: 1px dashed #f39c12;
+}
+
+.debug-page-info {
+  position: absolute;
+  bottom: -25px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #34495e;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 10px;
+  white-space: nowrap;
 }

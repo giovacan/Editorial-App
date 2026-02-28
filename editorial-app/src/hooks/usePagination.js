@@ -9,6 +9,7 @@ import {
   shouldStartOnRightPage
 } from '../utils/paginationEngine';
 import { calculateContentDimensions } from '../utils/textMeasurer';
+import { useParagraphValidation } from './useParagraphValidation';
 
 
 const DEFAULT_CONFIG = {
@@ -288,6 +289,7 @@ export const usePagination = (bookData, config, measureRef) => {
       let currentHeight = 0;
       const headerConfig = safeConfig.header || {};
       const trackSubheaders = headerConfig.trackSubheaders;
+      const trackPseudoHeaders = !!headerConfig.trackPseudoHeaders;
       let currentSubheader = '';
       let paragraphCount = 0;
       
@@ -338,6 +340,29 @@ export const usePagination = (bookData, config, measureRef) => {
           const subheaderLevels = headerConfig.subheaderLevels || ['h1', 'h2'];
           if (subheaderLevels.includes(level)) {
             currentSubheader = el.textContent || '';
+          }
+        }
+        
+        if (trackPseudoHeaders && (el.tagName === 'P' || el.tagName === 'DIV')) {
+          if (!currentSubheader) {
+            const boldElements = el.querySelectorAll('strong, b');
+            for (const boldEl of boldElements) {
+              const text = boldEl.textContent?.trim() || '';
+              if (text.length > 3) {
+                currentSubheader = text;
+                break;
+              }
+            }
+            
+            if (!currentSubheader) {
+              const style = el.getAttribute('style') || '';
+              if (style.includes('font-weight: bold') || style.includes('font-weight:700') || style.includes('font-weight:600')) {
+                const text = el.textContent?.trim() || '';
+                if (text.length > 3) {
+                  currentSubheader = text;
+                }
+              }
+            }
           }
         }
         
@@ -697,7 +722,33 @@ export const usePagination = (bookData, config, measureRef) => {
     };
   }, [bookData, config, measureRef, bookConfig, pageFormat, extraEndPages, extraEndPagesNumbered]);
   
-  return { pages };
+  const { 
+    validateAll, 
+    validationState, 
+    showErrorDialog, 
+    currentError, 
+    handleErrorAction, 
+    closeErrorDialog 
+  } = useParagraphValidation();
+
+  useEffect(() => {
+    if (pages.length > 0 && safeBookData.chapters) {
+      const validation = validateAll(safeBookData.chapters, pages, safeConfig);
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[ParagraphValidation] Result:', validation);
+      }
+    }
+  }, [pages, safeBookData.chapters, safeConfig]);
+  
+  return { 
+    pages,
+    validationState,
+    showErrorDialog,
+    currentError,
+    handleErrorAction,
+    closeErrorDialog
+  };
 };
 
 export const usePageNavigation = (totalPages) => {

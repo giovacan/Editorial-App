@@ -1,0 +1,180 @@
+.validation-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.validation-dialog {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  max-width: 500px;
+  width: 90%;
+  max-height: 80vh;
+  overflow: hidden;
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from { 
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.validation-dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  background: #fff3cd;
+  border-bottom: 1px solid #ffeeba;
+}
+
+.validation-dialog-icon {
+  font-size: 24px;
+}
+
+.validation-dialog-title {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 600;
+  color: #856404;
+}
+
+.validation-dialog-close {
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: #856404;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.validation-dialog-close:hover {
+  background: rgba(133, 100, 4, 0.1);
+}
+
+.validation-dialog-content {
+  padding: 20px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.validation-dialog-description {
+  color: #495057;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.validation-dialog-info {
+  background: #f8f9fa;
+  padding: 10px 14px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.validation-dialog-comparison {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.validation-dialog-column {
+  background: #f8f9fa;
+  padding: 12px;
+  border-radius: 6px;
+}
+
+.validation-dialog-column strong {
+  display: block;
+  font-size: 12px;
+  color: #6c757d;
+  margin-bottom: 6px;
+}
+
+.validation-dialog-column p {
+  font-size: 13px;
+  color: #212529;
+  margin: 0;
+  word-break: break-word;
+}
+
+.validation-dialog-stats {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: #e7f5ff;
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.validation-dialog-stats span {
+  color: #0c5460;
+}
+
+.validation-dialog-stats strong {
+  color: #1e7e8a;
+}
+
+.validation-dialog-actions {
+  display: flex;
+  gap: 10px;
+  padding: 16px 20px;
+  background: #f8f9fa;
+  border-top: 1px solid #dee2e6;
+  flex-wrap: wrap;
+}
+
+.validation-btn {
+  flex: 1;
+  min-width: 120px;
+  padding: 10px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.validation-btn-secondary {
+  background: white;
+  color: #495057;
+  border: 1px solid #ced4da;
+}
+
+.validation-btn-secondary:hover {
+  background: #e9ecef;
+}
+
+.validation-btn-primary {
+  background: #007bff;
+  color: white;
+}
+
+.validation-btn-primary:hover {
+  background: #0056b3;
+}

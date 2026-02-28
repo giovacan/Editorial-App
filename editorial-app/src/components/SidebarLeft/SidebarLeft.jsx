@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, memo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import useEditorStore from '../../store/useEditorStore';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
+import { analyzeAndConvertHierarchies } from '../../utils/headerHierarchyDetector';
 import Accordion from '../Accordion/Accordion';
 import HeaderTemplateSelector from '../HeaderTemplateSelector/HeaderTemplateSelector';
 import { 
@@ -661,6 +662,79 @@ function SidebarLeft() {
       icon: '📋',
       content: (
         <>
+          <fieldset className="config-group">
+            <legend>Detección automática de jerarquías</legend>
+            <label className="checkbox-label">
+              <input 
+                type="checkbox" 
+                checked={safeConfig.autoDetectHeaders?.enabled || false}
+                onChange={(e) => {
+                  if (e.target.checked && chapters && chapters.length > 0) {
+                    const confirmConvert = confirm('¿Convertir negritas a encabezados automáticamente?\n\nEsto analizará el tamaño del texto y convertirá las negritas a encabezados H1-H6 manteniendo las proporciones.');
+                    if (confirmConvert) {
+                      chapters.forEach(chapter => {
+                        const result = analyzeAndConvertHierarchies(chapter.html || '', {
+                          convertBold: true,
+                          preserveFormatting: safeConfig.autoDetectHeaders?.preserveFormatting !== false
+                        });
+                        if (result.hasChanges) {
+                          updateChapter(chapter.id, { html: result.convertedHtml });
+                        }
+                      });
+                    }
+                  }
+                  setConfig({ 
+                    autoDetectHeaders: { 
+                      ...safeConfig.autoDetectHeaders,
+                      enabled: e.target.checked,
+                      targetLevel: safeConfig.autoDetectHeaders?.targetLevel || 'h2',
+                      preserveFormatting: safeConfig.autoDetectHeaders?.preserveFormatting !== false
+                    }
+                  });
+                }} 
+              />
+              Detectar subtítulos por tamaño de letra
+            </label>
+            {safeConfig.autoDetectHeaders?.enabled && (
+              <>
+                <div style={{ marginTop: '8px' }}>
+                  <label style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
+                    Convertir negritas a:
+                  </label>
+                  <select 
+                    value={safeConfig.autoDetectHeaders?.targetLevel || 'h2'}
+                    onChange={(e) => setConfig({
+                      autoDetectHeaders: {
+                        ...safeConfig.autoDetectHeaders,
+                        targetLevel: e.target.value
+                      }
+                    })}
+                    style={{ width: '100%', padding: '4px' }}
+                  >
+                    <option value="h1">H1 - Título principal (1.8x)</option>
+                    <option value="h2">H2 - Subtítulo grande (1.5x)</option>
+                    <option value="h3">H3 - Subtítulo mediano (1.3x)</option>
+                    <option value="h4">H4 - Subtítulo pequeño (1.15x)</option>
+                    <option value="h5">H5 - Subtítulo menor (1.05x)</option>
+                  </select>
+                </div>
+                <label className="checkbox-label" style={{ marginTop: '8px' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={safeConfig.autoDetectHeaders?.preserveFormatting !== false}
+                    onChange={(e) => setConfig({
+                      autoDetectHeaders: {
+                        ...safeConfig.autoDetectHeaders,
+                        preserveFormatting: e.target.checked
+                      }
+                    })}
+                  />
+                  Preservar negritas/cursivas
+                </label>
+              </>
+            )}
+          </fieldset>
+
           <div className="level-selector">
             {['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].map(level => (
               <button 
@@ -884,7 +958,10 @@ function SidebarLeft() {
           <fieldset className="config-group">
             <legend>Mostrar</legend>
             <label className="checkbox-label">
-              <input type="checkbox" checked={safeConfig.showHeaders} onChange={(e) => setConfig({ showHeaders: e.target.checked })} />
+              <input type="checkbox" checked={safeConfig.showHeaders} onChange={(e) => setConfig({ 
+                showHeaders: e.target.checked,
+                header: { ...safeConfig.header, enabled: e.target.checked }
+              })} />
               Mostrar encabezados en páginas
             </label>
           </fieldset>
@@ -1335,10 +1412,10 @@ function SidebarLeft() {
               <fieldset className="config-group">
                 <legend>Alineación</legend>
                 <select value={safeConfig.pageNumberAlign} onChange={(e) => setConfig({ pageNumberAlign: e.target.value })}>
-                  <option value="left">Izquierda</option>
+                  <option value="paragraph-edge">Borde del párrafo</option>
+                  <option value="paragraph">12px del párrafo</option>
+                  <option value="outer">Borde exterior</option>
                   <option value="center">Centro</option>
-                  <option value="right">Derecha</option>
-                  <option value="outer">Exterior (alterno)</option>
                 </select>
               </fieldset>
             </>

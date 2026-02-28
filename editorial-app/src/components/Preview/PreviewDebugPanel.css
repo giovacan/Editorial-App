@@ -1,0 +1,165 @@
+.preview-debug-panel {
+  position: absolute;
+  top: 50px;
+  right: 10px;
+  width: 320px;
+  background: #1a1a2e;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  z-index: 100;
+  color: #eee;
+  font-size: 13px;
+}
+
+.debug-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #333;
+  background: #16213e;
+  border-radius: 8px 8px 0 0;
+}
+
+.debug-panel-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #00d9ff;
+}
+
+.debug-panel-close {
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.debug-panel-close:hover {
+  background: #333;
+  color: #fff;
+}
+
+.debug-panel-content {
+  padding: 16px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.debug-main-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #0f3460;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  cursor: pointer;
+}
+
+.debug-main-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: #00d9ff;
+}
+
+.debug-main-toggle span {
+  font-weight: 600;
+  color: #00d9ff;
+}
+
+.debug-section {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #16213e;
+  border-radius: 6px;
+}
+
+.debug-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-weight: 500;
+  color: #ccc;
+}
+
+.debug-section-title input {
+  width: 16px;
+  height: 16px;
+  accent-color: #00d9ff;
+}
+
+.debug-options {
+  padding-left: 24px;
+}
+
+.debug-options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  cursor: pointer;
+  color: #aaa;
+  font-size: 12px;
+}
+
+.debug-options label:hover {
+  color: #fff;
+}
+
+.debug-options input {
+  width: 14px;
+  height: 14px;
+  accent-color: #00d9ff;
+}
+
+.debug-legend {
+  margin-top: 16px;
+  padding: 12px;
+  background: #16213e;
+  border-radius: 6px;
+}
+
+.legend-title {
+  display: block;
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 8px;
+}
+
+.legend-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.legend-item {
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: bold;
+  color: white;
+  text-shadow: 0 1px 1px rgba(0,0,0,0.3);
+}
+
+/* Scrollbar */
+.debug-panel-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.debug-panel-content::-webkit-scrollbar-track {
+  background: #1a1a2e;
+}
+
+.debug-panel-content::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+
+.debug-panel-content::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
