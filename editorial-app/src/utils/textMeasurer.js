@@ -14,14 +14,41 @@ export const calculatePreviewScale = (availableWidth, pageFormatWidthMm) => {
   return Math.min(0.42, availableWidth / (pageFormatWidthMm * PX_PER_MM));
 };
 
-export const calculateContentDimensions = (pageFormat, bookConfig, previewScale, gutterValue = null, isEvenPage = false) => {
+// Calculate dynamic margins based on estimated page count (KDP standards)
+export const calculateDynamicMargins = (marginTop, marginBottom, estimatedPageCount) => {
+  // KDP recommends margin adjustments based on page count
+  if (estimatedPageCount >= 400) {
+    // Reduce margins significantly for thick books (> 400 pages)
+    return {
+      top: marginTop * 0.75,
+      bottom: marginBottom * 0.75
+    };
+  } else if (estimatedPageCount >= 300) {
+    // Reduce margins for medium books (300-399 pages)
+    return {
+      top: marginTop * 0.85,
+      bottom: marginBottom * 0.85
+    };
+  }
+  // Keep original margins for thin books (< 300 pages)
+  return { top: marginTop, bottom: marginBottom };
+};
+
+export const calculateContentDimensions = (pageFormat, bookConfig, previewScale, gutterValue = null, isEvenPage = false, estimatedPageCount = null) => {
   const pageWidthPx = pageFormat.width * PX_PER_MM * previewScale;
   const pageHeightPx = pageFormat.height * PX_PER_MM * previewScale;
-  
+
   const gutter = gutterValue !== null ? gutterValue : (bookConfig.gutter || 0);
-  
-  const marginTop = bookConfig.marginTop * PX_PER_INCH * previewScale;
-  const marginBottom = bookConfig.marginBottom * PX_PER_INCH * previewScale;
+
+  let marginTop = bookConfig.marginTop * PX_PER_INCH * previewScale;
+  let marginBottom = bookConfig.marginBottom * PX_PER_INCH * previewScale;
+
+  // Apply dynamic margins if page count is known
+  if (estimatedPageCount !== null) {
+    const dynamicMargins = calculateDynamicMargins(marginTop, marginBottom, estimatedPageCount);
+    marginTop = dynamicMargins.top;
+    marginBottom = dynamicMargins.bottom;
+  }
   
   let marginLeft, marginRight;
   if (isEvenPage) {

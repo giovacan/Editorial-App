@@ -254,17 +254,17 @@ function Preview() {
   const gutterForPage = isTitleOnlyPage ? 0 : gutterValue;
   
   const previewScale = Math.min(0.42, AVAILABLE_SIDEBAR_WIDTH / (pageFormat.width * PX_PER_MM));
-  
+
   const {
-    pageWidthPx, 
-    pageHeightPx, 
-    marginTop, 
-    marginBottom, 
-    marginLeft, 
-    marginRight, 
-    contentWidth, 
-    contentHeight 
-  } = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterForPage, isCurrentPageEven);
+    pageWidthPx,
+    pageHeightPx,
+    marginTop,
+    marginBottom,
+    marginLeft,
+    marginRight,
+    contentWidth,
+    contentHeight
+  } = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterForPage, isCurrentPageEven, totalPages);
 
   const {
     showMagnifier,
@@ -477,27 +477,18 @@ function Preview() {
           onMouseEnter={handleMouseEnterPreview}
           onMouseLeave={handleMouseLeavePreview}
         >
-          <div
-            className="preview-content"
-            dangerouslySetInnerHTML={{ __html: debugHtml || '' }}
-            style={{ flex: 1, overflow: 'hidden', position: 'relative' }}
-          />
-
           {showHeaders && !currentPageData.isBlank && !skipHeader && hasHeaderContent && (
             <div
               className="preview-header"
               dangerouslySetInnerHTML={{ __html: headerHtml }}
-              style={{
-                position: 'absolute',
-                top: `${marginTop}px`,
-                left: `${marginLeft}px`,
-                right: `${marginRight}px`,
-                marginBottom: '0.5em',
-                zIndex: 10,
-                pointerEvents: 'none'
-              }}
+              style={{ marginBottom: '0.5em' }}
             />
           )}
+
+          <div
+            className="preview-content"
+            dangerouslySetInnerHTML={{ __html: debugHtml || '' }}
+          />
 
           {pageNumHtml}
         </div>

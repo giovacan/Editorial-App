@@ -8,7 +8,7 @@ import {
   getQuoteStyle,
   shouldStartOnRightPage
 } from '../utils/paginationEngine';
-import { calculateContentDimensions } from '../utils/textMeasurer';
+import { calculateContentDimensions, calculateDynamicMargins } from '../utils/textMeasurer';
 import { useParagraphValidation } from './useParagraphValidation';
 
 
@@ -204,9 +204,13 @@ export const usePagination = (bookData, config, measureRef) => {
       console.warn('Error resetting measureDiv:', e);
     }
     const previewScale = Math.min(0.42, AVAILABLE_SIDEBAR_WIDTH / (pageFormat.width * PX_PER_MM));
-    
-    const dimsOdd = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterValueRef.current, false);
-    const dimsEven = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterValueRef.current, true);
+
+    // Estimate total page count based on content size for dynamic margin calculation
+    const totalContentLength = safeBookData.chapters.reduce((sum, ch) => sum + (ch.html?.length || 0), 0);
+    const estimatedPages = Math.ceil(totalContentLength / 3000); // Rough estimate: ~3000 chars per page
+
+    const dimsOdd = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterValueRef.current, false, estimatedPages);
+    const dimsEven = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterValueRef.current, true, estimatedPages);
     
     const contentWidth = Math.min(dimsOdd.contentWidth, dimsEven.contentWidth);
     const pageWidthPx = dimsOdd.pageWidthPx;
