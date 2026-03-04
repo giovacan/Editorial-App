@@ -56,12 +56,16 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
     const detected = [];
 
     const allElements = Array.from(temp.querySelectorAll('p, h1, h2, h3, h4, h5, h6, div'));
-    console.log(`[detectChaptersInRawHtml] Found ${allElements.length} elements in raw HTML`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[detectChaptersInRawHtml] Found ${allElements.length} elements in raw HTML`);
+    }
 
     allElements.forEach((el, index) => {
       if (isChapterHeading(el)) {
         const titleText = el.textContent?.trim() || '';
-        console.log(`[detectChaptersInRawHtml] Element ${index}: "${titleText}"`);
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[detectChaptersInRawHtml] Element ${index}: "${titleText}"`);
+        }
         detected.push({
           detectedTitle: titleText,
           elementIndex: index
@@ -69,7 +73,9 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
       }
     });
 
-    console.log(`[detectChaptersInRawHtml] Total detected: ${detected.length}`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[detectChaptersInRawHtml] Total detected: ${detected.length}`);
+    }
     return detected;
   };
 
@@ -84,12 +90,16 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
       temp.innerHTML = chapter.html;
 
       const allElements = Array.from(temp.querySelectorAll('p, h1, h2, h3, h4, h5, h6, div'));
-      console.log(`[detectChaptersLocal] Chapter ${chapterIndex} (${chapter.title}): Found ${allElements.length} elements`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[detectChaptersLocal] Chapter ${chapterIndex} (${chapter.title}): Found ${allElements.length} elements`);
+      }
 
       for (const el of allElements) {
         if (isChapterHeading(el)) {
           const titleText = el.textContent?.trim() || '';
-          console.log(`[detectChaptersLocal] Found heading: "${titleText}"`);
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`[detectChaptersLocal] Found heading: "${titleText}"`);
+          }
           detected.push({
             chapterId: chapter.id,
             chapterIndex,
@@ -102,7 +112,9 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
       }
     });
 
-    console.log(`[detectChaptersLocal] Total detected: ${detected.length}`, detected);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[detectChaptersLocal] Total detected: ${detected.length}`, detected);
+    }
     return detected;
   };
 
@@ -112,7 +124,9 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
     const script = window.document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js';
     script.onload = () => {
-      console.log('Mammoth loaded successfully');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Mammoth loaded successfully');
+      }
       setMammothReady(true);
     };
     script.onerror = () => {
@@ -314,17 +328,25 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
   };
 
   const showChapterDetectionDialog = (chapters) => {
-    console.log(`[showChapterDetectionDialog] Processing ${chapters.length} chapters`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[showChapterDetectionDialog] Processing ${chapters.length} chapters`);
+    }
     const detected = detectChaptersLocal(chapters);
-    console.log(`[showChapterDetectionDialog] Detected ${detected.length} chapter headings`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[showChapterDetectionDialog] Detected ${detected.length} chapter headings`);
+    }
     if (detected && detected.length > 0) {
-      console.log(`[showChapterDetectionDialog] Showing detection dialog`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[showChapterDetectionDialog] Showing detection dialog`);
+      }
       setDetectedChaptersLocal(detected);
       setPendingChapters(chapters);
       setShowChapterDetection(true);
     } else {
       // Sin capítulos detectados, cargar directamente
-      console.log(`[showChapterDetectionDialog] No headings detected, loading directly`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[showChapterDetectionDialog] No headings detected, loading directly`);
+      }
       setConfirmedChapterTitles([]);
       onContentLoaded(chapters);
     }
@@ -501,12 +523,16 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
         detectedTitle: ch.title,
         confirmed: true
       }));
-      console.log(`[parseAndLoadContentFromHtml] Showing ${chapterDetections.length} chapters for confirmation`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[parseAndLoadContentFromHtml] Showing ${chapterDetections.length} chapters for confirmation`);
+      }
       setDetectedChaptersLocal(chapterDetections);
       setPendingChapters(chapters);
       setShowChapterDetection(true);
     } else {
-      console.log(`[parseAndLoadContentFromHtml] No chapter headings detected, loading directly`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[parseAndLoadContentFromHtml] No chapter headings detected, loading directly`);
+      }
       setConfirmedChapterTitles([]);
       onContentLoaded(chapters);
     }

@@ -11,7 +11,8 @@
       "Bash(npm run dev -- --port 5174)",
       "Bash(curl -s http://localhost:5174/ -H \"Cache-Control: no-cache\")",
       "Bash(git add editorial-app/src/utils/paginationEngine.js)",
-      "Bash(xargs grep -l \"calculateContentDimensions\")"
+      "Bash(xargs grep -l \"calculateContentDimensions\")",
+      "Bash(node -c \"c:\\\\Users\\\\equipo\\\\OneDrive\\\\GCpersonal\\\\APPS\\\\editorial-app\\\\editorial-app\\\\src\\\\utils\\\\paginationUtils.js\")"
     ]
   }
 }
