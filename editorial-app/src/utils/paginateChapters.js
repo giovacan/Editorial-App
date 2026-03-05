@@ -15,6 +15,7 @@ import {
   splitParagraphByLines,
   getQuoteStyle
 } from './paginationEngine';
+import { paginationLogger } from './paginationLogger';
 
 /**
  * Paginate chapters into pages with fill-pass rebalancing.
@@ -235,6 +236,7 @@ const processChapter = (chapter, chapterIndex, pages, layoutCtx, measureDiv, saf
           true,
           quoteOptions
         );
+        if (lines.length > 1) { paginationLogger.logElementSplit(el.tagName.toLowerCase(), elHtml.length, lines); }
         let lineHtml = '';
 
         lines.forEach((line, idx) => {
@@ -492,6 +494,7 @@ const applyFillPassInPlace = (pages, layoutCtx, measureDiv, safeConfig) => {
       }
 
       if (remainingLines < minOrphanLines) break;
+      paginationLogger.logFillAttempt(pageIdx, remainingLines, remainingSpace, contentHeight);
 
       // Find next non-blank page
       let nextIdx = pageIdx + 1;
@@ -538,6 +541,7 @@ const applyFillPassInPlace = (pages, layoutCtx, measureDiv, safeConfig) => {
             // Next page becomes empty, safe to move
             pages[pageIdx] = { ...page, html: page.html + firstElOuter };
             pages[nextIdx] = { ...nextPage, html: '' };
+            paginationLogger.logPageEmptied(nextIdx, pageIdx, firstEl.tagName.toLowerCase());
             totalIterations++;
           } else {
             // Check widow rules
@@ -546,6 +550,7 @@ const applyFillPassInPlace = (pages, layoutCtx, measureDiv, safeConfig) => {
 
             if (widowLines >= minWidowLines) {
               pages[pageIdx] = { ...page, html: page.html + firstElOuter };
+              const remainPct = Math.floor((restHtml.length / (restHtml.length + firstElOuter.length) * 100) || 0); paginationLogger.logElementMove(pageIdx, nextIdx, firstEl.tagName.toLowerCase(), firstElOuter.length, remainPct);
               pages[nextIdx] = { ...nextPage, html: restHtml };
               totalIterations++;
             }
