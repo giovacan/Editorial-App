@@ -366,8 +366,18 @@ const processChapter = (chapter, chapterIndex, pages, layoutCtx, measureDiv, saf
           measureDiv.innerHTML = restHtml;
           const widowLines = Math.floor(measureDiv.offsetHeight / lineHeightPx);
 
-          if (orphanLines >= minOrphanLines && widowLines >= minWidowLines) {
-            // Orphan/widow constraints satisfied
+          // Check how much space would be wasted if we reject this split
+          const pageWithChunk = currentHtml + firstChunk;
+          measureDiv.innerHTML = pageWithChunk;
+          const filledHeight = measureDiv.offsetHeight;
+          const wastedSpace = contentHeight - filledHeight;
+          const underfillThreshold = lineHeightPx * 4; // 4 lines worth of space
+
+          const meetsNormalConstraints = orphanLines >= minOrphanLines && widowLines >= minWidowLines;
+          const shouldAcceptForFill = wastedSpace >= underfillThreshold && orphanLines >= 1 && widowLines >= 1;
+
+          if (meetsNormalConstraints || shouldAcceptForFill) {
+            // Accept split (normal or aggressive fill)
             pages.push({
               html: currentHtml + firstChunk,
               pageNumber: pages.length + 1,
@@ -378,6 +388,9 @@ const processChapter = (chapter, chapterIndex, pages, layoutCtx, measureDiv, saf
             currentHtml = restHtml;
             measureDiv.innerHTML = currentHtml;
             currentHeight = measureDiv.offsetHeight;
+            if (process.env.NODE_ENV === 'development' && shouldAcceptForFill && !meetsNormalConstraints) {
+              console.log(`[SOFT-SPLIT-AGGRESSIVE] Accepting minor orphan/widow to avoid ${wastedSpace.toFixed(0)}px underfill`);
+            }
           } else {
             // Constraints failed — push current page, carry element
             pages.push({
