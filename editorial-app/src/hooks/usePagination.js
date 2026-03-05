@@ -268,6 +268,8 @@ export const usePagination = (bookData, config, measureRef) => {
       textAlign
     };
 
+    let cancelled = false;
+
     // Build layout context for pure pagination function
     const layoutCtx = {
       contentHeight,
