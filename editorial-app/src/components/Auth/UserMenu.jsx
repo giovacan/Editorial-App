@@ -59,6 +59,28 @@ export function UserMenu({ user, isAdmin, onSignOut }) {
           <div style={styles.divider}></div>
 
           <button
+            onClick={() => {
+              setIsOpen(false);
+              navigate('/books');
+            }}
+            style={styles.menuItem}
+          >
+            Mis Libros
+          </button>
+
+          <button
+            onClick={() => {
+              setIsOpen(false);
+              navigate('/home');
+            }}
+            style={styles.menuItem}
+          >
+            Comunidad
+          </button>
+
+          <div style={styles.divider}></div>
+
+          <button
             onClick={handleCustomerPortal}
             disabled={loading}
             style={{
@@ -67,7 +89,7 @@ export function UserMenu({ user, isAdmin, onSignOut }) {
               cursor: loading ? 'not-allowed' : 'pointer'
             }}
           >
-            💳 {loading ? 'Cargando...' : 'Gestionar suscripción'}
+            {loading ? 'Cargando...' : 'Gestionar suscripción'}
           </button>
 
           <div style={styles.divider}></div>
@@ -81,7 +103,7 @@ export function UserMenu({ user, isAdmin, onSignOut }) {
                 }}
                 style={styles.menuItem}
               >
-                ⚙️ Panel de administración
+                Panel de administración
               </button>
               <div style={styles.divider}></div>
             </>
@@ -91,7 +113,7 @@ export function UserMenu({ user, isAdmin, onSignOut }) {
             onClick={handleSignOut}
             style={{ ...styles.menuItem, ...styles.menuItemLogout }}
           >
-            🚪 Cerrar sesión
+            Cerrar sesión
           </button>
         </div>
       )}

@@ -55,5 +55,32 @@ export const paginationLogger = {
       const sizes = parts.map((p) => p.length).join(', ');
       console.log(`[SPLIT] <${tagName}> (${originalSize}B) → parts: [${sizes}]B`);
     }
+  },
+
+  /**
+   * Log page refill attempt
+   */
+  logRefillAttempt: (pageIdx, missingLines) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[PAGINATION-REFILL] Page ${pageIdx + 1}: attempting refill (${missingLines} missing lines)`);
+    }
+  },
+
+  /**
+   * Log successful line pull from next paragraph
+   */
+  logRefillPull: (pageIdx, pullLines) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[PAGINATION-PULL] Page ${pageIdx + 1}: pulled ${pullLines} lines from paragraph`);
+    }
+  },
+
+  /**
+   * Log refill skip with reason
+   */
+  logRefillSkip: (pageIdx, reason) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[PAGINATION-SKIP] Page ${pageIdx + 1}: refill skipped (${reason})`);
+    }
   }
 };

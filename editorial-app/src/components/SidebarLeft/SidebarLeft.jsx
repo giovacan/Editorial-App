@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import useEditorStore from '../../store/useEditorStore';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import { analyzeAndConvertHierarchies } from '../../utils/headerHierarchyDetector';
+import { transformAllChapters, detectTitleFormat, TITLE_FORMAT_OPTIONS } from '../../utils/titleTransformer';
 import Accordion from '../Accordion/Accordion';
 import HeaderTemplateSelector from '../HeaderTemplateSelector/HeaderTemplateSelector';
 import { 
@@ -18,6 +19,72 @@ import {
   SEPARATOR_OPTIONS
 } from '../../data/headerTemplates';
 import './SidebarLeft.css';
+
+const IconBook = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+  </svg>
+);
+
+const IconType = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/>
+  </svg>
+);
+
+const IconTitle = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+  </svg>
+);
+
+const IconList = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+  </svg>
+);
+
+const IconAlignLeft = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/>
+  </svg>
+);
+
+const IconQuote = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V21z"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3z"/>
+  </svg>
+);
+
+const IconHeader = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M6 12h12"/><path d="M6 20V4"/><path d="M18 20V4"/>
+  </svg>
+);
+
+const IconPagination = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16"/><path d="M12 10v12"/>
+  </svg>
+);
+
+const IconSettings = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+  </svg>
+);
+
+const IconBookmark = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+  </svg>
+);
+
+const IconHash = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/>
+  </svg>
+);
 
 // Layout icons as inline components
 const ContinuousIcon = () => (
@@ -64,6 +131,86 @@ const CHAPTER_LAYOUTS = [
   { id: 'spaced', label: 'Con espacio', icon: SpacedIcon },
   { id: 'halfPage', label: 'Media página', icon: HalfPageIcon },
   { id: 'fullPage', label: 'Página completa', icon: FullPageIcon },
+];
+
+const HierarchyClassicIcon = () => (
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', width: '28px', fontFamily: 'serif' }}>
+    <span style={{ fontSize: '7px', color: '#9ca3af', fontWeight: 'bold' }}>CAPÍTULO 1</span>
+    <span style={{ fontSize: '9px', color: '#1f2937' }}>El Título</span>
+  </div>
+);
+
+const HierarchyMinimalIcon = () => (
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', width: '28px', height: '28px' }}>
+    <span style={{ fontSize: '10px', color: '#1f2937' }}>El Título</span>
+  </div>
+);
+
+const HierarchyNumberIcon = () => (
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px', width: '28px' }}>
+    <span style={{ fontSize: '11px', color: '#1f2937', fontWeight: 'bold' }}>1.</span>
+    <span style={{ fontSize: '8px', color: '#1f2937' }}>El Título</span>
+  </div>
+);
+
+const HierarchyRomanIcon = () => (
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px', width: '28px' }}>
+    <span style={{ fontSize: '10px', color: '#1f2937', fontStyle: 'italic', fontFamily: 'serif' }}>I.</span>
+    <span style={{ fontSize: '8px', color: '#1f2937' }}>El Título</span>
+  </div>
+);
+
+const HierarchyElegantIcon = () => (
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', width: '28px' }}>
+    <span style={{ fontSize: '7px', color: '#6b7280', fontStyle: 'italic' }}>Capítulo Primero</span>
+    <span style={{ fontSize: '9px', color: '#1f2937' }}>El Título</span>
+  </div>
+);
+
+const HierarchyModernIcon = () => (
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', width: '28px' }}>
+    <span style={{ fontSize: '12px', color: '#3b82f6', fontWeight: 'bold' }}>01</span>
+    <span style={{ fontSize: '8px', color: '#1f2937' }}>El Título</span>
+  </div>
+);
+
+const HIERARCHY_TEMPLATES = [
+  { 
+    id: 'classic', 
+    label: 'Clásico', 
+    icon: HierarchyClassicIcon,
+    config: { hierarchyLabelSizeMultiplier: 0.7, hierarchyTitleSizeMultiplier: 1.0, hierarchyLabelColor: '#6b7280', hierarchyLabelBold: true }
+  },
+  { 
+    id: 'minimal', 
+    label: 'Minimal', 
+    icon: HierarchyMinimalIcon,
+    config: { hierarchyEnabled: false }
+  },
+  { 
+    id: 'number', 
+    label: 'Número', 
+    icon: HierarchyNumberIcon,
+    config: { hierarchyLabelSizeMultiplier: 1.0, hierarchyTitleSizeMultiplier: 0.85, hierarchyLabelColor: '#1f2937', hierarchyLabelBold: true }
+  },
+  { 
+    id: 'roman', 
+    label: 'Romano', 
+    icon: HierarchyRomanIcon,
+    config: { hierarchyLabelSizeMultiplier: 0.9, hierarchyTitleSizeMultiplier: 0.9, hierarchyLabelColor: '#1f2937', hierarchyLabelBold: false }
+  },
+  { 
+    id: 'elegant', 
+    label: 'Elegante', 
+    icon: HierarchyElegantIcon,
+    config: { hierarchyLabelSizeMultiplier: 0.65, hierarchyTitleSizeMultiplier: 1.0, hierarchyLabelColor: '#6b7280', hierarchyLabelBold: false }
+  },
+  { 
+    id: 'modern', 
+    label: 'Moderno', 
+    icon: HierarchyModernIcon,
+    config: { hierarchyLabelSizeMultiplier: 1.2, hierarchyTitleSizeMultiplier: 0.8, hierarchyLabelColor: '#3b82f6', hierarchyLabelBold: true }
+  },
 ];
 
 function SidebarLeft() {
@@ -230,9 +377,43 @@ function SidebarLeft() {
   }, [setConfig, config?.chapterTitle]);
 
   const updateChapterLayout = useCallback((layout) => {
+    console.log('🔘 Botón layout clickeado:', layout);
     const currentChapterTitle = config?.chapterTitle || { align: 'center', bold: true, sizeMultiplier: 1.8, marginTop: 2, marginBottom: 1, startOnRightPage: true, layout: 'continuous', showLines: false, lineWidth: 0.5, lineStyle: 'solid', lineColor: '#333333', lineWidthTitle: false };
     setConfig({ chapterTitle: { ...currentChapterTitle, layout } });
+    console.log('🔘 Config actualizada, nuevo layout:', layout);
   }, [setConfig, config?.chapterTitle]);
+
+  const applyHierarchyTemplate = useCallback((templateId) => {
+    const template = HIERARCHY_TEMPLATES.find(t => t.id === templateId);
+    if (!template) return;
+    
+    const currentChapterTitle = config?.chapterTitle || {};
+    const updates = { ...template.config };
+    
+    if (templateId === 'minimal') {
+      updates.hierarchyEnabled = false;
+    } else {
+      updates.hierarchyEnabled = true;
+    }
+    
+    setConfig({ 
+      chapterTitle: { 
+        ...currentChapterTitle,
+        ...updates
+      } 
+    });
+  }, [setConfig, config?.chapterTitle]);
+
+  const isHierarchyTemplateActive = (template) => {
+    if (template.id === 'minimal') {
+      return safeConfig.chapterTitle?.hierarchyEnabled === false;
+    }
+    if (safeConfig.chapterTitle?.hierarchyEnabled === false) return false;
+    
+    const ct = safeConfig.chapterTitle || {};
+    return ct.hierarchyLabelSizeMultiplier === template.config.hierarchyLabelSizeMultiplier &&
+           ct.hierarchyLabelColor === template.config.hierarchyLabelColor;
+  };
 
   const updateQuote = useCallback((key, value) => {
     const currentQuote = config?.quote || { enabled: true, indentLeft: 2, indentRight: 2, showLine: true, italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1, template: 'classic', autoDetect: true, detectedQuotes: [] };
@@ -254,6 +435,26 @@ function SidebarLeft() {
     const currentParagraph = config?.paragraph || { firstLineIndent: 1.5, align: 'justify', spacingBetween: 0 };
     setConfig({ paragraph: { ...currentParagraph, [key]: value } });
   }, [setConfig, config?.paragraph]);
+
+  const handleTransformTitles = useCallback((targetFormat) => {
+    if (!chapters || chapters.length === 0) return;
+    
+    const transformed = transformAllChapters(chapters, targetFormat);
+    
+    const transformedTitles = transformed.map(ch => ch.title);
+    const detectedFormats = chapters.map(ch => detectTitleFormat(ch.title));
+    const uniqueFormats = [...new Set(detectedFormats.filter(Boolean))];
+    
+    const actionLabel = uniqueFormats.length > 0 
+      ? `Transformar de ${uniqueFormats[0]} a ${targetFormat}`
+      : `Transformar a ${targetFormat}`;
+    
+    setBookData({ chapters: transformed });
+    
+    if (typeof window.trackChange === 'function') {
+      window.trackChange(actionLabel);
+    }
+  }, [chapters, setBookData]);
 
   const updatePagination = useCallback((key, value) => {
     const currentPagination = config?.pagination || { minOrphanLines: 2, minWidowLines: 2, splitLongParagraphs: true };
@@ -311,7 +512,7 @@ function SidebarLeft() {
     {
       id: 'formato',
       title: 'Formato del Libro',
-      icon: '📐',
+      icon: <IconBook />,
       content: (
         <>
           <fieldset className="config-group">
@@ -558,7 +759,7 @@ function SidebarLeft() {
     {
       id: 'tipografia',
       title: 'Tipografía Base',
-      icon: '🔤',
+      icon: <IconType />,
       content: (
         <>
           <fieldset className="config-group">
@@ -623,7 +824,7 @@ function SidebarLeft() {
     {
       id: 'formato-capitulo',
       title: 'Formato de Títulos',
-      icon: '📄',
+      icon: <IconTitle />,
       content: (
         <>
           <fieldset className="config-group">
@@ -730,13 +931,148 @@ function SidebarLeft() {
               </>
             )}
           </fieldset>
+
+          <fieldset className="config-group">
+            <legend>Espaciado del título</legend>
+            <div className="number-row">
+              <label>Espacio antes:</label>
+              <input
+                type="number"
+                min="0" max="5" step="0.5"
+                value={safeConfig.chapterTitle?.marginTop ?? 2}
+                onChange={(e) => updateChapterTitle('marginTop', parseFloat(e.target.value))}
+              />
+              <span>líneas</span>
+            </div>
+            <div className="number-row">
+              <label>Espacio después:</label>
+              <input
+                type="number"
+                min="0" max="3" step="0.25"
+                value={safeConfig.chapterTitle?.marginBottom ?? 1}
+                onChange={(e) => updateChapterTitle('marginBottom', parseFloat(e.target.value))}
+              />
+              <span>líneas</span>
+            </div>
+          </fieldset>
+
+          <fieldset className="config-group">
+            <legend>Jerarquía de título</legend>
+            
+            <div className="layout-selector" style={{ marginBottom: '12px', gridTemplateColumns: 'repeat(3, 1fr)' }}>
+              {HIERARCHY_TEMPLATES.map(template => {
+                const IconComponent = template.icon;
+                const isActive = isHierarchyTemplateActive(template);
+                return (
+                  <button
+                    key={template.id}
+                    className={`layout-card ${isActive ? 'active' : ''}`}
+                    onClick={() => applyHierarchyTemplate(template.id)}
+                    title={template.label}
+                    style={{ padding: '6px', minHeight: 'auto' }}
+                  >
+                    <div className="layout-card-preview" style={{ transform: 'scale(0.7)' }}>
+                      <IconComponent />
+                    </div>
+                    <span className="layout-card-label" style={{ fontSize: '9px' }}>{template.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <fieldset className="config-group" style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px dashed #e5e7eb' }}>
+              <legend style={{ fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>
+                Transformar Títulos
+              </legend>
+              <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '10px' }}>
+                Transforma el formato de todos los capítulos a la vez
+              </div>
+              <select 
+                onChange={(e) => {
+                  if (e.target.value) {
+                    handleTransformTitles(e.target.value);
+                    e.target.value = '';
+                  }
+                }}
+                defaultValue=""
+                style={{ 
+                  width: '100%', 
+                  padding: '8px', 
+                  borderRadius: '4px', 
+                  border: '1px solid #d1d5db',
+                  fontSize: '12px',
+                  backgroundColor: 'white'
+                }}
+              >
+                <option value="" disabled>Seleccionar formato...</option>
+                {TITLE_FORMAT_OPTIONS.map(format => (
+                  <option key={format.id} value={format.id}>
+                    {format.label} - {format.example}
+                  </option>
+                ))}
+              </select>
+            </fieldset>
+
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={safeConfig.chapterTitle?.hierarchyEnabled !== false}
+                onChange={(e) => updateChapterTitle('hierarchyEnabled', e.target.checked)}
+              />
+              Detectar etiqueta y título automáticamente
+            </label>
+            <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '8px' }}>
+              Detecta patrones como "Capítulo 1 – Título" y los separa visualmente.
+            </div>
+
+            {safeConfig.chapterTitle?.hierarchyEnabled !== false && (
+              <>
+                <div className="number-row">
+                  <label>Tamaño etiqueta:</label>
+                  <input
+                    type="number"
+                    min="0.4" max="1.0" step="0.05"
+                    value={safeConfig.chapterTitle?.hierarchyLabelSizeMultiplier ?? 0.7}
+                    onChange={(e) => updateChapterTitle('hierarchyLabelSizeMultiplier', parseFloat(e.target.value))}
+                  />
+                  <span>×</span>
+                </div>
+                <div className="number-row">
+                  <label>Tamaño título:</label>
+                  <input
+                    type="number"
+                    min="0.8" max="1.5" step="0.05"
+                    value={safeConfig.chapterTitle?.hierarchyTitleSizeMultiplier ?? 1.0}
+                    onChange={(e) => updateChapterTitle('hierarchyTitleSizeMultiplier', parseFloat(e.target.value))}
+                  />
+                  <span>×</span>
+                </div>
+                <div className="number-row">
+                  <label>Color etiqueta:</label>
+                  <input
+                    type="color"
+                    value={safeConfig.chapterTitle?.hierarchyLabelColor || '#666666'}
+                    onChange={(e) => updateChapterTitle('hierarchyLabelColor', e.target.value)}
+                  />
+                </div>
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={safeConfig.chapterTitle?.hierarchyLabelBold || false}
+                    onChange={(e) => updateChapterTitle('hierarchyLabelBold', e.target.checked)}
+                  />
+                  Etiqueta en negrita
+                </label>
+              </>
+            )}
+          </fieldset>
         </>
       )
     },
     {
       id: 'subheaders',
       title: 'Subencabezados (H1-H6)',
-      icon: '📋',
+      icon: <IconList />,
       content: (
         <>
           <fieldset className="config-group">
@@ -876,7 +1212,7 @@ function SidebarLeft() {
     {
       id: 'parrafos',
       title: 'Párrafos',
-      icon: '📝',
+      icon: <IconAlignLeft />,
       content: (
         <>
           <fieldset className="config-group">
@@ -908,7 +1244,7 @@ function SidebarLeft() {
     {
       id: 'citas',
       title: 'Citas',
-      icon: '❝',
+      icon: <IconQuote />,
       content: (
         <>
           <fieldset className="config-group">
@@ -1029,7 +1365,7 @@ function SidebarLeft() {
     {
       id: 'headers',
       title: 'Encabezados (Headers)',
-      icon: '📑',
+      icon: <IconBookmark />,
       content: (
         <>
           <fieldset className="config-group">
@@ -1465,7 +1801,7 @@ function SidebarLeft() {
     {
       id: 'paginas',
       title: 'Números de Página',
-      icon: '#️⃣',
+      icon: <IconHash />,
       content: (
         <>
           <fieldset className="config-group">
@@ -1495,6 +1831,19 @@ function SidebarLeft() {
                   <option value="center">Centro</option>
                 </select>
               </fieldset>
+
+              <fieldset className="config-group">
+                <legend>Distancia al borde</legend>
+                <div className="number-row">
+                  <input
+                    type="number"
+                    min="4" max="24" step="2"
+                    value={safeConfig.pageNumberMargin ?? 12}
+                    onChange={(e) => setConfig({ pageNumberMargin: parseInt(e.target.value) })}
+                  />
+                  <span>px</span>
+                </div>
+              </fieldset>
             </>
           )}
         </>
@@ -1503,7 +1852,7 @@ function SidebarLeft() {
     {
       id: 'paginacion',
       title: 'Reglas de Paginación',
-      icon: '📄',
+      icon: <IconTitle />,
       content: (
         <>
           <fieldset className="config-group">

@@ -41,6 +41,12 @@ export interface ChapterTitleConfig {
   lineStyle: 'solid' | 'dashed' | 'dotted' | 'double';
   lineColor: string;
   lineWidthTitle: boolean;
+  hierarchyEnabled: boolean;
+  hierarchyLabelSizeMultiplier: number;
+  hierarchyTitleSizeMultiplier: number;
+  hierarchyLabelColor: string;
+  hierarchyLabelBold: boolean;
+  hierarchyGap: number;
 }
 
 export interface ParagraphConfig {
@@ -151,6 +157,7 @@ export interface Config {
   showPageNumbers: boolean;
   pageNumberPos: PageNumberPos;
   pageNumberAlign: PageNumberAlign;
+  pageNumberMargin: number;
   showHeaders: boolean;
   headerContent: HeaderContent;
   headerPosition: 'top';

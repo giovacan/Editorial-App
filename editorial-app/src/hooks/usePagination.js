@@ -10,6 +10,7 @@ import {
 } from '../utils/paginationEngine';
 import { paginateChapters } from '../utils/paginateChapters';
 import { calculateContentDimensions, calculateDynamicMargins } from '../utils/textMeasurer';
+import { calculateLineHeightPx, ensureFontsReady } from '../utils/textLayoutEngine';
 import { useParagraphValidation } from './useParagraphValidation';
 
 
@@ -101,6 +102,7 @@ const validatePages = (pages) => {
 export const usePagination = (bookData, config, measureRef) => {
   const [pages, setPages] = useState([]);
   const [calculatedPageCount, setCalculatedPageCount] = useState(0);
+  const [layoutDims, setLayoutDims] = useState(null);
   
   const safeBookData = bookData || { bookType: 'novela', chapters: [], title: '' };
   const safeConfig = config || DEFAULT_CONFIG;
@@ -165,152 +167,247 @@ export const usePagination = (bookData, config, measureRef) => {
   }, [pages, safeConfig.gutterStrategy, calculateGutter]);
   
   useEffect(() => {
+    console.log('[PAGINATION-EFFECT] Inicio - chapters:', safeBookData?.chapters?.length, '| layout:', safeConfig.chapterTitle?.layout);
     // Only run pagination if there's actual content
     const hasContent = safeBookData?.chapters?.some(ch => ch.html && ch.html.trim().length > 0);
     if (!hasContent || !measureRef.current) {
+      console.log('[PAGINATION-EFFECT] Sin contenido o sin measureRef');
       if (!hasContent) {
         setPages([]);
       }
       return;
     }
 
-    // Skip if we've already paginated this exact data
-    const contentHash = JSON.stringify(safeBookData.chapters.map(ch => ch.id + (ch.html?.length || 0)));
+    // Skip if we've already paginated this exact data with the same layout params.
+    // Only include stable config values — avoid refs/derived values that change post-pagination.
+    const layoutKey = [
+      safeConfig.pageFormat,
+      safeConfig.customPageFormat?.width, safeConfig.customPageFormat?.height,
+      safeConfig.fontSize, safeConfig.lineHeight,
+      safeConfig.fontFamily,
+      safeConfig.marginTop, safeConfig.marginBottom, safeConfig.marginLeft, safeConfig.marginRight,
+      safeConfig.marginStrategy,
+      safeConfig.gutterStrategy, safeConfig.gutterManual,
+      // paragraph config
+      safeConfig.paragraph?.firstLineIndent, safeConfig.paragraph?.spacingBetween, safeConfig.paragraph?.align,
+      // chapterTitle config
+      safeConfig.chapterTitle?.layout,
+      safeConfig.chapterTitle?.showLines,
+      safeConfig.chapterTitle?.lineWidth,
+      safeConfig.chapterTitle?.lineStyle,
+      safeConfig.chapterTitle?.lineColor,
+      safeConfig.chapterTitle?.lineWidthTitle,
+      safeConfig.chapterTitle?.align,
+      safeConfig.chapterTitle?.bold,
+      safeConfig.chapterTitle?.sizeMultiplier,
+      safeConfig.chapterTitle?.marginTop,
+      safeConfig.chapterTitle?.marginBottom,
+      safeConfig.chapterTitle?.startOnRightPage,
+      safeConfig.chapterTitle?.hierarchyEnabled,
+      safeConfig.chapterTitle?.hierarchyLabelSizeMultiplier,
+      safeConfig.chapterTitle?.hierarchyTitleSizeMultiplier,
+      safeConfig.chapterTitle?.hierarchyLabelColor,
+      safeConfig.chapterTitle?.hierarchyLabelBold,
+      safeConfig.chapterTitle?.hierarchyGap,
+      // subheaders config
+      safeConfig.subheaders?.h1?.align, safeConfig.subheaders?.h1?.bold, safeConfig.subheaders?.h1?.sizeMultiplier, safeConfig.subheaders?.h1?.marginTop, safeConfig.subheaders?.h1?.marginBottom, safeConfig.subheaders?.h1?.minLinesAfter,
+      safeConfig.subheaders?.h2?.align, safeConfig.subheaders?.h2?.bold, safeConfig.subheaders?.h2?.sizeMultiplier, safeConfig.subheaders?.h2?.marginTop, safeConfig.subheaders?.h2?.marginBottom, safeConfig.subheaders?.h2?.minLinesAfter,
+      safeConfig.subheaders?.h3?.align, safeConfig.subheaders?.h3?.bold, safeConfig.subheaders?.h3?.sizeMultiplier, safeConfig.subheaders?.h3?.marginTop, safeConfig.subheaders?.h3?.marginBottom, safeConfig.subheaders?.h3?.minLinesAfter,
+      safeConfig.subheaders?.h4?.align, safeConfig.subheaders?.h4?.bold, safeConfig.subheaders?.h4?.sizeMultiplier, safeConfig.subheaders?.h4?.marginTop, safeConfig.subheaders?.h4?.marginBottom, safeConfig.subheaders?.h4?.minLinesAfter,
+      safeConfig.subheaders?.h5?.align, safeConfig.subheaders?.h5?.bold, safeConfig.subheaders?.h5?.sizeMultiplier, safeConfig.subheaders?.h5?.marginTop, safeConfig.subheaders?.h5?.marginBottom, safeConfig.subheaders?.h5?.minLinesAfter,
+      safeConfig.subheaders?.h6?.align, safeConfig.subheaders?.h6?.bold, safeConfig.subheaders?.h6?.sizeMultiplier, safeConfig.subheaders?.h6?.marginTop, safeConfig.subheaders?.h6?.marginBottom, safeConfig.subheaders?.h6?.minLinesAfter,
+      // quote config
+      safeConfig.quote?.enabled, safeConfig.quote?.indentLeft, safeConfig.quote?.indentRight, safeConfig.quote?.showLine, safeConfig.quote?.italic, safeConfig.quote?.sizeMultiplier, safeConfig.quote?.marginTop, safeConfig.quote?.marginBottom,
+      // pagination rules
+      safeConfig.pagination?.minOrphanLines, safeConfig.pagination?.minWidowLines, safeConfig.pagination?.splitLongParagraphs,
+      // header config
+      safeConfig.header?.enabled, safeConfig.header?.template, safeConfig.header?.displayMode,
+      safeConfig.header?.evenPage?.leftContent, safeConfig.header?.evenPage?.centerContent, safeConfig.header?.evenPage?.rightContent,
+      safeConfig.header?.oddPage?.leftContent, safeConfig.header?.oddPage?.centerContent, safeConfig.header?.oddPage?.rightContent,
+      safeConfig.header?.trackSubheaders, safeConfig.header?.trackPseudoHeaders, safeConfig.header?.subheaderLevels?.join(','),
+      safeConfig.header?.subheaderFormat, safeConfig.header?.fontFamily, safeConfig.header?.fontSize,
+      safeConfig.header?.showLine, safeConfig.header?.lineStyle, safeConfig.header?.lineWidth, safeConfig.header?.lineColor,
+      safeConfig.header?.marginTop, safeConfig.header?.marginBottom, safeConfig.header?.distanceFromPageNumber,
+      safeConfig.header?.whenPaginationSamePosition, safeConfig.header?.skipFirstChapterPage,
+      // page numbers
+      safeConfig.showPageNumbers, safeConfig.pageNumberPos, safeConfig.pageNumberAlign, safeConfig.pageNumberMargin,
+      // other
+      safeConfig.showHeaders, safeConfig.chaptersOnRight,
+      safeConfig.extraEndPages, safeConfig.extraEndPagesNumbered
+    ].join('|');
+    const contentHash = JSON.stringify(safeBookData.chapters.map(ch => ch.id + (ch.html?.length || 0))) + '||' + layoutKey;
+    console.log('📄 Hash de paginación:', contentHash.slice(-50), '| Layout:', safeConfig.chapterTitle?.layout);
     if (measureRef.current._lastContentHash === contentHash) {
+      console.log('⏭️ Saltando paginación - hash igual');
       return;
     }
-    measureRef.current._lastContentHash = contentHash;
-
-    useEditorStore.getState().startPagination();
-
-    const measureDiv = measureRef.current;
-    
-    try {
-      measureDiv.innerHTML = '';
-      measureDiv.style.cssText = '';
-      // Asegurar estilos consistentes para medición
-      measureDiv.style.position = 'absolute';
-      measureDiv.style.visibility = 'hidden';
-      measureDiv.style.left = '-9999px';
-      measureDiv.style.top = '0';
-      measureDiv.style.width = '1px';
-      measureDiv.style.height = 'auto';
-      measureDiv.style.minHeight = '0';
-      measureDiv.style.maxHeight = 'none';
-      measureDiv.style.overflow = 'visible';
-      measureDiv.style.whiteSpace = 'normal';
-      measureDiv.style.wordWrap = 'break-word';
-      measureDiv.style.boxSizing = 'border-box';
-    } catch (e) {
-      console.warn('Error resetting measureDiv:', e);
-    }
-    const previewScale = Math.min(0.42, AVAILABLE_SIDEBAR_WIDTH / (pageFormat.width * PX_PER_MM));
-
-    // Estimate total page count based on content size for dynamic margin calculation
-    const totalContentLength = safeBookData.chapters.reduce((sum, ch) => sum + (ch.html?.length || 0), 0);
-    const estimatedPages = Math.ceil(totalContentLength / 3000); // Rough estimate: ~3000 chars per page
-
-    // Apply dynamic margins only if user hasn't switched to custom mode
-    const applyDynamicMargins = (safeConfig.marginStrategy || 'auto') === 'auto';
-    const dimsOdd = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterValueRef.current, false, estimatedPages, applyDynamicMargins);
-    const dimsEven = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterValueRef.current, true, estimatedPages, applyDynamicMargins);
-
-    const contentWidth = Math.min(dimsOdd.contentWidth, dimsEven.contentWidth);
-    const pageWidthPx = dimsOdd.pageWidthPx;
-    const pageHeightPx = dimsOdd.pageHeightPx;
-    const marginTop = dimsOdd.marginTop;
-    const marginBottom = dimsOdd.marginBottom;
-
-    const baseFontSize = (safeConfig.fontSize || bookConfig.fontSize) * previewScale;
-    const baseLineHeight = safeConfig.lineHeight || bookConfig.lineHeight;
-    const textAlign = safeConfig.paragraph?.align || 'justify';
-
-    measureDiv.style.width = `${contentWidth}px`;
-    measureDiv.style.fontFamily = safeConfig.fontFamily || bookConfig.fontFamily;
-    measureDiv.style.fontSize = `${baseFontSize}pt`;
-    measureDiv.style.lineHeight = baseLineHeight;
-    measureDiv.style.textAlign = textAlign;
-    measureDiv.style.textJustify = 'inter-word';
-    measureDiv.style.hyphens = 'auto';
-    measureDiv.style.wordBreak = 'break-word';
-    measureDiv.style.padding = '0';
-
-    measureDiv.innerHTML = 'Ag';
-    const lineHeightPx = measureDiv.offsetHeight;
-
-    // Safety margin calculation:
-    // - Headers are rendered but not measured in pagination
-    // - Estimated header space: baseFontSize * lineHeight + 0.5em margin
-    // - Use conservative buffer: 2 * lineHeightPx to ensure no overflow
-    const headerSpaceEstimate = safeConfig.header?.enabled ? Math.round(lineHeightPx * 1.5) : 0;
-    const safetyMargin = 1 + headerSpaceEstimate;
-    const contentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight) - safetyMargin;
-
-    console.log(`[PAGINATION] estimatedPages=${estimatedPages}, headerEnabled=${safeConfig.header?.enabled}, lineHeightPx=${lineHeightPx}, safetyMargin=${safetyMargin}, contentHeight=${contentHeight}`);
-    const minOrphanLines = safeConfig.pagination?.minOrphanLines || 1;
-    const minWidowLines = safeConfig.pagination?.minWidowLines || 1;
-    const splitLongParagraphs = safeConfig.pagination?.splitLongParagraphs !== false;
-
-    // Quote config for consistent split measurement - always provide config to prevent style degradation
-    const quoteOptions = {
-      config: safeConfig.quote || {
-        enabled: true,
-        indentLeft: 2,
-        indentRight: 2,
-        showLine: true,
-        italic: true,
-        sizeMultiplier: 0.95,
-        marginTop: 1,
-        marginBottom: 1
-      },
-      baseFontSize,
-      baseLineHeight,
-      textAlign
-    };
-
     let cancelled = false;
 
-    // Build layout context for pure pagination function
-    const layoutCtx = {
-      contentHeight,
-      lineHeightPx,
-      baseFontSize,
-      baseLineHeight,
-      textAlign,
-      minOrphanLines,
-      minWidowLines,
-      splitLongParagraphs
+    // Async IIFE: ensures fonts are loaded before Canvas measurement
+    const runPagination = async () => {
+      const measureDiv = measureRef.current;
+      if (!measureDiv) return;
+
+      // FONT LOADING GUARD: Canvas measureText() returns wrong metrics
+      // if the font isn't loaded yet. This ensures deterministic results
+      // from the very first render.
+      const targetFontFamily = safeConfig.fontFamily || bookConfig.fontFamily;
+      console.log('[PAGINATION] Esperando fuentes:', targetFontFamily);
+      await ensureFontsReady(targetFontFamily, safeConfig.fontSize || 12);
+      console.log('[PAGINATION] Fuentes listas, cancelled=', cancelled);
+
+      if (cancelled) return;
+
+      // Set hash AFTER async work completes and AFTER cancelled check passes.
+      // This way, if the effect was cancelled during font loading, the hash
+      // stays unset and the next effect run will re-execute pagination.
+      if (measureRef.current) {
+        measureRef.current._lastContentHash = contentHash;
+      }
+
+      useEditorStore.getState().startPagination();
+
+      try {
+        measureDiv.innerHTML = '';
+        measureDiv.style.cssText = '';
+        measureDiv.style.position = 'absolute';
+        measureDiv.style.visibility = 'hidden';
+        measureDiv.style.left = '-9999px';
+        measureDiv.style.top = '0';
+        measureDiv.style.height = 'auto';
+        measureDiv.style.minHeight = '0';
+        measureDiv.style.maxHeight = 'none';
+        measureDiv.style.overflow = 'visible';
+        measureDiv.style.whiteSpace = 'normal';
+        measureDiv.style.wordWrap = 'break-word';
+        measureDiv.style.boxSizing = 'border-box';
+      } catch (e) {
+        console.warn('Error resetting measureDiv:', e);
+      }
+
+      const previewScale = Math.min(0.42, AVAILABLE_SIDEBAR_WIDTH / (pageFormat.width * PX_PER_MM));
+
+      const totalContentLength = safeBookData.chapters.reduce((sum, ch) => sum + (ch.html?.length || 0), 0);
+      const estimatedPages = Math.ceil(totalContentLength / 3000);
+
+      // Capture the gutter value used for this pagination run
+      const engineGutter = gutterValueRef.current;
+
+      const applyDynamicMargins = (safeConfig.marginStrategy || 'auto') === 'auto';
+      const dimsOdd = calculateContentDimensions(pageFormat, bookConfig, previewScale, engineGutter, false, estimatedPages, applyDynamicMargins);
+      const dimsEven = calculateContentDimensions(pageFormat, bookConfig, previewScale, engineGutter, true, estimatedPages, applyDynamicMargins);
+
+      const contentWidth = Math.min(dimsOdd.contentWidth, dimsEven.contentWidth);
+      const pageWidthPx = dimsOdd.pageWidthPx;
+      const pageHeightPx = dimsOdd.pageHeightPx;
+
+      const baseFontSize = (safeConfig.fontSize || bookConfig.fontSize) * previewScale;
+      const baseLineHeight = safeConfig.lineHeight || bookConfig.lineHeight;
+      const textAlign = safeConfig.paragraph?.align || 'justify';
+
+      const baseFontSizePx = baseFontSize * (PX_PER_INCH / 72);
+      // DETERMINISTIC: Calculate lineHeightPx via pure math, no DOM measurement
+      const lineHeightPx = calculateLineHeightPx(baseFontSizePx, baseLineHeight);
+
+      measureDiv.style.width = `${contentWidth}px`;
+      measureDiv.style.fontFamily = targetFontFamily;
+      measureDiv.style.fontSize = `${baseFontSizePx}px`;
+      measureDiv.style.lineHeight = `${lineHeightPx}px`;
+      measureDiv.style.textAlign = textAlign;
+      measureDiv.style.textJustify = 'inter-word';
+      measureDiv.style.hyphens = 'none';
+      measureDiv.style.wordBreak = 'break-word';
+      measureDiv.style.padding = '0';
+
+      if (lineHeightPx === 0) {
+        measureRef.current._lastContentHash = null;
+        useEditorStore.getState().endPagination();
+        return;
+      }
+
+      const headerSpaceEstimate = safeConfig.header?.enabled ? Math.round(lineHeightPx * 1.5) : 0;
+      const minOrphanLines = safeConfig.pagination?.minOrphanLines ?? 2;
+      // Floor to line grid — rounding provides up to 1 line of safety.
+      const rawContentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight) - headerSpaceEstimate;
+      const contentHeight = Math.floor(rawContentHeight / lineHeightPx) * lineHeightPx;
+
+      if (process.env.NODE_ENV === 'development') {
+        const floorDrop = rawContentHeight - contentHeight;
+        console.log(`[PAGINATION-SETUP] marginBottom=${dimsOdd.marginBottom.toFixed(1)}px, headerSpace=${headerSpaceEstimate}px, floorDrop=${floorDrop.toFixed(1)}px`);
+        console.log(`[PAGINATION-SETUP] previewScale=${previewScale.toFixed(3)}, baseFontSize=${baseFontSize.toFixed(1)}pt, lineHeightPx=${lineHeightPx}px, contentWidth=${contentWidth.toFixed(1)}px, pageHeight=${pageHeightPx.toFixed(1)}px, contentHeight=${contentHeight.toFixed(1)}px, gutter=${gutterValueRef.current}`);
+      }
+      const minWidowLines = safeConfig.pagination?.minWidowLines ?? 2;
+      const splitLongParagraphs = safeConfig.pagination?.splitLongParagraphs !== false;
+
+      const fontFamily = targetFontFamily;
+
+      const layoutCtx = {
+        contentHeight,
+        contentWidth,
+        lineHeightPx,
+        baseFontSize,
+        baseFontSizePx,
+        baseLineHeight,
+        textAlign,
+        fontFamily,
+        minOrphanLines,
+        minWidowLines,
+        splitLongParagraphs
+      };
+
+      if (cancelled) return;
+
+      let generatedPages;
+      try {
+        generatedPages = paginateChapters(
+          safeBookData.chapters,
+          layoutCtx,
+          measureDiv,
+          safeConfig
+        );
+      } catch (e) {
+        console.error('[PAGINATE] ERROR en paginateChapters:', e, e?.stack);
+        useEditorStore.getState().endPagination();
+        return;
+      }
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[PAGINATE] Resultado: ${generatedPages?.length} páginas generadas`, generatedPages?.[0]?.html?.slice(0, 100));
+      }
+
+      useEditorStore.getState().setPaginationProgress(95);
+
+      for (let i = 0; i < extraEndPages; i++) {
+        generatedPages.push({
+          html: '',
+          pageNumber: generatedPages.length + 1,
+          isBlank: true,
+          isExtraEndPage: true,
+          shouldShowPageNumber: extraEndPagesNumbered
+        });
+      }
+
+      if (!cancelled) {
+        const validatedPages = validatePages(generatedPages);
+        // Batch both state updates together to avoid re-render between them
+        // which would trigger effect cleanup and set cancelled=true
+        console.log(`[PAGINATION] Guardando layoutDims: contentHeight=${contentHeight}px, engineGutter=${engineGutter}`);
+        setLayoutDims({
+          contentHeight,
+          contentWidth,
+          lineHeightPx,
+          baseFontSizePx,
+          baseLineHeight,
+          previewScale,
+          gutterValue: engineGutter,
+        });
+        setPages(validatedPages);
+        useEditorStore.getState().setPaginationProgress(100);
+      }
     };
 
-    // Call pure pagination function
-    const generatedPages = paginateChapters(
-      safeBookData.chapters,
-      layoutCtx,
-      measureDiv,
-      safeConfig
-    );
+    runPagination();
 
-    useEditorStore.getState().setPaginationProgress(75);
-    
-    useEditorStore.getState().setPaginationProgress(95);
-    
-    for (let i = 0; i < extraEndPages; i++) {
-      generatedPages.push({
-        html: '',
-        pageNumber: generatedPages.length + 1,
-        isBlank: true,
-        isExtraEndPage: true,
-        shouldShowPageNumber: extraEndPagesNumbered
-      });
-    }
-    
-    if (!cancelled) {
-      const validatedPages = validatePages(generatedPages);
-      
-      setPages(validatedPages);
-      useEditorStore.getState().setPaginationProgress(100);
-    }
-    
     return () => {
       cancelled = true;
       useEditorStore.getState().endPagination();
@@ -347,12 +444,14 @@ export const usePagination = (bookData, config, measureRef) => {
 
       if (process.env.NODE_ENV === 'development') {
         console.log('[ParagraphValidation] Result:', validation);
+        console.log('[PAGES] Total páginas:', pages.length, '| Primera página HTML:', pages[0]?.html?.slice(0, 100));
       }
     }
   }, [pages, safeBookData.chapters, safeConfig, confirmedChapterTitles]);
   
-  return { 
+  return {
     pages,
+    layoutDims,
     validationState,
     showErrorDialog,
     currentError,

@@ -8,6 +8,7 @@ import { useHeaderFooter, buildHeaderHtml } from '../../hooks/useHeaderFooter';
 import { calculateContentDimensions } from '../../utils/textMeasurer';
 import PreviewDebugPanel from './PreviewDebugPanel';
 import ValidationErrorDialog from '../ValidationErrorDialog/ValidationErrorDialog';
+import PaginationProgressBar from '../PaginationProgressBar/PaginationProgressBar';
 import './Preview.css';
 
 const AVAILABLE_SIDEBAR_WIDTH = 220;
@@ -35,7 +36,13 @@ const DEFAULT_CONFIG = {
     lineStyle: 'solid', 
     lineColor: '#333333', 
     lineWidthTitle: false,
-    layout: 'continuous'
+    layout: 'continuous',
+    hierarchyEnabled: true,
+    hierarchyLabelSizeMultiplier: 0.7,
+    hierarchyTitleSizeMultiplier: 1.0,
+    hierarchyLabelColor: '#666666',
+    hierarchyLabelBold: false,
+    hierarchyGap: 0.3
   },
   subheaders: {
     h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBottom: 0.5, minLinesAfter: 1 },
@@ -75,11 +82,14 @@ function Preview() {
   const config = useEditorStore(useShallow((s) => s.config));
   const editing = useEditorStore(useShallow((s) => s.editing));
   const setConfig = useEditorStore((s) => s.setConfig);
+  const setUi = useEditorStore((s) => s.setUi);
   
   const activeChapterId = editing?.activeChapterId;
   
   const measureRef = useRef(null);
   const previewPageRef = useRef(null);
+  const previewContentRef = useRef(null);
+  const magnifierContentRef = useRef(null);
   const navigatedChapterRef = useRef(null);
   const previewScrollRef = useRef(null);
 
@@ -103,6 +113,31 @@ function Preview() {
       };
     }
   }, []);
+
+  // Post-render word-spacing adjustment: when content overflows by < 1 line,
+  // progressively tighten word-spacing on paragraphs until it fits.
+  const adjustWordSpacing = (el) => {
+    if (!el) return;
+    // Reset first
+    el.querySelectorAll('p, blockquote').forEach(p => { p.style.wordSpacing = ''; });
+    const overflow = el.scrollHeight - el.offsetHeight;
+    if (overflow <= 0 || overflow > 12) return;
+
+    const paragraphs = el.querySelectorAll('p, blockquote');
+    if (paragraphs.length === 0) return;
+
+    const steps = [-0.01, -0.02, -0.03, -0.04, -0.05];
+    for (const ws of steps) {
+      paragraphs.forEach(p => { p.style.wordSpacing = `${ws}em`; });
+      if (el.scrollHeight <= el.offsetHeight) return;
+    }
+    paragraphs.forEach(p => { p.style.wordSpacing = ''; });
+  };
+
+  useEffect(() => {
+    adjustWordSpacing(previewContentRef.current);
+    adjustWordSpacing(magnifierContentRef.current);
+  });
 
   const safeBookData = bookData || { bookType: 'novela', chapters: [], title: '' };
   const safeConfig = config || DEFAULT_CONFIG;
@@ -230,14 +265,27 @@ function Preview() {
     pageFormat = KDP_STANDARDS.getPageFormat(safeConfig.pageFormat || bookConfig.recommendedFormat);
   }
   
-  const { 
+  const {
     pages = [],
+    layoutDims,
     validationState,
     showErrorDialog,
     currentError,
     handleErrorAction,
     closeErrorDialog
   } = usePagination(bookData, config, measureRef);
+  
+  // Get pagination progress from store
+  useEffect(() => {
+    console.log('[PREVIEW] Pages actualizadas:', pages.length, '| Layout config:', config?.chapterTitle?.layout);
+    if (pages[0]?.html) {
+      console.log('[PREVIEW] Primera página HTML:', pages[0].html.slice(0, 150));
+    }
+  }, [pages, config?.chapterTitle?.layout]);
+  
+  // Get pagination progress from store
+  const paginationProgress = useEditorStore((s) => s.paginationProgress);
+  const isPaginationRunning = paginationProgress > 0 && paginationProgress < 100;
   const totalPageCount = pages.length;
   
   const gutterValue = safeConfig.gutterStrategy === 'custom'
@@ -251,8 +299,11 @@ function Preview() {
   
   const isCurrentPageEven = currentPageData.pageNumber % 2 === 0;
   const isTitleOnlyPage = currentPageData.isTitleOnlyPage === true;
-  const gutterForPage = isTitleOnlyPage ? 0 : gutterValue;
-  
+  // Use the exact gutter from the pagination engine so Preview renders
+  // with the same contentWidth used during pagination (prevents overflow).
+  const effectiveGutter = layoutDims?.gutterValue ?? gutterValue;
+  const gutterForPage = isTitleOnlyPage ? 0 : effectiveGutter;
+
   const previewScale = Math.min(0.42, AVAILABLE_SIDEBAR_WIDTH / (pageFormat.width * PX_PER_MM));
 
   const applyDynamicMargins = (safeConfig.marginStrategy || 'auto') === 'auto';
@@ -267,6 +318,18 @@ function Preview() {
     contentHeight
   } = calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterForPage, isCurrentPageEven, totalPages, applyDynamicMargins);
 
+  // Use the exact dimensions from the pagination engine when available
+  const effectiveContentHeight = layoutDims?.contentHeight ?? contentHeight;
+
+  const fontSize = (safeConfig.fontSize || bookConfig.fontSize) * (PX_PER_INCH / 72) * previewScale;
+  const fontFamily = safeConfig.fontFamily || bookConfig.fontFamily;
+  const lineHeightRatio = safeConfig.lineHeight || bookConfig.lineHeight;
+  // Use ceiled lineHeightPx (matching Canvas engine) so browser line grid
+  // aligns exactly with the pagination engine's calculations.
+  const lineHeightPx = layoutDims?.lineHeightPx ?? Math.ceil(fontSize * lineHeightRatio);
+  const textAlign = safeConfig.paragraph?.align || 'justify';
+  const showNums = safeConfig.showPageNumbers !== false;
+
   const {
     showMagnifier,
     setShowMagnifier,
@@ -280,7 +343,7 @@ function Preview() {
     handleMouseEnterMagnifier,
     handleMouseLeaveMagnifier
   } = useMagnifier(previewPageRef);
-  
+
   const {
     showHeaders,
     showFooter,
@@ -293,27 +356,22 @@ function Preview() {
     subtopicBehavior,
     subtopicSeparator
   } = useHeaderFooter(safeConfig, currentPageData, totalPages, safeBookData.title);
-  
+
   const baseFontSize = (safeConfig.fontSize || bookConfig.fontSize) * previewScale;
   const headerHtml = buildHeaderHtml(headerLeft, headerCenter, headerRight, headerConfig, baseFontSize);
-  
-  const fontSize = (safeConfig.fontSize || bookConfig.fontSize) * (PX_PER_INCH / 72) * previewScale;
-  const fontFamily = safeConfig.fontFamily || bookConfig.fontFamily;
-  const lineHeight = safeConfig.lineHeight || bookConfig.lineHeight;
-  const textAlign = safeConfig.paragraph?.align || 'justify';
-  const showNums = safeConfig.showPageNumbers !== false;
-   
+
   const skipHeader = headerConfig.skipFirstChapterPage && currentPageData.isFirstChapterPage;
   const hasHeaderContent = headerLeft || headerCenter || headerRight;
   const showHeaderLine = (headerConfig.showLine !== false) && hasHeaderContent;
-   
+
   const showPageNumber = (showNums && !currentPageData.isBlank) || (currentPageData.isExtraEndPage && currentPageData.shouldShowPageNumber);
-   
+
   const pageNumberPos = safeConfig.pageNumberPos || 'bottom';
   const pageNumberAlign = safeConfig.pageNumberAlign || 'center';
-   
-  const pageNumY = 12;
+
+  const pageNumY = safeConfig.pageNumberMargin ?? 12;
   let pageNumX = 0;
+
   let pageNumHorizontalStyle = {};
    
   switch (pageNumberAlign) {
@@ -364,6 +422,50 @@ function Preview() {
   return (
     <div className="preview-wrapper">
       <div className="preview-controls">
+        <div className="preview-edit-button" style={{ flex: '1 1 100%', padding: '6px 0' }}>
+          <button 
+            onClick={() => {
+              const state = useEditorStore.getState();
+              const firstChapterId = state.bookData?.chapters?.[0]?.id;
+              useEditorStore.setState((state) => ({
+                ui: { ...state.ui, showUpload: false, showPreview: false },
+                editing: { 
+                  ...state.editing, 
+                  activeChapterId: firstChapterId || state.editing.activeChapterId 
+                }
+              }));
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              width: '100%',
+              padding: '10px 16px',
+              background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              fontSize: '13px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)';
+            }}
+            title="Abrir editor de texto"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+            Editar
+          </button>
+        </div>
         <div className="preview-controls-left">
           <button 
             className="btn btn-icon" 
@@ -442,9 +544,11 @@ function Preview() {
             className={`zoom-btn ${showDebugPanel ? 'active' : ''}`}
             onClick={() => setShowDebugPanel(!showDebugPanel)}
             title="Modo Developer"
-            style={{ fontSize: '12px', padding: '4px 6px' }}
+            style={{ fontSize: '12px', padding: '4px 6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
-            ⚙️
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
           </button>
         </div>
       </div>
@@ -457,6 +561,13 @@ function Preview() {
         />
       )}
 
+      {/* Barra de progreso de paginación */}
+      <PaginationProgressBar 
+        progress={paginationProgress}
+        isVisible={isPaginationRunning}
+        compact={false}
+      />
+
       <div className="preview-scroll" ref={previewScrollRef}>
         <div
           ref={previewPageRef}
@@ -468,11 +579,12 @@ function Preview() {
             padding: `${marginTop}px ${marginRight}px ${marginBottom}px ${marginLeft}px`,
             fontSize: `${fontSize}px`,
             fontFamily: fontFamily,
-            lineHeight: lineHeight,
+            lineHeight: `${lineHeightPx}px`,
             textAlign: textAlign,
             textJustify: 'inter-word',
-            hyphens: 'auto',
-            wordBreak: 'break-word'
+            hyphens: 'none',
+            wordBreak: 'break-word',
+            overflowWrap: 'break-word'
           }}
           onMouseMove={updateMagnifierPosition}
           onMouseEnter={handleMouseEnterPreview}
@@ -487,7 +599,22 @@ function Preview() {
           )}
 
           <div
+            ref={(el) => {
+              previewContentRef.current = el;
+              if (el && process.env.NODE_ENV === 'development') {
+                requestAnimationFrame(() => {
+                  const scrollH = el.scrollHeight;
+                  const clientH = el.clientHeight;
+                  if (scrollH > clientH + 2) {
+                    console.warn(`[OVERFLOW] Page ${currentPage + 1}: scrollHeight=${scrollH.toFixed(1)} > clientHeight=${clientH.toFixed(1)}, overflow=${(scrollH - clientH).toFixed(1)}px (${((scrollH - clientH) / lineHeightPx).toFixed(1)} lines)`);
+                  }
+                });
+              }
+            }}
             className="preview-content"
+            style={{
+              height: `${effectiveContentHeight}px`,
+            }}
             dangerouslySetInnerHTML={{ __html: debugHtml || '' }}
           />
 
@@ -552,11 +679,12 @@ function Preview() {
                   padding: `${marginTop}px ${marginRight}px ${marginBottom}px ${marginLeft}px`,
                   fontSize: `${fontSize}px`,
                   fontFamily: fontFamily,
-                  lineHeight: lineHeight,
+                  lineHeight: `${lineHeightPx}px`,
                   textAlign: textAlign,
                   textJustify: 'inter-word',
-                  hyphens: 'auto',
+                  hyphens: 'none',
                   wordBreak: 'break-word',
+                  overflowWrap: 'break-word',
                   background: 'white',
                   boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
                   overflow: 'hidden',
@@ -572,8 +700,10 @@ function Preview() {
                     style={{ marginBottom: '0.5em' }}
                   />
                 )}
-                <div 
+                <div
+                  ref={magnifierContentRef}
                   className="preview-content"
+                  style={{ height: `${effectiveContentHeight}px` }}
                   dangerouslySetInnerHTML={{ __html: debugHtml || '' }}
                 />
                 {pageNumHtml}

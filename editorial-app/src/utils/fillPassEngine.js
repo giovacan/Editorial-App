@@ -10,6 +10,77 @@
  * NO REACT DEPENDENCIES • PURE FUNCTION • FULLY TESTABLE
  */
 
+// Import advanced algorithms for quality evaluation
+import { balanceParagraphSplit } from './layoutAlgorithms';
+
+/**
+ * Clean up pages that became nearly empty after fill pass.
+ * Merges content from nearly-empty pages back to previous page or marks as blank.
+ * 
+ * @param {Array} pages - Pages array after fill pass
+ * @param {object} config - Configuration with lineHeightPx and measureDiv
+ * @returns {Array} Cleaned pages array
+ */
+const cleanupNearlyEmptyPages = (pages, config) => {
+  if (!Array.isArray(pages) || pages.length < 2) {
+    return pages;
+  }
+
+  const { lineHeightPx, measureDiv, minOrphanLines = 2 } = config;
+  const result = [...pages];
+  const minContentThreshold = minOrphanLines * lineHeightPx * 0.5; // Less than half orphan lines = nearly empty
+
+  let cleanedCount = 0;
+
+  for (let i = result.length - 1; i > 0; i--) {
+    const page = result[i];
+    if (!page || page.isBlank) continue;
+
+    // Skip if this is the only content page for a chapter (don't leave chapter with no pages)
+    const prevPage = result[i - 1];
+    if (prevPage && prevPage.chapterTitle !== page.chapterTitle) continue;
+
+    try {
+      measureDiv.innerHTML = page.html || '';
+      const pageHeight = measureDiv.offsetHeight || 0;
+
+      if (pageHeight < minContentThreshold && pageHeight > 0) {
+        // Page is nearly empty - try to merge content to previous page
+        if (prevPage && !prevPage.isBlank && prevPage.chapterTitle === page.chapterTitle) {
+          // Move all content to previous page
+          prevPage.html = (prevPage.html || '') + (page.html || '');
+          page.html = '';
+          page.isBlank = true;
+          cleanedCount++;
+          
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`[FILL-CLEANUP] Merged nearly-empty page ${i + 1} into page ${i}`);
+          }
+        } else if (!prevPage || prevPage.isBlank) {
+          // Previous is blank or doesn't exist - mark current as blank
+          page.isBlank = true;
+          cleanedCount++;
+        }
+      }
+    } catch (e) {
+      // Ignore measurement errors during cleanup
+    }
+  }
+
+  // Renumber pages
+  result.forEach((page, idx) => {
+    if (page) {
+      page.pageNumber = idx + 1;
+    }
+  });
+
+  if (cleanedCount > 0 && process.env.NODE_ENV === 'development') {
+    console.log(`[FILL-CLEANUP] Cleaned ${cleanedCount} nearly-empty pages`);
+  }
+
+  return result;
+};
+
 /**
  * Apply fill pass to rebalance pages.
  * Moves blocks from later pages to fill earlier underfilled pages.
@@ -115,33 +186,70 @@ export const applyFillPass = (pages, config) => {
         firstEl.remove();
         const restHtml = tmp.innerHTML;
 
-        // Check widow lines
+        // FIX: Don't empty source page - never allow moves that would completely empty a page
         if (!restHtml.trim()) {
-          // Next page becomes empty, safe to move
-          result[pageIdx] = {
-            ...page,
-            html: (page.html || '') + firstElOuter
-          };
-          result[nextIdx] = {
-            ...nextPage,
-            html: ''
-          };
-          totalIterations++;
-        } else {
-          // Check widow rules
-          measureDiv.innerHTML = restHtml;
-          const widowLines = Math.floor((measureDiv.offsetHeight || 0) / lineHeightPx);
+          // This would empty the source page - DON'T allow it
+          // Restore the element and try next element
+          tmp.appendChild(firstEl);
+          continue; // Skip this move - would create blank page, try next element
+        }
 
-          if (widowLines >= minWidowLines) {
-            result[pageIdx] = {
-              ...page,
-              html: (page.html || '') + firstElOuter
-            };
-            result[nextIdx] = {
-              ...nextPage,
-              html: restHtml
-            };
-            totalIterations++;
+        // Check: Don't leave source page with too few lines (below orphan threshold)
+        measureDiv.innerHTML = restHtml;
+        const remainingLines = Math.floor((measureDiv.offsetHeight || 0) / lineHeightPx);
+        if (remainingLines < minOrphanLines) {
+          // Would leave source page too empty - skip this move
+          tmp.appendChild(firstEl);
+          continue; // Try next element
+        }
+
+        // Check widow rules
+        measureDiv.innerHTML = restHtml;
+        const widowLines = Math.floor((measureDiv.offsetHeight || 0) / lineHeightPx);
+
+        if (widowLines >= minWidowLines) {
+          const newPageHtml = (page.html || '') + firstElOuter;
+
+            // === ALGORITHM 1: Check paragraph balance before accepting move ===
+            let balanceCheckPassed = true;
+            try {
+              const balanceCheck = balanceParagraphSplit(
+                newPageHtml,
+                restHtml,
+                lineHeightPx,
+                measureDiv
+              );
+              if (balanceCheck.needsRebalance) {
+                balanceCheckPassed = false;
+                if (process.env.NODE_ENV === 'development') {
+                  console.log('[FILL-PASS] Balance violation - rejecting move:', {
+                    reason: balanceCheck.reason,
+                    currentSplit: balanceCheck.currentSplit,
+                    recommended: balanceCheck.recommendedSplit
+                  });
+                }
+              }
+            } catch (e) {
+              // Non-critical: balance check failed, accept move anyway
+            }
+
+            if (balanceCheckPassed) {
+              result[pageIdx] = {
+                ...page,
+                html: newPageHtml
+              };
+              result[nextIdx] = {
+                ...nextPage,
+                html: restHtml
+              };
+              totalIterations++;
+            } else {
+              // Move would violate balance - skip it and try next element
+              if (process.env.NODE_ENV === 'development') {
+                console.log('[FILL-PASS] Skipped move due to balance violation, trying next element');
+              }
+              continue;  // ← TRY NEXT ELEMENT, don't give up on this page
+            }
           }
         }
       }
@@ -153,7 +261,10 @@ export const applyFillPass = (pages, config) => {
     }
   }
 
-  return result;
+  // Post-fill-pass cleanup: handle pages that became nearly empty
+  const cleanedResult = cleanupNearlyEmptyPages(result, config);
+
+  return cleanedResult;
 };
 
 /**

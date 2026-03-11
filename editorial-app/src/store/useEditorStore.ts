@@ -69,6 +69,7 @@ const initialState = {
     showPageNumbers: true,
     pageNumberPos: 'bottom' as const,
     pageNumberAlign: 'center' as const,
+    pageNumberMargin: 12,
     showHeaders: false,
     headerContent: 'both' as const,
     headerPosition: 'top' as const,
@@ -123,15 +124,21 @@ const initialState = {
       lineWidth: 0.5,
       lineStyle: 'solid',
       lineColor: '#333333',
-      lineWidthTitle: false
+      lineWidthTitle: false,
+      hierarchyEnabled: true,
+      hierarchyLabelSizeMultiplier: 0.7,
+      hierarchyTitleSizeMultiplier: 1.0,
+      hierarchyLabelColor: '#666666',
+      hierarchyLabelBold: false,
+      hierarchyGap: 0.3
     },
     subheaders: {
-      h1: { align: 'center' as const, bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBottom: 0.5, minLinesAfter: 2 },
-      h2: { align: 'center' as const, bold: true, sizeMultiplier: 1.35, marginTop: 1.25, marginBottom: 0.5, minLinesAfter: 2 },
-      h3: { align: 'center' as const, bold: true, sizeMultiplier: 1.25, marginTop: 1, marginBottom: 0.5, minLinesAfter: 2 },
-      h4: { align: 'left' as const, bold: true, sizeMultiplier: 1.15, marginTop: 1, marginBottom: 0.5, minLinesAfter: 2 },
-      h5: { align: 'left' as const, bold: true, sizeMultiplier: 1.1, marginTop: 0.75, marginBottom: 0.25, minLinesAfter: 2 },
-      h6: { align: 'left' as const, bold: false, sizeMultiplier: 1.0, marginTop: 0.5, marginBottom: 0.25, minLinesAfter: 2 }
+      h1: { align: 'center' as const, bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBottom: 0.5, minLinesAfter: 3 },
+      h2: { align: 'center' as const, bold: true, sizeMultiplier: 1.35, marginTop: 1.25, marginBottom: 0.5, minLinesAfter: 3 },
+      h3: { align: 'center' as const, bold: true, sizeMultiplier: 1.25, marginTop: 1, marginBottom: 0.5, minLinesAfter: 3 },
+      h4: { align: 'left' as const, bold: true, sizeMultiplier: 1.15, marginTop: 1, marginBottom: 0.5, minLinesAfter: 3 },
+      h5: { align: 'left' as const, bold: true, sizeMultiplier: 1.1, marginTop: 0.75, marginBottom: 0.25, minLinesAfter: 3 },
+      h6: { align: 'left' as const, bold: false, sizeMultiplier: 1.0, marginTop: 0.5, marginBottom: 0.25, minLinesAfter: 3 }
     },
     paragraph: {
       firstLineIndent: 1.5,
@@ -181,7 +188,8 @@ const initialState = {
   ui: {
     showPreview: false,
     showUpload: true,
-    activeTab: 'structure' as const
+    activeTab: 'structure' as const,
+    showPageBreaks: false
   },
   paginationProgress: {
     isActive: false,
@@ -206,6 +214,21 @@ const mergeDeep = (target: any, source: any): any => {
 // Lazy initialization - deferred until first store access
 const getInitialState = () => {
   const savedState = loadFromStorage();
+  
+  if (savedState && savedState.bookData?.chapters?.length > 0) {
+    // If there are saved chapters, restore UI state to show preview (not upload)
+    return {
+      ...initialState,
+      bookData: { ...initialState.bookData, ...savedState.bookData },
+      config: mergeDeep({ ...initialState.config }, savedState.config),
+      ui: { 
+        ...initialState.ui, 
+        showUpload: false, 
+        showPreview: true 
+      }
+    };
+  }
+  
   return savedState
     ? {
         ...initialState,

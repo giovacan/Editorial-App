@@ -21,7 +21,7 @@ export const calculateDynamicMargins = (marginTop, marginBottom, estimatedPageCo
     // Reduce margins significantly for thick books (> 400 pages)
     return {
       top: marginTop * 0.75,
-      bottom: marginBottom * 0.75
+    bottom: marginBottom * 0.65
     };
   } else if (estimatedPageCount >= 300) {
     // Reduce margins for medium books (300-399 pages)
@@ -30,8 +30,11 @@ export const calculateDynamicMargins = (marginTop, marginBottom, estimatedPageCo
       bottom: marginBottom * 0.85
     };
   }
-  // Keep original margins for thin books (< 300 pages)
-  return { top: marginTop, bottom: marginBottom };
+  // Slight reduction for thin books (< 300 pages) to allow more text
+  return { 
+    top: marginTop, 
+    bottom: marginBottom * 0.75 
+  };
 };
 
 export const calculateContentDimensions = (pageFormat, bookConfig, previewScale, gutterValue = null, isEvenPage = false, estimatedPageCount = null, applyDynamicMargins = true) => {

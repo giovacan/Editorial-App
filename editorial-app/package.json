@@ -11,6 +11,11 @@
   },
   "dependencies": {
     "@stripe/stripe-js": "^8.8.0",
+    "@tiptap/extension-history": "^3.20.1",
+    "@tiptap/extension-placeholder": "^3.20.1",
+    "@tiptap/extension-underline": "^3.20.1",
+    "@tiptap/react": "^3.20.1",
+    "@tiptap/starter-kit": "^3.20.1",
     "epubjs": "^0.3.93",
     "firebase": "^12.10.0",
     "html2pdf.js": "^0.14.0",
@@ -19,6 +24,8 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.1",
+    "styled-components": "^6.3.11",
+    "tex-linebreak": "^0.8.1",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

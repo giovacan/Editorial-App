@@ -12,7 +12,32 @@
       "Bash(curl -s http://localhost:5174/ -H \"Cache-Control: no-cache\")",
       "Bash(git add editorial-app/src/utils/paginationEngine.js)",
       "Bash(xargs grep -l \"calculateContentDimensions\")",
-      "Bash(node -c \"c:\\\\Users\\\\equipo\\\\OneDrive\\\\GCpersonal\\\\APPS\\\\editorial-app\\\\editorial-app\\\\src\\\\utils\\\\paginationUtils.js\")"
+      "Bash(node -c \"c:\\\\Users\\\\equipo\\\\OneDrive\\\\GCpersonal\\\\APPS\\\\editorial-app\\\\editorial-app\\\\src\\\\utils\\\\paginationUtils.js\")",
+      "Bash(echo \":*)",
+      "Bash(npx vite build)",
+      "Bash(node -e \":*)",
+      "Bash(xargs grep -l \"fillPassEngine\")",
+      "Bash(grep -n \"id: ''capitulos''\" \"/c/Users/equipo/OneDrive/GCpersonal/APPS/editorial-app/editorial-app/src/components/SidebarLeft/SidebarLeft.jsx\")",
+      "Bash(grep -v \"^[0-9]*:[^a-z]*$\")",
+      "Bash(node --max-old-space-size=4096 ./node_modules/.bin/vite build)",
+      "Bash(node --max-old-space-size=4096 node_modules/vite/bin/vite.js build)",
+      "Bash(npx vite --host)",
+      "Bash(npx vite --port 5173)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(xargs ls -la)",
+      "Bash(xargs grep -l \"WASM\\\\|wasm\\\\|browser\")",
+      "Bash(xargs -I {} bash -c 'echo \"\"=== {} ===\"\" && head -50 \"\"{}\"\"')",
+      "Bash(xargs grep -l \"wasm\\\\|WASM\\\\|web\\\\|browser\")",
+      "Bash(xargs grep -l \"^name = \"\"typst\"\"$\")",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(node -e \"const {breakLines, layoutItemsFromString, forcedBreak, MIN_COST} = require\\(''tex-linebreak''\\); console.log\\(''breakLines:'', typeof breakLines\\); console.log\\(''layoutItemsFromString:'', typeof layoutItemsFromString\\); console.log\\(''forcedBreak:'', typeof forcedBreak\\); console.log\\(''MIN_COST:'', MIN_COST\\);\")",
+      "Bash(timeout 15 npx vite)",
+      "WebFetch(domain:pagedjs.org)",
+      "WebFetch(domain:vivliostyle.org)",
+      "WebFetch(domain:react-pdf.org)",
+      "WebFetch(domain:discuss.prosemirror.net)"
     ]
   }
 }

@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 import Layout from './components/Layout/Layout';
 import { LandingPage } from './pages/LandingPage';
+import HomePage from './pages/HomePage';
 import { LoginPage } from './components/Auth/LoginPage';
 import { RegisterPage } from './components/Auth/RegisterPage';
 import { ProtectedRoute } from './components/Auth/ProtectedRoute';
@@ -41,8 +42,12 @@ function App() {
           </Route>
         </Route>
 
-        {/* Landing page */}
+        {/* Landing page - principal */}
         <Route path="/" element={<LandingPage />} />
+        
+        {/* Home page - comunidad */}
+        <Route path="/home" element={<HomePage />} />
+        
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ErrorBoundary>

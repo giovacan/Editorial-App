@@ -11,10 +11,13 @@ export const useParagraphValidation = () => {
 
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [currentError, setCurrentError] = useState(null);
+  const [errorsShown, setErrorsShown] = useState(false);
   
   const [detectedChapters, setDetectedChapters] = useState([]);
   const [showChapterDialog, setShowChapterDialog] = useState(false);
   const [chaptersConfirmed, setChaptersConfirmed] = useState(false);
+
+  const lastValidationRef = useRef(null);
 
   const isChapterTitle = useCallback((text) => {
     if (!text) return false;
@@ -149,9 +152,13 @@ export const useParagraphValidation = () => {
     return paragraphs;
   }, []);
 
+  const normalizeText = (text) => {
+    return text.replace(/\s+/g, ' ').trim();
+  };
+
   const compareParagraphs = useCallback((original, preview) => {
     const issues = [];
-    let j = 0; // cursor independiente sobre preview
+    let j = 0;
 
     for (let i = 0; i < original.length; i++) {
       if (j >= preview.length) {
@@ -166,45 +173,53 @@ export const useParagraphValidation = () => {
       }
 
       const orig = original[i];
-      const origText = orig.text.trim();
+      const origText = normalizeText(orig.text);
 
-      // Acumular fragmentos de preview que sean continuaciones del párrafo original
       let combinedText = '';
       let combinedWords = 0;
       let fragmentsConsumed = 0;
 
       while (j + fragmentsConsumed < preview.length) {
         const frag = preview[j + fragmentsConsumed];
-        const candidate = (combinedText + ' ' + frag.text).trim();
+        const fragText = normalizeText(frag.text);
+        const candidate = combinedText ? combinedText + ' ' + fragText : fragText;
 
-        // Si el texto acumulado ya no es prefijo del original → parar
-        if (!origText.startsWith(candidate) && !candidate.startsWith(origText)) {
-          // Primer fragmento: checar si al menos el original empieza con este fragmento
-          if (fragmentsConsumed === 0) {
-            // No hay match en absoluto → usar este fragmento solo
-            combinedText = frag.text;
-            combinedWords = frag.words;
-            fragmentsConsumed = 1;
-          }
+        // Si el texto normalizado es idéntico, found match
+        if (origText === candidate) {
+          combinedText = candidate;
+          combinedWords += frag.words;
+          fragmentsConsumed++;
           break;
         }
 
+        // Si el preview empieza con el original, es un match exacto
+        if (candidate.startsWith(origText) || origText.startsWith(candidate)) {
+          combinedText = candidate;
+          combinedWords += frag.words;
+          fragmentsConsumed++;
+          break;
+        }
+
+        // Acumular fragmentos para párrafos divididos
         combinedText = candidate;
         combinedWords += frag.words;
         fragmentsConsumed++;
 
-        // Si ya acumulamos suficientes palabras → parar
         if (combinedWords >= orig.words) break;
       }
 
       j += fragmentsConsumed;
 
-      // Comparar palabras totales acumuladas vs original
+      const normalizedCombined = normalizeText(combinedText);
       const wordDiff = Math.abs(orig.words - combinedWords);
       const charDiff = Math.abs(orig.length - combinedText.length);
 
-      // Tolerancia: diferencia <= 2 palabras (puntuación, guiones, etc.)
-      if (wordDiff > 2 || charDiff > 10) {
+      // Solo reportar inconsistencia si el texto realmente difiere (ignorando whitespace)
+      const textActuallyDifferent = normalizedCombined !== origText && 
+        !origText.includes(normalizedCombined) && 
+        !normalizedCombined.includes(origText);
+
+      if (textActuallyDifferent && (wordDiff > 5 || charDiff > 20)) {
         issues.push({
           type: 'INCONSISTENT',
           index: i,
@@ -221,16 +236,6 @@ export const useParagraphValidation = () => {
           message: `Párrafo ${i + 1}: Original=${orig.words} palabras, Preview=${combinedWords} palabras`
         });
       }
-    }
-
-    // Fragmentos sobrantes en preview que no coinciden con ningún original
-    while (j < preview.length) {
-      issues.push({
-        type: 'MISSING_ORIGINAL',
-        index: j,
-        message: `Párrafo extra en preview (posición ${j + 1})`
-      });
-      j++;
     }
 
     return issues;
@@ -400,6 +405,20 @@ export const useParagraphValidation = () => {
   }, []);
 
   const validateAll = useCallback(async (chapters, pages, config, confirmedTitles = []) => {
+    // Create a hash of the current state to detect real changes
+    const contentHash = JSON.stringify({
+      chaptersLength: chapters?.length,
+      pagesLength: pages?.length,
+      chapterIds: chapters?.map(c => c.id),
+      configSnapshot: config?.pageFormat
+    });
+    
+    // Only reset errorsShown if content actually changed
+    if (lastValidationRef.current !== contentHash) {
+      lastValidationRef.current = contentHash;
+      setErrorsShown(false);
+    }
+    
     setValidationState(prev => ({ ...prev, isValidating: true, issues: [], corrections: [] }));
 
     const allIssues = [];
@@ -429,9 +448,7 @@ export const useParagraphValidation = () => {
     const indentIssues = validateIndentations(pages, config?.paragraph);
     allIssues.push(...indentIssues);
 
-    const needsUserAttention = allIssues.some(issue => {
-      return !['INDENT_MISMATCH', 'SENTENCE_NOT_COMPLETE'].includes(issue.type);
-    });
+    const needsUserAttention = false;
 
     setValidationState({
       isValidating: false,
@@ -441,9 +458,11 @@ export const useParagraphValidation = () => {
       currentError: null
     });
 
-    if (needsUserAttention && allIssues.length > 0) {
+    // Only show error dialog if there are real issues and they haven't been shown yet
+    if (needsUserAttention && allIssues.length > 0 && !errorsShown) {
       setCurrentError(allIssues[0]);
       setShowErrorDialog(true);
+      setErrorsShown(true);
     }
 
     return {

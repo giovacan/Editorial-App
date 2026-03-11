@@ -1,7 +1,10 @@
 import { useSearchParams } from 'react-router-dom';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import useEditorStore from '../../store/useEditorStore';
 import { useBookSync } from '../../hooks/useBookSync';
+import { useConfigHistory } from '../../hooks/useConfigHistory';
+import { addRecentBook } from '../../utils/recentBooks';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import Header from '../Header/Header';
 import PaginationProgressBar from '../PaginationProgressBar/PaginationProgressBar';
@@ -16,16 +19,149 @@ function Layout() {
   const [searchParams] = useSearchParams();
   const bookId = searchParams.get('bookId');
 
-  // Sync with Firestore if bookId is provided
-  useBookSync(bookId);
+  // Sync with Firestore only if bookId is provided
+  if (bookId) {
+    useBookSync(bookId);
+  }
+
+  const bookData = useEditorStore((s) => s.bookData);
+  
+  // Save to recent books when bookData changes
+  useEffect(() => {
+    if (bookData && bookData.title) {
+      addRecentBook({
+        id: bookData.id || bookId || 'local-' + Date.now(),
+        title: bookData.title,
+        author: bookData.author,
+        lastOpened: Date.now()
+      });
+    }
+  }, [bookData?.id, bookData?.title]);
 
   const chapters = useEditorStore((s) => s.bookData?.chapters);
+  const config = useEditorStore((s) => s.config);
   const ui = useEditorStore((s) => s.ui);
   const loadContent = useEditorStore((s) => s.loadContent);
   const newProject = useEditorStore((s) => s.newProject);
+  const setConfig = useEditorStore((s) => s.setConfig);
   
+  const {
+    history: historyConfig,
+    canUndo,
+    canRedo,
+    changeLog,
+    pushChange,
+    undo,
+    redo,
+    restore,
+    clearHistory,
+    showHistoryPanel,
+    setShowHistoryPanel
+  } = useConfigHistory(config);
+
+  const handleUndo = useCallback(() => {
+    // First try to undo editor content
+    if (window.editorUndo && window.editorUndo()) {
+      return;
+    }
+    // If no editor undo available, try config undo
+    const previousConfig = undo();
+    if (previousConfig) {
+      setConfig(previousConfig);
+    }
+  }, [undo, setConfig]);
+
+  const handleRedo = useCallback(() => {
+    // First try to redo editor content
+    if (window.editorRedo && window.editorRedo()) {
+      return;
+    }
+    // If no editor redo available, try config redo
+    const nextConfig = redo();
+    if (nextConfig) {
+      setConfig(nextConfig);
+    }
+  }, [redo, setConfig]);
+
+  // State to track editor undo/redo capability
+  const [editorUndoState, setEditorUndoState] = useState({ canUndo: false, canRedo: false });
+  const [lastSaveTime, setLastSaveTime] = useState(null);
+
+  const handleContentChange = useCallback((time) => {
+    setLastSaveTime(time);
+  }, []);
+
+  useEffect(() => {
+    const handleEditorStateChange = () => {
+      setEditorUndoState({
+        canUndo: window.editorCanUndo ? window.editorCanUndo() : false,
+        canRedo: window.editorCanRedo ? window.editorCanRedo() : false
+      });
+    };
+    
+    window.addEventListener('editorStateChange', handleEditorStateChange);
+    // Check initial state
+    handleEditorStateChange();
+    
+    return () => {
+      window.removeEventListener('editorStateChange', handleEditorStateChange);
+    };
+  }, []);
+
+  // Check canUndo/canRedo - prioritize editor, fallback to config
+  const canUndoResult = editorUndoState.canUndo;
+  const canRedoResult = editorUndoState.canRedo;
+
+  // Expose trackChange function for sidebar and editor components
+  const trackChangeFn = useCallback((action, customConfig) => {
+    // Use customConfig if provided, otherwise use current config
+    const configToSave = customConfig || config;
+    pushChange(action, configToSave);
+  }, [config, pushChange]);
+
+  useEffect(() => {
+    window.trackChange = trackChangeFn;
+    return () => {
+      delete window.trackChange;
+    };
+  }, [trackChangeFn]);
+
+  // Sync history config with editor store
+  useEditorStore(state => {
+    if (historyConfig && JSON.stringify(state.config) !== JSON.stringify(historyConfig)) {
+      // Only update if different (to avoid loops)
+    }
+  });
+
   const safeChapters = chapters || [];
   const safeUi = ui || { showPreview: false, showUpload: true, activeTab: 'structure' };
+
+  // What to show in center area
+  const showUpload = safeUi?.showUpload ?? true;
+  const showEditor = !showUpload;
+
+  // Flag to prevent infinite loops when restoring from history
+  const isRestoringRef = useRef(false);
+
+  // Auto-push config changes to history (only user-initiated changes)
+  const prevConfigRef = useRef(config);
+  useEffect(() => {
+    if (isRestoringRef.current) {
+      isRestoringRef.current = false;
+      return;
+    }
+    if (prevConfigRef.current && config && JSON.stringify(prevConfigRef.current) !== JSON.stringify(config)) {
+      pushChange('Cambio de configuración', config);
+    }
+    prevConfigRef.current = config;
+  }, [config, pushChange]);
+
+  const handleRestore = (configToRestore) => {
+    isRestoringRef.current = true;
+    restore(configToRestore);
+    setConfig(configToRestore);
+    setShowHistoryPanel(false);
+  };
 
   const handleNewProject = () => {
     if (safeChapters?.length > 0) {
@@ -400,16 +536,25 @@ ${safeBookData.chapters.map((ch, i) => `      <li><a href="chapter${i}.xhtml">${
         onNewProject={handleNewProject} 
         onSaveProject={handleSaveProject}
         onOpenProject={handleOpenProject}
+        canUndo={canUndoResult}
+        canRedo={canRedoResult}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        changeLog={changeLog}
+        showHistoryPanel={showHistoryPanel}
+        setShowHistoryPanel={setShowHistoryPanel}
+        onRestore={handleRestore}
+        lastSaveTime={lastSaveTime}
       />
       <PaginationProgressBar />
       
       <main className="app-main">
         <SidebarLeft />
         
-        {safeUi?.showUpload ? (
+        {showUpload ? (
           <UploadArea onContentLoaded={handleContentLoaded} />
         ) : (
-          <Editor />
+          <Editor pushChange={pushChange} onContentChange={handleContentChange} />
         )}
         
         <SidebarRight 
