@@ -25,7 +25,7 @@ export const toRoman = (num) => {
 
 export const fromRoman = (str) => {
   let result = 0;
-  const upper = str.toUpperCase();
+  let upper = str.toUpperCase();
   for (const [letter, value] of ROMAN_NUMERALS) {
     while (upper.startsWith(letter)) {
       result += value;
