@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Editorial App - Editor profesional de libros para impresión bajo demanda y EPUB">
+    <meta name="author" content="Editorial App">
+    <meta name="theme-color" content="#ffffff">
+    
+    <title>Editorial App - Editor de Libros Profesionales</title>
+    
+    <!-- Estilos -->
+    <link rel="stylesheet" href="css/reset.css">
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/typography.css">
+    <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/editor.css">
+    <link rel="stylesheet" href="css/preview.css">
+    <link rel="stylesheet" href="css/sidebar.css">
+    <link rel="stylesheet" href="css/toolbar.css">
+    <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+    <!-- ================================================================
+         CONTENEDOR PRINCIPAL
+         ================================================================ -->
+    <div id="app" class="app-container" role="application" aria-label="Editorial App">
+
+        <!-- ============================================================
+             HEADER - Barra superior con branding y navegación principal
+             ============================================================ -->
+        <header class="app-header" role="banner">
+            <div class="header-content">
+                
+                <!-- Branding -->
+                <div class="header-brand">
+                    <svg class="logo" width="32" height="32" viewBox="0 0 32 32" 
+                         aria-hidden="true" role="img">
+                        <path d="M8 4h16v24H8z" fill="currentColor"/>
+                    </svg>
+                    <h1 class="app-title">Editorial App</h1>
+                </div>
+
+                <!-- Navegación principal -->
+                <nav class="header-nav" role="navigation" aria-label="Navegación principal">
+                    <button id="btn-new-project" class="btn btn-primary" 
+                            aria-label="Crear nuevo proyecto">
+                        + Nuevo
+                    </button>
+                    <button id="btn-open-project" class="btn btn-secondary" 
+                            aria-label="Abrir proyecto existente">
+                        Abrir
+                    </button>
+                    <button id="btn-save-project" class="btn btn-secondary" 
+                            aria-label="Guardar proyecto actual">
+                        Guardar
+                    </button>
+                </nav>
+
+                <!-- Acciones secundarias -->
+                <div class="header-actions">
+                    <button id="btn-settings" class="btn btn-icon" 
+                            aria-label="Configuración">
+                        ⚙
+                    </button>
+                    <button id="btn-help" class="btn btn-icon" 
+                            aria-label="Ayuda">
+                        ?
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- ============================================================
+             CONTENIDO PRINCIPAL - Layout de tres columnas
+             ============================================================ -->
+        <main class="app-main">
+
+            <!-- ========================================================
+                 SIDEBAR IZQUIERDO - Estructura y configuración
+                 ======================================================== -->
+            <aside class="sidebar sidebar-left" role="complementary" 
+                   aria-label="Panel de estructura y configuración">
+
+                <!-- Tabs para cambiar entre secciones -->
+                <div class="sidebar-tabs">
+                    <button class="sidebar-tab active" data-tab="structure" 
+                            aria-selected="true" aria-label="Pestaña de estructura">
+                        Estructura
+                    </button>
+                    <button class="sidebar-tab" data-tab="config" 
+                            aria-selected="false" aria-label="Pestaña de configuración">
+                        Configuración
+                    </button>
+                </div>
+
+                <!-- TAB 1: Estructura del documento -->
+                <section class="sidebar-section" id="tab-structure" data-tab-panel="structure">
+                    <h2 class="sidebar-title">Estructura del Libro</h2>
+                    
+                    <div class="structure-controls">
+                        <button id="btn-add-chapter" class="btn btn-small"
+                                aria-label="Agregar nuevo capítulo">
+                            + Capítulo
+                        </button>
+                        <button id="btn-add-section" class="btn btn-small btn-secondary"
+                                aria-label="Agregar nueva sección">
+                            + Sección
+                        </button>
+                    </div>
+
+                    <nav class="structure-panel" aria-label="Estructura de capítulos">
+                        <div id="chapters-list" class="chapters-list">
+                            <p class="empty-state">Sin capítulos cargados</p>
+                        </div>
+                    </nav>
+
+                    <!-- Estadísticas del documento -->
+                    <div class="document-stats">
+                        <h3 class="stats-title">Estadísticas</h3>
+                        <dl class="stats-list">
+                            <dt>Capítulos:</dt>
+                            <dd id="stat-chapters">0</dd>
+                            
+                            <dt>Palabras:</dt>
+                            <dd id="stat-words">0</dd>
+                            
+                            <dt>Caracteres:</dt>
+                            <dd id="stat-characters">0</dd>
+                            
+                            <dt>Páginas estimadas:</dt>
+                            <dd id="stat-pages">0</dd>
+                            
+                            <dt>Tiempo de lectura:</dt>
+                            <dd id="stat-reading-time">0 min</dd>
+                        </dl>
+                    </div>
+                </section>
+
+                <!-- TAB 2: Configuración editorial -->
+                <section class="sidebar-section" id="tab-config" data-tab-panel="config" 
+                         hidden>
+                    <h2 class="sidebar-title">Configuración Editorial</h2>
+                    
+                    <!-- Formato de página -->
+                    <fieldset class="config-group">
+                        <legend>Formato de página</legend>
+                        <select id="config-page-format" aria-label="Seleccionar formato de página">
+                            <option value="a5">A5 (14.8 × 21 cm)</option>
+                            <option value="a4">A4 (21 × 29.7 cm)</option>
+                            <option value="letter">Letter (8.5 × 11 in)</option>
+                            <option value="5x8">5 × 8 inches</option>
+                            <option value="6x9">6 × 9 inches</option>
+                            <option value="custom">Personalizado</option>
+                        </select>
+                    </fieldset>
+
+                    <!-- Tipografía - Cuerpo -->
+                    <fieldset class="config-group">
+                        <legend>Tipografía - Cuerpo</legend>
+                        <select id="config-font-body" aria-label="Seleccionar fuente para cuerpo">
+                            <option value="georgia">Georgia (Serif)</option>
+                            <option value="garamond">Garamond (Serif)</option>
+                            <option value="times">Times New Roman (Serif)</option>
+                            <option value="arial">Arial (Sans)</option>
+                            <option value="verdana">Verdana (Sans)</option>
+                        </select>
+                    </fieldset>
+
+                    <!-- Tamaño de fuente -->
+                    <fieldset class="config-group">
+                        <legend>Tamaño de fuente (pt)</legend>
+                        <input id="config-font-size" type="number" min="10" max="16" 
+                               value="12" aria-label="Tamaño base de fuente en puntos">
+                    </fieldset>
+
+                    <!-- Interlineado -->
+                    <fieldset class="config-group">
+                        <legend>Interlineado</legend>
+                        <select id="config-line-height" aria-label="Seleccionar interlineado">
+                            <option value="1.4">1.4 (Apretado)</option>
+                            <option value="1.5">1.5</option>
+                            <option value="1.6">1.6 (Recomendado)</option>
+                            <option value="1.8">1.8 (Espaciado)</option>
+                            <option value="2.0">2.0 (Doble)</option>
+                        </select>
+                    </fieldset>
+
+                    <!-- Márgenes -->
+                    <fieldset class="config-group">
+                        <legend>Márgenes (mm)</legend>
+                        <div class="margin-inputs">
+                            <label for="config-margin-top">Superior:</label>
+                            <input id="config-margin-top" type="number" min="5" max="50" 
+                                   value="20" aria-label="Margen superior en milímetros">
+
+                            <label for="config-margin-bottom">Inferior:</label>
+                            <input id="config-margin-bottom" type="number" min="5" max="50" 
+                                   value="20" aria-label="Margen inferior en milímetros">
+
+                            <label for="config-margin-left">Izquierdo:</label>
+                            <input id="config-margin-left" type="number" min="5" max="50" 
+                                   value="15" aria-label="Margen izquierdo en milímetros">
+
+                            <label for="config-margin-right">Derecho:</label>
+                            <input id="config-margin-right" type="number" min="5" max="50" 
+                                   value="15" aria-label="Margen derecho en milímetros">
+                        </div>
+                    </fieldset>
+
+                    <!-- Opciones de composición -->
+                    <fieldset class="config-group">
+                        <legend>Opciones de composición</legend>
+                        
+                        <label class="checkbox-label">
+                            <input id="config-chapters-right" type="checkbox" checked>
+                            Iniciar capítulos en página derecha
+                        </label>
+
+                        <label class="checkbox-label">
+                            <input id="config-show-numbers" type="checkbox" checked>
+                            Mostrar números de página
+                        </label>
+                        <div id="config-numbers-options" class="sub-options">
+                            <label>Posición:
+                                <select id="config-numbers-position">
+                                    <option value="bottom" selected>Inferior</option>
+                                    <option value="top">Superior</option>
+                                </select>
+                            </label>
+                            <label>Alineación:
+                                <select id="config-numbers-align">
+                                    <option value="center" selected>Centro</option>
+                                    <option value="left">Izquierda</option>
+                                    <option value="right">Derecha</option>
+                                    <option value="outer">Exterior (espejo)</option>
+                                </select>
+                            </label>
+                        </div>
+
+                        <label class="checkbox-label">
+                            <input id="config-show-headers" type="checkbox">
+                            Mostrar encabezados en páginas
+                        </label>
+                        <div id="config-headers-options" class="sub-options" hidden>
+                            <label>Contenido:
+                                <select id="config-header-content">
+                                    <option value="both">Libro (par) / Capítulo (impar)</option>
+                                    <option value="title">Título del libro</option>
+                                    <option value="chapter">Título del capítulo</option>
+                                </select>
+                            </label>
+                            <label>Posición:
+                                <select id="config-header-position">
+                                    <option value="top" selected>Superior</option>
+                                    <option value="bottom">Inferior</option>
+                                </select>
+                            </label>
+                            <label class="checkbox-label">
+                                <input id="config-header-line" type="checkbox" checked>
+                                Línea separadora
+                            </label>
+                        </div>
+
+                        <label class="checkbox-label">
+                            <input id="config-widow-orphan" type="checkbox" checked>
+                            Aplicar reglas de orphans/widows
+                        </label>
+                    </fieldset>
+
+                    <!-- Presupuesto IA -->
+                    <fieldset class="config-group">
+                        <legend>Presupuesto IA (diario)</legend>
+                        <label for="config-ai-budget">Máximo ($):</label>
+                        <input id="config-ai-budget" type="number" min="1" max="100" 
+                               value="10" step="0.5" aria-label="Presupuesto máximo diario para IA">
+                    </fieldset>
+
+                    <!-- Botón de reset -->
+                    <button id="btn-reset-config" class="btn btn-secondary btn-block">
+                        Restaurar valores por defecto
+                    </button>
+                </section>
+            </aside>
+
+
+
+            <!-- ========================================================
+                 SECCIÓN CENTRAL - Editor de contenido
+                 ======================================================== -->
+            <section class="editor-section" role="main" aria-label="Editor de contenido">
+                
+                <!-- ÁREA DE CARGA - Visible al inicio -->
+                <div id="upload-area" class="upload-area" role="region" aria-label="Área de carga de archivos">
+                    <div class="upload-column">
+                        <div class="upload-box">
+                            <svg class="upload-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="17 8 12 3 7 8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                            <h2 class="upload-title">Importar manuscrito</h2>
+                            <p class="upload-subtitle">Arrastra un archivo o haz clic para seleccionar</p>
+                            <input id="file-input" type="file" accept=".txt,.md,.docx,.html,.odt" hidden aria-label="Seleccionar archivo para cargar">
+                            <button id="btn-select-file" class="btn btn-primary" aria-label="Seleccionar archivo">
+                                Seleccionar archivo
+                            </button>
+                            <p class="upload-formats">Formatos soportados: <strong>TXT, Markdown, DOCX, HTML, ODT</strong></p>
+                        </div>
+                        <div class="upload-info">
+                            <h3>Requisitos de archivo</h3>
+                            <ul>
+                                <li>Máximo 50 MB</li>
+                                <li>Formato: TXT, MD, DOCX, HTML, ODT</li>
+                                <li>Codificación: UTF-8</li>
+                                <li>El contenido se cargará en capítulos automáticamente</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="upload-divider"><span>O</span></div>
+                    <div class="upload-column">
+                        <div class="paste-box">
+                            <h2 class="paste-title">Pegar contenido</h2>
+                            <p class="paste-subtitle">Copia y pega tu manuscrito aquí</p>
+                            <textarea id="textarea-paste" class="textarea-paste" placeholder="Pega el contenido de tu libro aquí..." aria-label="Área para pegar o escribir contenido"></textarea>
+                            <button id="btn-process-text" class="btn btn-primary btn-block" aria-label="Procesar contenido pegado">
+                                Procesar contenido
+                            </button>
+                        </div>
+                        <div class="upload-tips">
+                            <h3>Tips para mejor resultado</h3>
+                            <ul>
+                                <li>Usa "# Capítulo 1" para marcar capítulos</li>
+                                <li>Usa "## Sección" para subsecciones</li>
+                                <li>Los párrafos se separan con línea en blanco</li>
+                                <li>**Texto** para negrita, *Texto* para cursiva</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ÁREA DE EDITOR - Oculta al inicio, se muestra al cargar contenido -->
+                <div id="editor-area" class="editor-area" hidden role="region" aria-label="Editor de manuscrito">
+                    
+                    <!-- Toolbar con herramientas de edición -->
+                    <div class="editor-toolbar" role="toolbar" aria-label="Herramientas de edición">
+                        <div class="toolbar-group">
+                            <button id="btn-undo" class="btn btn-icon" title="Deshacer (Ctrl+Z)" aria-label="Deshacer">↶</button>
+                            <button id="btn-redo" class="btn btn-icon" title="Rehacer (Ctrl+Shift+Z)" aria-label="Rehacer">↷</button>
+                        </div>
+                        <div class="toolbar-separator"></div>
+                        <div class="toolbar-group">
+                            <button id="btn-bold" class="btn btn-icon" title="Negrita (Ctrl+B)" aria-label="Aplicar negrita"><strong>B</strong></button>
+                            <button id="btn-italic" class="btn btn-icon" title="Cursiva (Ctrl+I)" aria-label="Aplicar cursiva"><em>I</em></button>
+                            <button id="btn-strikethrough" class="btn btn-icon" title="Tachado" aria-label="Aplicar tachado"><del>S</del></button>
+                        </div>
+                        <div class="toolbar-separator"></div>
+                        <div class="toolbar-group">
+                            <button id="btn-bullet-list" class="btn btn-icon" title="Lista con viñetas" aria-label="Crear lista con viñetas">•</button>
+                            <button id="btn-number-list" class="btn btn-icon" title="Lista numerada" aria-label="Crear lista numerada">1.</button>
+                        </div>
+                        <div class="toolbar-separator"></div>
+                        <div class="toolbar-info">
+                            <span id="editor-chapter-name" class="toolbar-chapter-name">Capítulo sin título</span>
+                            <span class="toolbar-separator"></span>
+                            <span id="editor-word-count" class="toolbar-stats">0 palabras</span>
+                        </div>
+                    </div>
+
+                    <!-- Contenedor del editor -->
+                    <div class="editor-content">
+                        <div id="main-editor" class="main-editor" contenteditable="false" spellcheck="true" role="textbox" aria-label="Editor de contenido del capítulo" aria-multiline="true"></div>
+                    </div>
+
+                    <!-- Footer del editor -->
+                    <div class="editor-footer">
+                        <span id="editor-cursor-pos" class="editor-info">Línea 1, Columna 1</span>
+                        <div class="editor-actions">
+                            <button id="btn-save-chapter" class="btn btn-primary" aria-label="Guardar capítulo (Ctrl+Enter)">
+                                Guardar capítulo
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- ========================================================
+                 SIDEBAR DERECHO - Vista previa y exportación
+                 ======================================================== -->
+            <aside class="sidebar sidebar-right" role="complementary" aria-label="Panel de vista previa y exportación">
+                
+                <div class="sidebar-tabs">
+                    <button class="sidebar-tab active" data-tab="preview" aria-selected="true" aria-label="Pestaña de vista previa">
+                        Vista previa
+                    </button>
+                    <button class="sidebar-tab" data-tab="export" aria-selected="false" aria-label="Pestaña de exportación">
+                        Exportar
+                    </button>
+                </div>
+
+                <!-- TAB 1: Vista previa -->
+                <section class="sidebar-section" id="tab-preview" data-tab-panel="preview">
+                    <h2 class="sidebar-title">Vista Previa del Libro</h2>
+                    
+                    <div class="preview-controls">
+                        <button id="btn-toggle-preview" class="btn btn-secondary btn-small" aria-label="Alternar vista previa">
+                            👁 Mostrar preview
+                        </button>
+                        <div class="zoom-controls">
+                            <button id="btn-zoom-out" class="btn btn-icon" aria-label="Zoom menos">−</button>
+                            <select id="preview-zoom" aria-label="Nivel de zoom del preview">
+                                <option value="25">25%</option>
+                                <option value="40">40%</option>
+                                <option value="50" selected>50%</option>
+                                <option value="75">75%</option>
+                                <option value="100">100%</option>
+                                <option value="125">125%</option>
+                                <option value="150">150%</option>
+                                <option value="200">200%</option>
+                            </select>
+                            <button id="btn-zoom-in" class="btn btn-icon" aria-label="Zoom más">+</button>
+                        </div>
+                        <button id="btn-fullscreen-preview" class="btn btn-icon" title="Pantalla completa" aria-label="Ver preview en pantalla completa">
+                            ⛶
+                        </button>
+                    </div>
+
+                    <div id="preview-container" class="preview-container" hidden role="region" aria-label="Vista previa paginada del libro">
+                        <div class="preview-zoom-wrapper">
+                            <div id="preview-content" class="preview-content">
+                                <div class="preview-placeholder">
+                                    <p>Procesa un documento para ver la vista previa aquí</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="pagination-info" hidden>
+                        <p>Página <span id="current-page">0</span> de <span id="total-pages">0</span></p>
+                        <div class="pagination-controls">
+                            <button id="btn-prev-page" class="btn btn-icon" aria-label="Página anterior">←</button>
+                            <button id="btn-next-page" class="btn btn-icon" aria-label="Página siguiente">→</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB 2: Exportación -->
+                <section class="sidebar-section" id="tab-export" data-tab-panel="export" hidden>
+                    <h2 class="sidebar-title">Exportar Libro</h2>
+                    
+                    <div class="export-section">
+                        <h3>Descargar como</h3>
+                        
+                        <div class="export-buttons">
+                            <button id="btn-export-pdf" class="btn btn-secondary btn-block" aria-label="Exportar libro como PDF">
+                                📄 PDF (Impresión)
+                            </button>
+                            
+                            <button id="btn-export-epub" class="btn btn-secondary btn-block" aria-label="Exportar libro como EPUB">
+                                📚 EPUB (E-reader)
+                            </button>
+                            
+                            <button id="btn-export-html" class="btn btn-secondary btn-block" aria-label="Exportar libro como HTML">
+                                🌐 HTML (Web)
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="export-section">
+                        <h3>Opciones de exportación</h3>
+                        
+                        <label class="checkbox-label">
+                            <input id="export-include-toc" type="checkbox" checked>
+                            Incluir tabla de contenidos
+                        </label>
+
+                        <label class="checkbox-label">
+                            <input id="export-include-metadata" type="checkbox" checked>
+                            Incluir metadatos
+                        </label>
+
+                        <label class="checkbox-label">
+                            <input id="export-compress" type="checkbox" checked>
+                            Comprimir archivo (EPUB)
+                        </label>
+
+                        <label class="checkbox-label">
+                            <input id="export-optimize-images" type="checkbox">
+                            Optimizar imágenes
+                        </label>
+                    </div>
+
+                    <div class="export-section ai-section" hidden id="ai-section">
+                        <h3>✨ Mejoras con IA</h3>
+                        
+                        <button id="btn-ai-grammar" class="btn btn-secondary btn-block" aria-label="Mejorar gramática y estilo">
+                            🔤 Mejorar gramática
+                        </button>
+
+                        <button id="btn-ai-structure" class="btn btn-secondary btn-block" aria-label="Analizar estructura">
+                            📐 Analizar estructura
+                        </button>
+
+                        <button id="btn-ai-review" class="btn btn-secondary btn-block" aria-label="Revisar libro completo">
+                            ⭐ Revisar libro
+                        </button>
+
+                        <div class="ai-stats" hidden id="ai-stats">
+                            <p>Presupuesto usado: <span id="ai-budget-used">$0.00</span> / $<span id="ai-budget-limit">10.00</span></p>
+                        </div>
+                    </div>
+                </section>
+            </aside>
+
+        </main>
+
+        <!-- ============================================================
+             FOOTER - Pie de página
+             ============================================================ -->
+        <footer class="app-footer" role="contentinfo">
+            <div class="footer-content">
+                <p class="footer-version">Editorial App v1.0.0</p>
+                <nav class="footer-links">
+                    <a href="#" aria-label="Documentación">Documentación</a>
+                    <span class="separator">•</span>
+                    <a href="#" aria-label="Atajos de teclado">Atajos</a>
+                    <span class="separator">•</span>
+                    <a href="#" aria-label="Acerca de">Acerca de</a>
+                    <span class="separator">•</span>
+                    <a href="#" aria-label="Contacto">Contacto</a>
+                </nav>
+            </div>
+        </footer>
+    </div>
+
+    <!-- ================================================================
+         CONTENEDORES PARA COMPONENTES DINÁMICOS
+         ================================================================ -->
+
+    <!-- Contenedor de notificaciones -->
+    <div id="notifications-container" class="notifications-container" 
+         role="status" aria-live="polite" aria-atomic="true">
+    </div>
+
+    <!-- Indicador de carga (paginación) -->
+    <div id="pagination-indicator" class="loading-indicator" hidden 
+         aria-label="Paginando documento" role="status">
+        <div class="spinner"></div>
+        <span>Paginando...</span>
+    </div>
+
+    <!-- Modal genérico -->
+    <div id="modal-container" class="modal-container" hidden role="dialog" 
+         aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-overlay" id="modal-overlay"></div>
+        <div class="modal-content">
+            <button id="btn-modal-close" class="modal-close" aria-label="Cerrar modal">
+                ×
+            </button>
+            <h2 id="modal-title" class="modal-title"></h2>
+            <div id="modal-body" class="modal-body"></div>
+            <div id="modal-footer" class="modal-footer"></div>
+        </div>
+    </div>
+
+    <!-- Contenedor fullscreen para preview -->
+    <div id="fullscreen-preview-container" class="fullscreen-preview" hidden
+         role="dialog" aria-modal="true" aria-label="Vista previa en pantalla completa">
+        <div class="fullscreen-topbar">
+            <span class="fullscreen-title" id="fullscreen-title">Vista Previa</span>
+            <div class="fullscreen-controls">
+                <button id="fs-btn-prev" class="btn" aria-label="Página anterior">←</button>
+                <span class="fullscreen-page-info">
+                    Pág. <span id="fs-current-page">1</span> / <span id="fs-total-pages">1</span>
+                </span>
+                <button id="fs-btn-next" class="btn" aria-label="Página siguiente">→</button>
+                <select id="fs-zoom-select" class="fullscreen-zoom-select" aria-label="Zoom">
+                    <option value="60">60%</option>
+                    <option value="75">75%</option>
+                    <option value="90" selected>90%</option>
+                    <option value="100">100%</option>
+                    <option value="115">115%</option>
+                    <option value="130">130%</option>
+                </select>
+                <button id="btn-exit-fullscreen" aria-label="Salir de pantalla completa">✕ Salir</button>
+            </div>
+        </div>
+        <div id="fullscreen-preview-content"></div>
+    </div>
+
+    <!-- ================================================================
+         SCRIPTS
+         ================================================================ -->
+    
+    <!-- Mammoth.js — lectura de archivos DOCX -->
+    <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+    <!-- jsPDF — generación de PDF directo en el navegador -->
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <!-- Estándares Amazon KDP -->
+    <script src="standars/amazon-kdp-standards.js"></script>
+    <!-- Text Parser -->
+    <script src="js/text-parser.js" defer></script>
+    <!-- Preview Renderer -->
+    <script src="js/preview-renderer.js" defer></script>
+    <!-- PDF Exporter -->
+    <script src="js/pdf-exporter.js" defer></script>
+    <!-- Punto de entrada principal -->
+    <script src="js/main.js" defer></script>
+</body>
+</html>
