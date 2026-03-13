@@ -208,8 +208,10 @@ const mergeIntoOne = (htmlA, htmlB) => {
     const elB = divB.firstElementChild;
 
     if (elA && elB) {
-      elB.innerHTML = elA.innerHTML + ' ' + elB.innerHTML;
-      return elB.outerHTML;
+      // Use elA's outerHTML to preserve the original paragraph's styles
+      // (especially text-indent). elB is typically a continuation with text-indent:0.
+      elA.innerHTML = elA.innerHTML + ' ' + elB.innerHTML;
+      return elA.outerHTML;
     }
   } catch (e) {
     // fallback
@@ -574,11 +576,13 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
       // Element doesn't fit whole — try splitting
       if (!splitLongParagraphs || isHeader || tag === 'UL' || tag === 'OL') break;
 
+      // Detect if element is a continuation (text-indent:0) or fresh paragraph
+      const isContChunk = /text-indent:\s*0[^.]/.test(firstElHtml);
       const splitResult = splitInTwo(
         firstElHtml, measureDiv, canvasCtx, remainingSpace, contentHeight,
         textAlign, true,
         safeConfig.paragraph?.firstLineIndent || 1.5,
-        true, quoteOptions
+        isContChunk, quoteOptions
       );
 
       if (!splitResult) break;
