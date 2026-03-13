@@ -209,11 +209,9 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
       : (isBlockquote
         ? getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSize, effectiveBaseLineHeight, effectiveTextAlign)
         : `margin:0;padding:0;text-align:${textAlign};text-indent:${indent};text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;`);
-    // When paragraph continues to next page: justify the last line too
-    // so the text looks continuous (not like the paragraph ends here).
-    if (newRemainingHtml) {
-      finalStyle = finalStyle.replace(/text-align-last:[^;]+;?/gi, '') + 'text-align-last:justify;';
-    }
+    // When paragraph continues to next page: keep text-align-last:left (default from getChunkStyle).
+    // Forcing justify on the last visible line creates rivers of whitespace — the browser's
+    // default left-aligned last line is typographically correct for a split paragraph.
 
     if (isBlockquote) {
       chunkHtml = `<blockquote class="quote ${quoteTemplate}" style="${finalStyle}">${chunkHtml}</blockquote>`;

@@ -19,7 +19,7 @@
  *   - No layout thrashing, no sub-pixel rounding from DOM
  */
 
-import { initKnuthPlass } from './knuthPlassAdapter.js';
+import { initKnuthPlass, countLinesKP, countLinesFromRunsKP } from './knuthPlassAdapter.js';
 
 // ─── Canvas singleton ───────────────────────────────────────────────
 
@@ -95,6 +95,7 @@ const _wordWidthCache = new Map();
 
 const _paragraphLayoutCache = new Map();
 const MAX_PARAGRAPH_CACHE = 2000;
+const KP_WORD_THRESHOLD = 200; // Fall back to greedy for paragraphs with >200 words
 
 const getParagraphCacheKey = (text, fontString, contentWidth, indentPx, wordSpacingPx = 0) => {
   // Use text length + first/last 40 chars as hash (fast, collision-resistant for real text)
@@ -753,13 +754,23 @@ const calculateElementHeight = (parsed, layoutCtx) => {
   const cached = _paragraphLayoutCache.get(cacheKey);
   if (cached !== undefined) {
     lineCount = cached;
-  } else if (runs && runs.length > 0 && hasStyledRuns(runs)) {
-    // Has mixed inline styles — use greedy (matches browser rendering)
-    // wordSpacingPx now correctly propagated to countLinesFromRuns
-    lineCount = countLinesFromRuns(runs, availableWidth, elFontSizePx, fontFamily, indentPx, wordSpacingPx);
   } else {
-    // All same font — use greedy (matches browser rendering)
-    lineCount = countLines(collapsedText, availableWidth, fontString, indentPx, letterSpacingPx, wordSpacingPx);
+    const wordCount = collapsedText.split(' ').length;
+    const useKP = wordCount <= KP_WORD_THRESHOLD;
+
+    if (runs && runs.length > 0 && hasStyledRuns(runs)) {
+      // Mixed inline styles — try Knuth-Plass optimal, fall back to greedy
+      const kp = useKP
+        ? countLinesFromRunsKP(runs, availableWidth, elFontSizePx, fontFamily, indentPx, wordSpacingPx)
+        : null;
+      lineCount = kp !== null ? kp : countLinesFromRuns(runs, availableWidth, elFontSizePx, fontFamily, indentPx, wordSpacingPx);
+    } else {
+      // Uniform font — try Knuth-Plass optimal, fall back to greedy
+      const kp = useKP
+        ? countLinesKP(collapsedText, availableWidth, fontString, indentPx, letterSpacingPx, wordSpacingPx)
+        : null;
+      lineCount = kp !== null ? kp : countLines(collapsedText, availableWidth, fontString, indentPx, letterSpacingPx, wordSpacingPx);
+    }
   }
 
   // Store in paragraph cache

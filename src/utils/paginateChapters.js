@@ -80,6 +80,12 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig) =>
   // Fill-pass with multi-pass convergence
   applyFillPass(allPages, layoutCtx, canvasCtx, measureDiv, safeConfig);
 
+  // E5: Fix orphaned headings left at bottom of pages after fill-pass
+  fixHeadingsAtBottom(allPages, canvasCtx);
+
+  // E6: Distribute remaining vertical whitespace proportionally among elements
+  distributeVerticalSpace(allPages, layoutCtx, canvasCtx);
+
   // E4: Cleanup nearly-empty pages after fill pass
   cleanupNearlyEmptyPages(allPages, layoutCtx, canvasCtx);
 
@@ -156,13 +162,6 @@ const splitInTwo = (
   elHtml, measureDiv, canvasCtx, remainingSpace, contentHeight,
   textAlign, hasIndent, indentValue, preserveIndent, quoteOptions
 ) => {
-  // Justify last line of continuation chunks so text looks continuous.
-  const fixContinuationStyle = (chunkHtml) => {
-    return chunkHtml
-      .replace(/text-align-last:[^;]+;?/gi, '')
-      .replace(/style="/, 'style="text-align-last:justify;');
-  };
-
   const fullPageSplit = splitParagraphByLines(
     elHtml, measureDiv, contentHeight,
     textAlign, hasIndent, indentValue, preserveIndent, quoteOptions
@@ -179,11 +178,11 @@ const splitInTwo = (
 
     const firstChunk = fitSplit[0];
     if (fitSplit.length < 2) {
-      return [fixContinuationStyle(firstChunk), restChunk];
+      return [firstChunk, restChunk];
     }
     const leftover = fitSplit[1];
     const mergedRest = mergeIntoOne(leftover, restChunk);
-    return [fixContinuationStyle(firstChunk), mergedRest];
+    return [firstChunk, mergedRest];
   }
 
   const directSplit = splitParagraphByLines(
@@ -192,7 +191,7 @@ const splitInTwo = (
   );
 
   if (directSplit.length < 2) return null;
-  return [fixContinuationStyle(directSplit[0]), directSplit[1]];
+  return [directSplit[0], directSplit[1]];
 };
 
 /**
@@ -562,12 +561,113 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
       const restLinesCheck = Math.floor(measure(newSourceHtml) / lineHeightPx);
       if (restLinesCheck < 2) break;
 
+      // E3b: Quality gate on split result — don't create heading_at_bottom on source
+      const qSplitSource = evaluatePageQualityCanvas(newSourceHtml, contentHeight, lineHeightPx, canvasCtx);
+      if (qSplitSource.violations.includes('heading_at_bottom')) break;
+
       pages[i] = { ...pages[i], html: currentHtml + chunk };
       pages[nextIdx] = { ...nextPage, html: newSourceHtml };
       break;
     }
   }
   } // end 2-pass loop
+};
+
+/**
+ * E6: Distribute remaining vertical whitespace proportionally among block elements.
+ * Like InDesign's "justify all lines" — prevents noticeable underfill by adding
+ * small margin-bottom increments to inter-element gaps.
+ *
+ * Rules:
+ *   - Only pages with gap >= 1 lineHeight are adjusted
+ *   - Max addition per gap: 0.5 lineHeight (keeps spacing subtle)
+ *   - Skips blank, title-only, and first-chapter pages (intentional spacing)
+ *   - Skips pages ending with a heading (handled by fixHeadingsAtBottom)
+ *
+ * @private
+ */
+const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
+  const { contentHeight, lineHeightPx } = layoutCtx;
+  const measure = (html) => measureHtmlHeight(html, canvasCtx);
+  const MIN_GAP = lineHeightPx;
+  const MAX_PER_GAP = lineHeightPx * 0.5;
+
+  for (const page of pages) {
+    if (!page || page.isBlank || page.isTitleOnlyPage || page.isFirstChapterPage || !page.html) continue;
+
+    const actualHeight = measure(page.html);
+    const gap = contentHeight - actualHeight;
+    if (gap < MIN_GAP) continue;
+
+    const div = document.createElement('div');
+    div.innerHTML = page.html;
+    const children = Array.from(div.children);
+    if (children.length < 2) continue;
+
+    // Don't adjust if last element is a heading (should have been moved already)
+    const last = children[children.length - 1];
+    if (/^H[1-6]$/i.test(last.tagName)) continue;
+
+    const numGaps = children.length - 1;
+    const perGap = Math.min(gap / numGaps, MAX_PER_GAP);
+    if (perGap < 1) continue;
+
+    // Apply extra margin-bottom to all elements except the last
+    for (let i = 0; i < children.length - 1; i++) {
+      const el = children[i];
+      const existing = parseFloat(el.style.marginBottom) || 0;
+      el.style.marginBottom = `${(existing + perGap).toFixed(1)}px`;
+    }
+
+    page.html = div.innerHTML;
+  }
+};
+
+/**
+ * E5: Fix orphaned headings/bold-paragraphs left at the bottom of a page
+ * after the fill-pass moves content forward, exposing a heading as the
+ * last element. Moves the heading to the top of the next same-chapter page.
+ *
+ * @private
+ */
+const fixHeadingsAtBottom = (pages, canvasCtx) => {
+  for (let i = 0; i < pages.length - 1; i++) {
+    const page = pages[i];
+    if (!page || page.isBlank || !page.html) continue;
+
+    const div = document.createElement('div');
+    div.innerHTML = page.html;
+    const children = Array.from(div.children);
+    if (children.length === 0) continue;
+
+    const last = children[children.length - 1];
+    const isHeading = /^H[1-6]$/i.test(last.tagName);
+    const isBoldPara = last.tagName === 'P' && (
+      /^<p[^>]*>\s*<(?:strong|b)\b/i.test(last.outerHTML) ||
+      /font-weight:\s*(?:bold|[7-9]00)/.test(last.getAttribute('style') || '')
+    );
+
+    if (!isHeading && !isBoldPara) continue;
+
+    // Find next non-blank page in same chapter
+    let ni = i + 1;
+    while (ni < pages.length && pages[ni]?.isBlank) ni++;
+    if (ni >= pages.length) continue;
+    const next = pages[ni];
+    if (page.chapterTitle !== next.chapterTitle) continue;
+
+    // Move heading to top of next page
+    const headingHtml = last.outerHTML;
+    last.remove();
+    const remainingHtml = div.innerHTML.trim();
+
+    pages[i] = { ...page, html: remainingHtml, isBlank: !remainingHtml };
+    pages[ni] = { ...next, html: headingHtml + next.html };
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[HEADING-FIX] Moved orphaned heading from p${i + 1} to p${ni + 1}`);
+    }
+  }
 };
 
 /**
