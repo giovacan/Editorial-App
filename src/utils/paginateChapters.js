@@ -363,9 +363,9 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
     const remainingSpace = contentHeight - actualCurrentHeight;
     const remainingLines = Math.floor(remainingSpace / lineHeightPx);
 
-    // Try splitting
+    // Try splitting (DIV is included because buildParagraphHtml wraps it as <p>)
     const canSplit = splitLongParagraphs
-      && (el.tag === 'P' || el.tag === 'BLOCKQUOTE')
+      && (el.tag === 'P' || el.tag === 'DIV' || el.tag === 'BLOCKQUOTE')
       && remainingLines >= 1;
 
     if (canSplit) {
@@ -403,8 +403,19 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
           && remainingLines >= 2
           && orphanLines >= 1
           && widowLines >= 2;
+        // Underfill prevention: when rejecting would waste ≥4 lines (>15% page),
+        // accept even 1-line widows as long as orphans are solid (≥3).
+        // A 1-line widow on the next page is better than 40% empty on this page.
+        const meetsUnderfill = !meetsStrict && !meetsRelaxed && !meetsAggressive
+          && remainingLines >= 4
+          && orphanLines >= 3
+          && widowLines >= 1;
 
-        if (meetsStrict || meetsRelaxed || meetsAggressive) {
+        if (meetsStrict || meetsRelaxed || meetsAggressive || meetsUnderfill) {
+          if (process.env.NODE_ENV === 'development' && (meetsAggressive || meetsUnderfill)) {
+            const mode = meetsAggressive ? 'AGGRESSIVE' : 'UNDERFILL';
+            console.log(`[SPLIT-${mode}] p${pages.length + 1}: orphan=${orphanLines}, widow=${widowLines}, remaining=${remainingLines}, hasTitle=${pageHasTitle}`);
+          }
           pushPage(currentHtml + firstChunk);
           currentHtml = restChunk;
           continue;
@@ -413,6 +424,9 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
     }
 
     // Could not split — flush and start new page
+    if (process.env.NODE_ENV === 'development' && remainingLines >= 3) {
+      console.warn(`[UNDERFILL] p${pages.length + 1}: ${remainingLines} lines wasted (tag=${el.tag}, canSplit=${canSplit})`);
+    }
     flushCurrent(el.html, elIdx);
     currentFirstElementIndex = elIdx;
   }
@@ -575,19 +589,19 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
       if (chunkFitHeight > contentHeight) break;
 
       const chunkLines = Math.floor(measure(chunk) / lineHeightPx);
-      const restLines = Math.floor(measure(rest) / lineHeightPx);
 
-      if (chunkLines < minOrphanLines || restLines < minWidowLines) break;
+      // Only check orphan (chunk going to current page). Don't check widow on
+      // the rest chunk alone — it gets prepended to the source page which has
+      // more content. The total source page check below is sufficient.
+      if (chunkLines < minOrphanLines) break;
 
       firstEl.remove();
       const remainingEls = tmp.innerHTML.trim();
       const newSourceHtml = remainingEls ? rest + remainingEls : rest;
 
-      if (Math.floor(measure(newSourceHtml) / lineHeightPx) < minWidowLines) break;
-
-      // E2: Check split balance — only reject if rest would be too small (< 2 lines)
-      const restLinesCheck = Math.floor(measure(newSourceHtml) / lineHeightPx);
-      if (restLinesCheck < 2) break;
+      // Check total source page lines (rest + remaining elements)
+      const newSourceLines = Math.floor(measure(newSourceHtml) / lineHeightPx);
+      if (newSourceLines < minWidowLines) break;
 
       // E3b: Quality gate on split result — don't create heading_at_bottom on source
       const qSplitSource = evaluatePageQualityCanvas(newSourceHtml, contentHeight, lineHeightPx, canvasCtx);
