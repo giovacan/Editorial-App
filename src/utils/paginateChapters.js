@@ -245,7 +245,8 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
   };
 
   let currentFirstElementIndex = 0;
-  
+  let pageHasTitle = false;
+
   const pushPage = (html, opts = {}) => {
     pages.push({
       html,
@@ -257,11 +258,13 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
       currentSubheader,
       firstElementIndex: currentFirstElementIndex
     });
+    pageHasTitle = false;
   };
 
   const flushCurrent = (startWith = '', firstIdx = null) => {
     if (currentHtml) pushPage(currentHtml);
     currentHtml = startWith;
+    pageHasTitle = false;
     if (firstIdx !== null) {
       currentFirstElementIndex = firstIdx;
     }
@@ -292,11 +295,13 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
         flushCurrent();
         currentFirstElementIndex = elIdx;
         currentHtml = el.html;
+        pageHasTitle = true;
       } else {
         // continuous: comportamiento por defecto
         flushCurrent();
         currentFirstElementIndex = elIdx;
         currentHtml = el.html;
+        pageHasTitle = true;
       }
       continue;
     }
@@ -385,14 +390,21 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
         const widowLines = Math.floor(measure(restChunk) / lineHeightPx);
 
         const meetsStrict = orphanLines >= minOrphanLines && widowLines >= minWidowLines;
-        // Moderate relaxed: accept if at least 2 orphan + 2 widow lines and
-        // rejecting would waste significant space (≥3 lines of remaining room).
+        // Relaxed: accept if at least 2 orphan + 2 widow lines and
+        // rejecting would waste significant space (≥2 lines of remaining room).
         const meetsRelaxed = !meetsStrict
-          && remainingLines >= 3
+          && remainingLines >= 2
           && orphanLines >= 2
           && widowLines >= 2;
+        // Extra aggressive for title pages — accept split with just 1 orphan
+        // line if rejecting would leave 50%+ of the page empty
+        const meetsAggressive = !meetsStrict && !meetsRelaxed
+          && pageHasTitle
+          && remainingLines >= 2
+          && orphanLines >= 1
+          && widowLines >= 2;
 
-        if (meetsStrict || meetsRelaxed) {
+        if (meetsStrict || meetsRelaxed || meetsAggressive) {
           pushPage(currentHtml + firstChunk);
           currentHtml = restChunk;
           continue;
@@ -518,9 +530,25 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
           }
         }
 
-        // Accept move
+        // Accept move — try to re-merge split chunks if the moved element
+        // is a continuation (text-indent:0) of the last element on current page
+        let mergedHtml = currentHtml + firstElHtml;
 
-        pages[i] = { ...pages[i], html: currentHtml + firstElHtml };
+        const isContinuation = /^<p[^>]*text-indent:\s*0/.test(firstElHtml)
+          && (tag === 'P' || tag === 'BLOCKQUOTE');
+        if (isContinuation) {
+          const curDiv = document.createElement('div');
+          curDiv.innerHTML = currentHtml;
+          const lastEl = curDiv.lastElementChild;
+          if (lastEl && lastEl.tagName === tag) {
+            // Re-unify: merge continuation back into the original paragraph
+            const reunified = mergeIntoOne(lastEl.outerHTML, firstElHtml);
+            lastEl.remove();
+            mergedHtml = curDiv.innerHTML + reunified;
+          }
+        }
+
+        pages[i] = { ...pages[i], html: mergedHtml };
         if (sourceHtml) {
           pages[nextIdx] = { ...nextPage, html: sourceHtml };
         } else {
