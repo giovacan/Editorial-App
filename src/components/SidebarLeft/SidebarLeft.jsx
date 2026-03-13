@@ -2,221 +2,31 @@ import { useState, useMemo, useCallback, memo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import useEditorStore from '../../store/useEditorStore';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
-import { analyzeAndConvertHierarchies } from '../../utils/headerHierarchyDetector';
-import { transformAllChapters, detectTitleFormat, TITLE_FORMAT_OPTIONS } from '../../utils/titleTransformer';
 import Accordion from '../Accordion/Accordion';
-import HeaderTemplateSelector from '../HeaderTemplateSelector/HeaderTemplateSelector';
-import { 
-  HEADER_TEMPLATES, 
-  getHeaderTemplateConfig, 
-  HEADER_CONTENT_LABELS,
-  HEADER_DISPLAY_MODES,
-  LINE_STYLE_OPTIONS,
-  FONT_STYLE_OPTIONS,
-  SUBHEADER_FORMAT_OPTIONS,
-  PAGINATION_CONFLICT_OPTIONS,
-  SUBTOPIC_BEHAVIORS,
-  SEPARATOR_OPTIONS
-} from '../../data/headerTemplates';
+import {
+  IconBook,
+  IconType,
+  IconTitle,
+  IconList,
+  IconAlignLeft,
+  IconQuote,
+  IconBookmark,
+  IconHash,
+} from './icons';
+import StructureTab from './StructureTab';
+import FormatPanel from './config/FormatPanel';
+import TypographyPanel from './config/TypographyPanel';
+import TitlePanel from './config/TitlePanel';
+import SubheadersPanel from './config/SubheadersPanel';
+import ParagraphPanel from './config/ParagraphPanel';
+import QuotePanel from './config/QuotePanel';
+import HeaderPanel from './config/HeaderPanel';
+import PaginationPanel from './config/PaginationPanel';
 import './SidebarLeft.css';
-
-const IconBook = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-  </svg>
-);
-
-const IconType = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/>
-  </svg>
-);
-
-const IconTitle = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
-  </svg>
-);
-
-const IconList = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
-  </svg>
-);
-
-const IconAlignLeft = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/>
-  </svg>
-);
-
-const IconQuote = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V21z"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3z"/>
-  </svg>
-);
-
-const IconHeader = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M6 12h12"/><path d="M6 20V4"/><path d="M18 20V4"/>
-  </svg>
-);
-
-const IconPagination = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16"/><path d="M12 10v12"/>
-  </svg>
-);
-
-const IconSettings = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-  </svg>
-);
-
-const IconBookmark = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
-  </svg>
-);
-
-const IconHash = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/>
-  </svg>
-);
-
-// Layout icons as inline components
-const ContinuousIcon = () => (
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', width: '20px' }}>
-    <div style={{ width: '16px', height: '3px', background: '#1f2937', borderRadius: '1px' }}></div>
-    <div style={{ width: '16px', height: '2px', background: '#e5e7eb', borderRadius: '1px' }}></div>
-    <div style={{ width: '16px', height: '2px', background: '#e5e7eb', borderRadius: '1px' }}></div>
-  </div>
-);
-
-const SpacedIcon = () => (
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', width: '20px' }}>
-    <div style={{ width: '14px', height: '2px', background: '#1f2937', borderRadius: '1px' }}></div>
-    <div style={{ height: '6px' }}></div>
-    <div style={{ width: '14px', height: '2px', background: '#d1d5db', borderRadius: '1px' }}></div>
-  </div>
-);
-
-const HalfPageIcon = () => (
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px', width: '20px' }}>
-    <div style={{ width: '16px', height: '3px', background: '#1f2937', borderRadius: '1px' }}></div>
-    <div style={{ width: '16px', height: '2px', background: '#e5e7eb', borderRadius: '1px' }}></div>
-    <div style={{ height: '4px', borderTop: '1px solid #6b7280' }}></div>
-    <div style={{ width: '16px', height: '2px', background: '#e5e7eb', borderRadius: '1px' }}></div>
-  </div>
-);
-
-const FullPageIcon = () => (
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', width: '20px', height: '32px' }}>
-    <div style={{ width: '16px', height: '3px', background: '#1f2937', borderRadius: '1px' }}></div>
-  </div>
-);
-
-const RuledIcon = () => (
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', width: '20px' }}>
-    <div style={{ width: '12px', height: '1px', background: '#1f2937' }}></div>
-    <div style={{ width: '16px', height: '2px', background: '#1f2937', borderRadius: '1px' }}></div>
-    <div style={{ width: '12px', height: '1px', background: '#1f2937' }}></div>
-  </div>
-);
-
-const CHAPTER_LAYOUTS = [
-  { id: 'continuous', label: 'Seguido', icon: ContinuousIcon },
-  { id: 'spaced', label: 'Con espacio', icon: SpacedIcon },
-  { id: 'halfPage', label: 'Media página', icon: HalfPageIcon },
-  { id: 'fullPage', label: 'Página completa', icon: FullPageIcon },
-];
-
-const HierarchyClassicIcon = () => (
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', width: '28px', fontFamily: 'serif' }}>
-    <span style={{ fontSize: '7px', color: '#9ca3af', fontWeight: 'bold' }}>CAPÍTULO 1</span>
-    <span style={{ fontSize: '9px', color: '#1f2937' }}>El Título</span>
-  </div>
-);
-
-const HierarchyMinimalIcon = () => (
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', width: '28px', height: '28px' }}>
-    <span style={{ fontSize: '10px', color: '#1f2937' }}>El Título</span>
-  </div>
-);
-
-const HierarchyNumberIcon = () => (
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px', width: '28px' }}>
-    <span style={{ fontSize: '11px', color: '#1f2937', fontWeight: 'bold' }}>1.</span>
-    <span style={{ fontSize: '8px', color: '#1f2937' }}>El Título</span>
-  </div>
-);
-
-const HierarchyRomanIcon = () => (
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px', width: '28px' }}>
-    <span style={{ fontSize: '10px', color: '#1f2937', fontStyle: 'italic', fontFamily: 'serif' }}>I.</span>
-    <span style={{ fontSize: '8px', color: '#1f2937' }}>El Título</span>
-  </div>
-);
-
-const HierarchyElegantIcon = () => (
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', width: '28px' }}>
-    <span style={{ fontSize: '7px', color: '#6b7280', fontStyle: 'italic' }}>Capítulo Primero</span>
-    <span style={{ fontSize: '9px', color: '#1f2937' }}>El Título</span>
-  </div>
-);
-
-const HierarchyModernIcon = () => (
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', width: '28px' }}>
-    <span style={{ fontSize: '12px', color: '#3b82f6', fontWeight: 'bold' }}>01</span>
-    <span style={{ fontSize: '8px', color: '#1f2937' }}>El Título</span>
-  </div>
-);
-
-const HIERARCHY_TEMPLATES = [
-  { 
-    id: 'classic', 
-    label: 'Clásico', 
-    icon: HierarchyClassicIcon,
-    config: { hierarchyLabelSizeMultiplier: 0.7, hierarchyTitleSizeMultiplier: 1.0, hierarchyLabelColor: '#6b7280', hierarchyLabelBold: true }
-  },
-  { 
-    id: 'minimal', 
-    label: 'Minimal', 
-    icon: HierarchyMinimalIcon,
-    config: { hierarchyEnabled: false }
-  },
-  { 
-    id: 'number', 
-    label: 'Número', 
-    icon: HierarchyNumberIcon,
-    config: { hierarchyLabelSizeMultiplier: 1.0, hierarchyTitleSizeMultiplier: 0.85, hierarchyLabelColor: '#1f2937', hierarchyLabelBold: true }
-  },
-  { 
-    id: 'roman', 
-    label: 'Romano', 
-    icon: HierarchyRomanIcon,
-    config: { hierarchyLabelSizeMultiplier: 0.9, hierarchyTitleSizeMultiplier: 0.9, hierarchyLabelColor: '#1f2937', hierarchyLabelBold: false }
-  },
-  { 
-    id: 'elegant', 
-    label: 'Elegante', 
-    icon: HierarchyElegantIcon,
-    config: { hierarchyLabelSizeMultiplier: 0.65, hierarchyTitleSizeMultiplier: 1.0, hierarchyLabelColor: '#6b7280', hierarchyLabelBold: false }
-  },
-  { 
-    id: 'modern', 
-    label: 'Moderno', 
-    icon: HierarchyModernIcon,
-    config: { hierarchyLabelSizeMultiplier: 1.2, hierarchyTitleSizeMultiplier: 0.8, hierarchyLabelColor: '#3b82f6', hierarchyLabelBold: true }
-  },
-];
 
 function SidebarLeft() {
   const [activeTab, setActiveTab] = useState('structure');
-  const [selectedSubheaderLevel, setSelectedSubheaderLevel] = useState('h1');
-  
+
   const chapters = useEditorStore((s) => s.bookData?.chapters);
   const bookType = useEditorStore((s) => s.bookData?.bookType);
   const config = useEditorStore(useShallow((s) => s.config));
@@ -230,12 +40,12 @@ function SidebarLeft() {
   const setActiveChapter = useEditorStore((s) => s.setActiveChapter);
   const deleteChapter = useEditorStore((s) => s.deleteChapter);
   const moveChapter = useEditorStore((s) => s.moveChapter);
-  
+
   const safeBookData = { title: '', author: '', chapters: chapters || [], bookType: bookType || 'novela' };
-  
+
   const safeConfig = useMemo(() => config || {
-    pageFormat: 'a5', 
-    fontSize: 12, 
+    pageFormat: 'a5',
+    fontSize: 12,
     lineHeight: 1.6,
     showHeaders: false,
     header: {
@@ -273,9 +83,10 @@ function SidebarLeft() {
     quote: { enabled: true, indentLeft: 2, indentRight: 2, showLine: true, italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1, template: 'classic', autoDetect: true },
     pagination: { minOrphanLines: 2, minWidowLines: 2, splitLongParagraphs: true }
   }, [config]);
-  
+
   const stats = useMemo(() => getStatsSelector(), [chapters]);
 
+  // Unit conversion helper
   const convertToUnit = (value, currentUnit, targetUnit) => {
     let valueInInches;
     if (currentUnit === 'mm') valueInInches = value / 25.4;
@@ -291,7 +102,7 @@ function SidebarLeft() {
     const currentUnit = safeConfig.customPageFormat?.unit || 'in';
     const currentWidth = safeConfig.customPageFormat?.width || 6;
     const currentHeight = safeConfig.customPageFormat?.height || 9;
-    
+
     setConfig({
       customPageFormat: {
         ...safeConfig.customPageFormat,
@@ -305,7 +116,7 @@ function SidebarLeft() {
   const handleGutterUnitChange = (newUnit) => {
     const currentUnit = safeConfig.gutterUnit || 'in';
     const currentValue = safeConfig.gutterManual || recommendedGutter;
-    
+
     setConfig({
       gutterUnit: newUnit,
       gutterManual: convertToUnit(currentValue, currentUnit, newUnit)
@@ -326,7 +137,7 @@ function SidebarLeft() {
 
   const handleGutterStrategyChange = (strategy) => {
     if (strategy === 'custom') {
-      setConfig({ 
+      setConfig({
         gutterStrategy: 'custom',
         gutterManual: recommendedGutterInUnit
       });
@@ -335,6 +146,17 @@ function SidebarLeft() {
     }
   };
 
+  const handleBookTypeChange = useCallback((e) => {
+    const bookConfig = KDP_STANDARDS.getBookTypeConfig(e.target.value);
+    setBookData({ bookType: e.target.value });
+    setConfig({
+      pageFormat: bookConfig.recommendedFormat,
+      fontSize: bookConfig.fontSize,
+      lineHeight: bookConfig.lineHeight
+    });
+  }, [setBookData, setConfig]);
+
+  // Structure tab handlers
   const handleAddChapter = useCallback(() => {
     const title = prompt('Título del capítulo:');
     if (title) {
@@ -361,121 +183,7 @@ function SidebarLeft() {
     setBookData({ author: e.target.value });
   };
 
-  const handleBookTypeChange = (e) => {
-    const bookConfig = KDP_STANDARDS.getBookTypeConfig(e.target.value);
-    setBookData({ bookType: e.target.value });
-    setConfig({
-      pageFormat: bookConfig.recommendedFormat,
-      fontSize: bookConfig.fontSize,
-      lineHeight: bookConfig.lineHeight
-    });
-  };
-
-  const updateChapterTitle = useCallback((key, value) => {
-    const currentChapterTitle = config?.chapterTitle || { align: 'center', bold: true, sizeMultiplier: 1.8, marginTop: 2, marginBottom: 1, startOnRightPage: true, layout: 'continuous', showLines: false, lineWidth: 0.5, lineStyle: 'solid', lineColor: '#333333', lineWidthTitle: false };
-    setConfig({ chapterTitle: { ...currentChapterTitle, [key]: value } });
-  }, [setConfig, config?.chapterTitle]);
-
-  const updateChapterLayout = useCallback((layout) => {
-    console.log('🔘 Botón layout clickeado:', layout);
-    const currentChapterTitle = config?.chapterTitle || { align: 'center', bold: true, sizeMultiplier: 1.8, marginTop: 2, marginBottom: 1, startOnRightPage: true, layout: 'continuous', showLines: false, lineWidth: 0.5, lineStyle: 'solid', lineColor: '#333333', lineWidthTitle: false };
-    setConfig({ chapterTitle: { ...currentChapterTitle, layout } });
-    console.log('🔘 Config actualizada, nuevo layout:', layout);
-  }, [setConfig, config?.chapterTitle]);
-
-  const applyHierarchyTemplate = useCallback((templateId) => {
-    const template = HIERARCHY_TEMPLATES.find(t => t.id === templateId);
-    if (!template) return;
-    
-    const currentChapterTitle = config?.chapterTitle || {};
-    const updates = { ...template.config };
-    
-    if (templateId === 'minimal') {
-      updates.hierarchyEnabled = false;
-    } else {
-      updates.hierarchyEnabled = true;
-    }
-    
-    setConfig({ 
-      chapterTitle: { 
-        ...currentChapterTitle,
-        ...updates
-      } 
-    });
-  }, [setConfig, config?.chapterTitle]);
-
-  const isHierarchyTemplateActive = (template) => {
-    if (template.id === 'minimal') {
-      return safeConfig.chapterTitle?.hierarchyEnabled === false;
-    }
-    if (safeConfig.chapterTitle?.hierarchyEnabled === false) return false;
-    
-    const ct = safeConfig.chapterTitle || {};
-    return ct.hierarchyLabelSizeMultiplier === template.config.hierarchyLabelSizeMultiplier &&
-           ct.hierarchyLabelColor === template.config.hierarchyLabelColor;
-  };
-
-  const updateQuote = useCallback((key, value) => {
-    const currentQuote = config?.quote || { enabled: true, indentLeft: 2, indentRight: 2, showLine: true, italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1, template: 'classic', autoDetect: true, detectedQuotes: [] };
-    setConfig({ quote: { ...currentQuote, [key]: value } });
-  }, [setConfig, config?.quote]);
-
-  const updateSubheader = useCallback((key, value) => {
-    const currentSubheaders = config?.subheaders || { h1: {}, h2: {}, h3: {}, h4: {}, h5: {}, h6: {} };
-    const currentSubheader = currentSubheaders[selectedSubheaderLevel] || {};
-    setConfig({
-      subheaders: {
-        ...currentSubheaders,
-        [selectedSubheaderLevel]: { ...currentSubheader, [key]: value }
-      }
-    });
-  }, [setConfig, config?.subheaders, selectedSubheaderLevel]);
-
-  const updateParagraph = useCallback((key, value) => {
-    const currentParagraph = config?.paragraph || { firstLineIndent: 1.5, align: 'justify', spacingBetween: 0 };
-    setConfig({ paragraph: { ...currentParagraph, [key]: value } });
-  }, [setConfig, config?.paragraph]);
-
-  const handleTransformTitles = useCallback((targetFormat) => {
-    if (!chapters || chapters.length === 0) return;
-    
-    const transformed = transformAllChapters(chapters, targetFormat);
-    
-    const transformedTitles = transformed.map(ch => ch.title);
-    const detectedFormats = chapters.map(ch => detectTitleFormat(ch.title));
-    const uniqueFormats = [...new Set(detectedFormats.filter(Boolean))];
-    
-    const actionLabel = uniqueFormats.length > 0 
-      ? `Transformar de ${uniqueFormats[0]} a ${targetFormat}`
-      : `Transformar a ${targetFormat}`;
-    
-    setBookData({ chapters: transformed });
-    
-    if (typeof window.trackChange === 'function') {
-      window.trackChange(actionLabel);
-    }
-  }, [chapters, setBookData]);
-
-  const updatePagination = useCallback((key, value) => {
-    const currentPagination = config?.pagination || { minOrphanLines: 2, minWidowLines: 2, splitLongParagraphs: true };
-    setConfig({ pagination: { ...currentPagination, [key]: value } });
-  }, [setConfig, config?.pagination]);
-
-  // Helper for safe access to current subheader config
-  const currentSubheaderConfig = useMemo(() =>
-    safeConfig.subheaders?.[selectedSubheaderLevel] || {
-      align: 'center',
-      bold: true,
-      sizeMultiplier: 1.5,
-      marginTop: 1.5,
-      marginBottom: 0.5,
-      minLinesAfter: 2
-    },
-    [safeConfig.subheaders, selectedSubheaderLevel]
-  );
-
   // Create stable config reference for accordion memoization
-  // Only changes when actual values change, not when config object reference changes
   const stableConfigHash = useMemo(() => JSON.stringify({
     pageFormat: safeConfig.pageFormat,
     customPageFormat: safeConfig.customPageFormat,
@@ -514,246 +222,18 @@ function SidebarLeft() {
       title: 'Formato del Libro',
       icon: <IconBook />,
       content: (
-        <>
-          <fieldset className="config-group">
-            <legend>Tipo de libro</legend>
-            <select 
-              value={safeBookData?.bookType || 'novela'} 
-              onChange={handleBookTypeChange}
-            >
-              <option value="novela">Novela / Ficción</option>
-              <option value="ensayo">Ensayo / No ficción</option>
-              <option value="poesia">Poesía</option>
-              <option value="manual">Manual / Técnico</option>
-              <option value="infantil">Libro Infantil</option>
-            </select>
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Formato de página</legend>
-            <select 
-              value={safeConfig.pageFormat} 
-              onChange={(e) => setConfig({ pageFormat: e.target.value })}
-            >
-              <option value="a5">A5 (148 × 210 mm)</option>
-              <option value="6x9">6 × 9 inches (152 × 229 mm)</option>
-              <option value="5x8">5 × 8 inches (127 × 203 mm)</option>
-              <option value="a4">A4 (210 × 297 mm)</option>
-              <option value="8x10">8 × 10 inches (203 × 254 mm)</option>
-              <option value="letter">Letter (8.5 × 11 inches)</option>
-              <option value="half-letter">Half Letter (5.5 × 8.5 inches)</option>
-              <option value="custom">Personalizado</option>
-            </select>
-          </fieldset>
-
-          {safeConfig.pageFormat === 'custom' && (
-            <fieldset className="config-group">
-              <legend>Dimensiones personalizadas</legend>
-              <div className="custom-format-inputs">
-                <div className="custom-format-row">
-                  <label>Ancho:</label>
-                  <input 
-                    type="number" 
-                    min="1" 
-                    step="0.1"
-                    value={safeConfig.customPageFormat?.width || 6}
-                    onChange={(e) => setConfig({ 
-                      customPageFormat: { ...safeConfig.customPageFormat, width: parseFloat(e.target.value) || 6 }
-                    })}
-                  />
-                </div>
-                <div className="custom-format-row">
-                  <label>Alto:</label>
-                  <input 
-                    type="number" 
-                    min="1" 
-                    step="0.1"
-                    value={safeConfig.customPageFormat?.height || 9}
-                    onChange={(e) => setConfig({ 
-                      customPageFormat: { ...safeConfig.customPageFormat, height: parseFloat(e.target.value) || 9 }
-                    })}
-                  />
-                </div>
-                <div className="custom-format-unit">
-                  <label>
-                    <input 
-                      type="radio" 
-                      name="customUnit" 
-                      value="mm"
-                      checked={(safeConfig.customPageFormat?.unit || 'in') === 'mm'}
-                      onChange={(e) => handleCustomPageUnitChange('mm')}
-                    /> mm
-                  </label>
-                  <label>
-                    <input 
-                      type="radio" 
-                      name="customUnit" 
-                      value="cm"
-                      checked={(safeConfig.customPageFormat?.unit || 'in') === 'cm'}
-                      onChange={(e) => handleCustomPageUnitChange('cm')}
-                    /> cm
-                  </label>
-                  <label>
-                    <input 
-                      type="radio" 
-                      name="customUnit" 
-                      value="in"
-                      checked={(safeConfig.customPageFormat?.unit || 'in') === 'in'}
-                      onChange={(e) => handleCustomPageUnitChange('in')}
-                    /> in
-                  </label>
-                </div>
-              </div>
-            </fieldset>
-          )}
-
-          <fieldset className="config-group">
-            <legend>Gutter (lomo)</legend>
-            <div className="gutter-toggle">
-              <label className="radio-label">
-                <input 
-                  type="radio" 
-                  name="gutterStrategy" 
-                  value="auto"
-                  checked={(safeConfig.gutterStrategy || 'auto') === 'auto'}
-                  onChange={(e) => handleGutterStrategyChange('auto')}
-                /> Automático
-              </label>
-              <label className="radio-label">
-                <input 
-                  type="radio" 
-                  name="gutterStrategy" 
-                  value="custom"
-                  checked={(safeConfig.gutterStrategy || 'auto') === 'custom'}
-                  onChange={(e) => handleGutterStrategyChange('custom')}
-                /> Personalizado
-              </label>
-            </div>
-            {(safeConfig.gutterStrategy || 'auto') === 'custom' && (
-              <div className="gutter-custom">
-                <div className="gutter-recommended" style={{ fontSize: '11px', color: '#6b7280', marginBottom: '8px' }}>
-                  Recomendado para {stats?.pages || 0} páginas: <strong>{recommendedGutterInUnit.toFixed(3)} {safeConfig.gutterUnit || 'in'}</strong>
-                </div>
-                <div className="number-row">
-                  <input 
-                    type="number" 
-                    min="0" 
-                    step={safeConfig.gutterUnit === 'mm' ? 1 : safeConfig.gutterUnit === 'cm' ? 0.1 : 0.125}
-                    value={safeConfig.gutterManual || recommendedGutterInUnit}
-                    onChange={(e) => setConfig({ gutterManual: parseFloat(e.target.value) || 0 })}
-                  />
-                  <select 
-                    value={safeConfig.gutterUnit || 'in'}
-                    onChange={(e) => handleGutterUnitChange(e.target.value)}
-                    style={{ marginLeft: '8px', padding: '2px 4px' }}
-                  >
-                    <option value="in">in</option>
-                    <option value="mm">mm</option>
-                    <option value="cm">cm</option>
-                  </select>
-                </div>
-              </div>
-            )}
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Márgenes</legend>
-            <div className="margins-toggle">
-              <label className="radio-label">
-                <input
-                  type="radio"
-                  name="marginStrategy"
-                  value="auto"
-                  checked={(safeConfig.marginStrategy || 'auto') === 'auto'}
-                  onChange={(e) => setConfig({ marginStrategy: 'auto' })}
-                /> Automático
-              </label>
-              <label className="radio-label">
-                <input
-                  type="radio"
-                  name="marginStrategy"
-                  value="custom"
-                  checked={(safeConfig.marginStrategy || 'auto') === 'custom'}
-                  onChange={(e) => setConfig({ marginStrategy: 'custom' })}
-                /> Personalizado
-              </label>
-            </div>
-            {(safeConfig.marginStrategy || 'auto') === 'custom' && (
-              <div className="margins-custom">
-                <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '12px', fontStyle: 'italic' }}>
-                  En una hoja de libro: arriba = superior, abajo = inferior, izquierda = interior, derecha = exterior
-                </div>
-                <div className="margins-inputs">
-                  <div className="margin-input-group">
-                    <label>Superior</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.125"
-                      value={safeConfig.marginTop || 0.5}
-                      onChange={(e) => setConfig({ marginTop: parseFloat(e.target.value) || 0 })}
-                    />
-                    <span>in</span>
-                  </div>
-                  <div className="margin-input-group">
-                    <label>Inferior</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.125"
-                      value={safeConfig.marginBottom || 0.5}
-                      onChange={(e) => setConfig({ marginBottom: parseFloat(e.target.value) || 0 })}
-                    />
-                    <span>in</span>
-                  </div>
-                  <div className="margin-input-group">
-                    <label>Interior (lomo)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.125"
-                      value={safeConfig.marginLeft || 0.75}
-                      onChange={(e) => setConfig({ marginLeft: parseFloat(e.target.value) || 0 })}
-                    />
-                    <span>in</span>
-                  </div>
-                  <div className="margin-input-group">
-                    <label>Exterior</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.125"
-                      value={safeConfig.marginRight || 0.75}
-                      onChange={(e) => setConfig({ marginRight: parseFloat(e.target.value) || 0 })}
-                    />
-                    <span>in</span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Páginas extras al final</legend>
-            <div className="number-row">
-              <input 
-                type="number" 
-                min="0" 
-                value={safeConfig.extraEndPages || 0}
-                onChange={(e) => setConfig({ extraEndPages: parseInt(e.target.value) || 0 })}
-              />
-              <span>páginas</span>
-            </div>
-            <label className="checkbox-label">
-              <input 
-                type="checkbox" 
-                checked={safeConfig.extraEndPagesNumbered || false}
-                onChange={(e) => setConfig({ extraEndPagesNumbered: e.target.checked })}
-              />
-              Incluir número de página
-            </label>
-          </fieldset>
-        </>
+        <FormatPanel
+          safeConfig={safeConfig}
+          safeBookData={safeBookData}
+          stats={stats}
+          setConfig={setConfig}
+          onBookTypeChange={handleBookTypeChange}
+          recommendedGutter={recommendedGutter}
+          recommendedGutterInUnit={recommendedGutterInUnit}
+          onCustomPageUnitChange={handleCustomPageUnitChange}
+          onGutterStrategyChange={handleGutterStrategyChange}
+          onGutterUnitChange={handleGutterUnitChange}
+        />
       )
     },
     {
@@ -761,64 +241,10 @@ function SidebarLeft() {
       title: 'Tipografía Base',
       icon: <IconType />,
       content: (
-        <>
-          <fieldset className="config-group">
-            <legend>Familia de fuente</legend>
-            <select 
-              value={safeConfig.fontFamily} 
-              onChange={(e) => setConfig({ fontFamily: e.target.value })}
-            >
-              <optgroup label="Serif">
-                <option value="Georgia, serif">Georgia</option>
-                <option value="'Times New Roman', serif">Times New Roman</option>
-                <option value="Garamond, serif">Garamond</option>
-                <option value="Merriweather, serif">Merriweather</option>
-                <option value="Palatino, serif">Palatino</option>
-                <option value="'Book Antiqua', serif">Book Antiqua</option>
-                <option value="Cambria, serif">Cambria</option>
-                <option value="Baskerville, serif">Baskerville</option>
-              </optgroup>
-              <optgroup label="Sans Serif">
-                <option value="Arial, sans-serif">Arial</option>
-                <option value="Helvetica, sans-serif">Helvetica</option>
-                <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
-                <option value="Verdana, sans-serif">Verdana</option>
-                <option value="Calibri, sans-serif">Calibri</option>
-                <option value="'Segoe UI', sans-serif">Segoe UI</option>
-                <option value="Tahoma, sans-serif">Tahoma</option>
-              </optgroup>
-              <optgroup label="Monoespaciada">
-                <option value="'Courier New', monospace">Courier New</option>
-                <option value="Consolas, monospace">Consolas</option>
-              </optgroup>
-            </select>
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Tamaño de fuente (pt)</legend>
-            <input 
-              type="number" 
-              min="10" 
-              max="16" 
-              value={safeConfig.fontSize}
-              onChange={(e) => setConfig({ fontSize: parseInt(e.target.value) })}
-            />
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Interlineado</legend>
-            <select 
-              value={safeConfig.lineHeight}
-              onChange={(e) => setConfig({ lineHeight: parseFloat(e.target.value) })}
-            >
-              <option value="1.4">1.4 (Apretado)</option>
-              <option value="1.5">1.5 (Recomendado)</option>
-              <option value="1.6">1.6 (Espaciado)</option>
-              <option value="1.8">1.8 (Amplio)</option>
-              <option value="2.0">2.0 (Doble)</option>
-            </select>
-          </fieldset>
-        </>
+        <TypographyPanel
+          safeConfig={safeConfig}
+          setConfig={setConfig}
+        />
       )
     },
     {
@@ -826,247 +252,13 @@ function SidebarLeft() {
       title: 'Formato de Títulos',
       icon: <IconTitle />,
       content: (
-        <>
-          <fieldset className="config-group">
-            <legend>Estilo de título de capítulo</legend>
-            <div className="layout-selector">
-              {CHAPTER_LAYOUTS.map(layout => {
-                const IconComponent = layout.icon;
-                const currentLayout = safeConfig.chapterTitle?.layout || 'continuous';
-                return (
-                  <button
-                    key={layout.id}
-                    className={`layout-card ${currentLayout === layout.id ? 'active' : ''}`}
-                    onClick={() => updateChapterLayout(layout.id)}
-                    title={layout.label}
-                  >
-                    <div className="layout-card-preview">
-                      <IconComponent />
-                    </div>
-                    <span className="layout-card-label">{layout.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Decoración</legend>
-            <label className="checkbox-label">
-              <input 
-                type="checkbox" 
-                checked={safeConfig.chapterTitle?.showLines || false} 
-                onChange={(e) => updateChapterTitle('showLines', e.target.checked)} 
-              />
-              Mostrar líneas decorativas
-            </label>
-            
-            {safeConfig.chapterTitle?.showLines && (
-              <>
-                <fieldset className="config-group">
-                  <legend>Estilo de línea</legend>
-                  <div className="radio-group">
-                    <label>
-                      <input 
-                        type="radio" 
-                        name="lineStyle" 
-                        value="solid" 
-                        checked={(safeConfig.chapterTitle?.lineStyle || 'solid') === 'solid'} 
-                        onChange={(e) => updateChapterTitle('lineStyle', e.target.value)} 
-                      /> Sólida
-                    </label>
-                    <label>
-                      <input 
-                        type="radio" 
-                        name="lineStyle" 
-                        value="dashed" 
-                        checked={(safeConfig.chapterTitle?.lineStyle || 'solid') === 'dashed'} 
-                        onChange={(e) => updateChapterTitle('lineStyle', e.target.value)} 
-                      /> Discontinua
-                    </label>
-                    <label>
-                      <input 
-                        type="radio" 
-                        name="lineStyle" 
-                        value="dotted" 
-                        checked={(safeConfig.chapterTitle?.lineStyle || 'solid') === 'dotted'} 
-                        onChange={(e) => updateChapterTitle('lineStyle', e.target.value)} 
-                      /> Punteada
-                    </label>
-                    <label>
-                      <input 
-                        type="radio" 
-                        name="lineStyle" 
-                        value="double" 
-                        checked={(safeConfig.chapterTitle?.lineStyle || 'solid') === 'double'} 
-                        onChange={(e) => updateChapterTitle('lineStyle', e.target.value)} 
-                      /> Doble
-                    </label>
-                  </div>
-                </fieldset>
-
-                <fieldset className="config-group">
-                  <legend>Grosor</legend>
-                  <div className="number-row">
-                    <input 
-                      type="number" 
-                      min="0.25" 
-                      max="3" 
-                      step="0.25" 
-                      value={safeConfig.chapterTitle?.lineWidth || 0.5} 
-                      onChange={(e) => updateChapterTitle('lineWidth', parseFloat(e.target.value))} 
-                    />
-                    <span>px</span>
-                  </div>
-                </fieldset>
-
-                <label className="checkbox-label">
-                  <input 
-                    type="checkbox" 
-                    checked={safeConfig.chapterTitle?.lineWidthTitle || false} 
-                    onChange={(e) => updateChapterTitle('lineWidthTitle', e.target.checked)} 
-                  />
-                  Líneas del ancho del título
-                </label>
-              </>
-            )}
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Espaciado del título</legend>
-            <div className="number-row">
-              <label>Espacio antes:</label>
-              <input
-                type="number"
-                min="0" max="5" step="0.5"
-                value={safeConfig.chapterTitle?.marginTop ?? 2}
-                onChange={(e) => updateChapterTitle('marginTop', parseFloat(e.target.value))}
-              />
-              <span>líneas</span>
-            </div>
-            <div className="number-row">
-              <label>Espacio después:</label>
-              <input
-                type="number"
-                min="0" max="3" step="0.25"
-                value={safeConfig.chapterTitle?.marginBottom ?? 1}
-                onChange={(e) => updateChapterTitle('marginBottom', parseFloat(e.target.value))}
-              />
-              <span>líneas</span>
-            </div>
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Jerarquía de título</legend>
-            
-            <div className="layout-selector" style={{ marginBottom: '12px', gridTemplateColumns: 'repeat(3, 1fr)' }}>
-              {HIERARCHY_TEMPLATES.map(template => {
-                const IconComponent = template.icon;
-                const isActive = isHierarchyTemplateActive(template);
-                return (
-                  <button
-                    key={template.id}
-                    className={`layout-card ${isActive ? 'active' : ''}`}
-                    onClick={() => applyHierarchyTemplate(template.id)}
-                    title={template.label}
-                    style={{ padding: '6px', minHeight: 'auto' }}
-                  >
-                    <div className="layout-card-preview" style={{ transform: 'scale(0.7)' }}>
-                      <IconComponent />
-                    </div>
-                    <span className="layout-card-label" style={{ fontSize: '9px' }}>{template.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <fieldset className="config-group" style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px dashed #e5e7eb' }}>
-              <legend style={{ fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>
-                Transformar Títulos
-              </legend>
-              <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '10px' }}>
-                Transforma el formato de todos los capítulos a la vez
-              </div>
-              <select 
-                onChange={(e) => {
-                  if (e.target.value) {
-                    handleTransformTitles(e.target.value);
-                    e.target.value = '';
-                  }
-                }}
-                defaultValue=""
-                style={{ 
-                  width: '100%', 
-                  padding: '8px', 
-                  borderRadius: '4px', 
-                  border: '1px solid #d1d5db',
-                  fontSize: '12px',
-                  backgroundColor: 'white'
-                }}
-              >
-                <option value="" disabled>Seleccionar formato...</option>
-                {TITLE_FORMAT_OPTIONS.map(format => (
-                  <option key={format.id} value={format.id}>
-                    {format.label} - {format.example}
-                  </option>
-                ))}
-              </select>
-            </fieldset>
-
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={safeConfig.chapterTitle?.hierarchyEnabled !== false}
-                onChange={(e) => updateChapterTitle('hierarchyEnabled', e.target.checked)}
-              />
-              Detectar etiqueta y título automáticamente
-            </label>
-            <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '8px' }}>
-              Detecta patrones como "Capítulo 1 – Título" y los separa visualmente.
-            </div>
-
-            {safeConfig.chapterTitle?.hierarchyEnabled !== false && (
-              <>
-                <div className="number-row">
-                  <label>Tamaño etiqueta:</label>
-                  <input
-                    type="number"
-                    min="0.4" max="1.0" step="0.05"
-                    value={safeConfig.chapterTitle?.hierarchyLabelSizeMultiplier ?? 0.7}
-                    onChange={(e) => updateChapterTitle('hierarchyLabelSizeMultiplier', parseFloat(e.target.value))}
-                  />
-                  <span>×</span>
-                </div>
-                <div className="number-row">
-                  <label>Tamaño título:</label>
-                  <input
-                    type="number"
-                    min="0.8" max="1.5" step="0.05"
-                    value={safeConfig.chapterTitle?.hierarchyTitleSizeMultiplier ?? 1.0}
-                    onChange={(e) => updateChapterTitle('hierarchyTitleSizeMultiplier', parseFloat(e.target.value))}
-                  />
-                  <span>×</span>
-                </div>
-                <div className="number-row">
-                  <label>Color etiqueta:</label>
-                  <input
-                    type="color"
-                    value={safeConfig.chapterTitle?.hierarchyLabelColor || '#666666'}
-                    onChange={(e) => updateChapterTitle('hierarchyLabelColor', e.target.value)}
-                  />
-                </div>
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={safeConfig.chapterTitle?.hierarchyLabelBold || false}
-                    onChange={(e) => updateChapterTitle('hierarchyLabelBold', e.target.checked)}
-                  />
-                  Etiqueta en negrita
-                </label>
-              </>
-            )}
-          </fieldset>
-        </>
+        <TitlePanel
+          safeConfig={safeConfig}
+          config={config}
+          chapters={chapters}
+          setConfig={setConfig}
+          setBookData={setBookData}
+        />
       )
     },
     {
@@ -1074,139 +266,13 @@ function SidebarLeft() {
       title: 'Subencabezados (H1-H6)',
       icon: <IconList />,
       content: (
-        <>
-          <fieldset className="config-group">
-            <legend>Detección automática de jerarquías</legend>
-            <label className="checkbox-label">
-              <input 
-                type="checkbox" 
-                checked={safeConfig.autoDetectHeaders?.enabled || false}
-                onChange={(e) => {
-                  if (e.target.checked && chapters && chapters.length > 0) {
-                    const confirmConvert = confirm('¿Convertir negritas a encabezados automáticamente?\n\nEsto analizará el tamaño del texto y convertirá las negritas a encabezados H1-H6 manteniendo las proporciones.');
-                    if (confirmConvert) {
-                      chapters.forEach(chapter => {
-                        const result = analyzeAndConvertHierarchies(chapter.html || '', {
-                          convertBold: true,
-                          preserveFormatting: safeConfig.autoDetectHeaders?.preserveFormatting !== false
-                        });
-                        if (result.hasChanges) {
-                          updateChapter(chapter.id, { html: result.convertedHtml });
-                        }
-                      });
-                    }
-                  }
-                  setConfig({ 
-                    autoDetectHeaders: { 
-                      ...safeConfig.autoDetectHeaders,
-                      enabled: e.target.checked,
-                      targetLevel: safeConfig.autoDetectHeaders?.targetLevel || 'h2',
-                      preserveFormatting: safeConfig.autoDetectHeaders?.preserveFormatting !== false
-                    }
-                  });
-                }} 
-              />
-              Detectar subtítulos por tamaño de letra
-            </label>
-            {safeConfig.autoDetectHeaders?.enabled && (
-              <>
-                <div style={{ marginTop: '8px' }}>
-                  <label style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                    Convertir negritas a:
-                  </label>
-                  <select 
-                    value={safeConfig.autoDetectHeaders?.targetLevel || 'h2'}
-                    onChange={(e) => setConfig({
-                      autoDetectHeaders: {
-                        ...safeConfig.autoDetectHeaders,
-                        targetLevel: e.target.value
-                      }
-                    })}
-                    style={{ width: '100%', padding: '4px' }}
-                  >
-                    <option value="h1">H1 - Título principal (1.8x)</option>
-                    <option value="h2">H2 - Subtítulo grande (1.5x)</option>
-                    <option value="h3">H3 - Subtítulo mediano (1.3x)</option>
-                    <option value="h4">H4 - Subtítulo pequeño (1.15x)</option>
-                    <option value="h5">H5 - Subtítulo menor (1.05x)</option>
-                  </select>
-                </div>
-                <label className="checkbox-label" style={{ marginTop: '8px' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={safeConfig.autoDetectHeaders?.preserveFormatting !== false}
-                    onChange={(e) => setConfig({
-                      autoDetectHeaders: {
-                        ...safeConfig.autoDetectHeaders,
-                        preserveFormatting: e.target.checked
-                      }
-                    })}
-                  />
-                  Preservar negritas/cursivas
-                </label>
-              </>
-            )}
-          </fieldset>
-
-          <div className="level-selector">
-            {['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].map(level => (
-              <button 
-                key={level}
-                className={`level-btn ${selectedSubheaderLevel === level ? 'active' : ''}`}
-                onClick={() => setSelectedSubheaderLevel(level)}
-              >
-                {level.toUpperCase()}
-              </button>
-            ))}
-          </div>
-
-          <fieldset className="config-group">
-            <legend>Alineación</legend>
-            <div className="radio-group">
-              <label><input type="radio" name="subAlign" value="left" checked={currentSubheaderConfig.align === 'left'} onChange={(e) => updateSubheader('align', e.target.value)} /> Izquierda</label>
-              <label><input type="radio" name="subAlign" value="center" checked={currentSubheaderConfig.align === 'center'} onChange={(e) => updateSubheader('align', e.target.value)} /> Centro</label>
-              <label><input type="radio" name="subAlign" value="right" checked={currentSubheaderConfig.align === 'right'} onChange={(e) => updateSubheader('align', e.target.value)} /> Derecha</label>
-            </div>
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Estilo</legend>
-            <label className="checkbox-label">
-              <input type="checkbox" checked={currentSubheaderConfig.bold} onChange={(e) => updateSubheader('bold', e.target.checked)} />
-              Negrita
-            </label>
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Tamaño relativo</legend>
-            <div className="number-row">
-              <input type="number" min="0.8" max="2.0" step="0.05" value={currentSubheaderConfig.sizeMultiplier} onChange={(e) => updateSubheader('sizeMultiplier', parseFloat(e.target.value))} />
-              <span>({Math.round(safeConfig.fontSize * currentSubheaderConfig.sizeMultiplier)}pt)</span>
-            </div>
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Espaciado</legend>
-            <div className="number-row">
-              <label>Antes:</label>
-              <input type="number" min="0" max="3" step="0.25" value={currentSubheaderConfig.marginTop} onChange={(e) => updateSubheader('marginTop', parseFloat(e.target.value))} />
-              <span>líneas</span>
-            </div>
-            <div className="number-row">
-              <label>Después:</label>
-              <input type="number" min="0" max="2" step="0.25" value={currentSubheaderConfig.marginBottom} onChange={(e) => updateSubheader('marginBottom', parseFloat(e.target.value))} />
-              <span>líneas</span>
-            </div>
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Paginación</legend>
-            <div className="number-row">
-              <label>Mín. líneas después:</label>
-              <input type="number" min="1" max="4" value={currentSubheaderConfig.minLinesAfter} onChange={(e) => updateSubheader('minLinesAfter', parseInt(e.target.value))} />
-            </div>
-          </fieldset>
-        </>
+        <SubheadersPanel
+          safeConfig={safeConfig}
+          config={config}
+          chapters={chapters}
+          setConfig={setConfig}
+          updateChapter={updateChapter}
+        />
       )
     },
     {
@@ -1214,31 +280,11 @@ function SidebarLeft() {
       title: 'Párrafos',
       icon: <IconAlignLeft />,
       content: (
-        <>
-          <fieldset className="config-group">
-            <legend>Sangría primera línea</legend>
-            <div className="number-row">
-              <input type="number" min="0" max="3" step="0.25" value={safeConfig.paragraph?.firstLineIndent || 1.5} onChange={(e) => updateParagraph('firstLineIndent', parseFloat(e.target.value))} />
-              <span>em</span>
-            </div>
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Alineación</legend>
-            <div className="radio-group">
-              <label><input type="radio" name="paraAlign" value="justify" checked={(safeConfig.paragraph?.align || 'justify') === 'justify'} onChange={(e) => updateParagraph('align', e.target.value)} /> Justificar</label>
-              <label><input type="radio" name="paraAlign" value="left" checked={safeConfig.paragraph?.align === 'left'} onChange={(e) => updateParagraph('align', e.target.value)} /> Izquierda</label>
-            </div>
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Espaciado entre párrafos</legend>
-            <div className="number-row">
-              <input type="number" min="0" max="1" step="0.25" value={safeConfig.paragraph?.spacingBetween || 0} onChange={(e) => updateParagraph('spacingBetween', parseFloat(e.target.value))} />
-              <span>líneas</span>
-            </div>
-          </fieldset>
-        </>
+        <ParagraphPanel
+          safeConfig={safeConfig}
+          config={config}
+          setConfig={setConfig}
+        />
       )
     },
     {
@@ -1246,120 +292,12 @@ function SidebarLeft() {
       title: 'Citas',
       icon: <IconQuote />,
       content: (
-        <>
-          <fieldset className="config-group">
-            <legend>Habilitar estilo</legend>
-            <label className="checkbox-label">
-              <input type="checkbox" checked={safeConfig.quote.enabled} onChange={(e) => updateQuote('enabled', e.target.checked)} />
-              Aplicar estilo especial a citas
-            </label>
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Detección automática</legend>
-            <label className="checkbox-label">
-              <input 
-                type="checkbox" 
-                checked={safeConfig.quote.autoDetect !== false} 
-                onChange={(e) => updateQuote('autoDetect', e.target.checked)} 
-              />
-              Detectar citas automáticamente
-            </label>
-            <p style={{ fontSize: '11px', color: '#6b7280', marginTop: '8px' }}>
-              Detecta: — guiones largos, «» comillas italianas, "" inglesas, y citas largas en cursiva (&gt;15 palabras)
-            </p>
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Plantilla de cita</legend>
-            <select 
-              value={safeConfig.quote.template || 'classic'}
-              onChange={(e) => updateQuote('template', e.target.value)}
-              style={{ width: '100%', padding: '6px', marginTop: '4px' }}
-            >
-              <option value="classic">Clásico — Líneas decorativas</option>
-              <option value="bar">Moderno — Barra vertical</option>
-              <option value="italic">Italiano — Cursiva + comillas</option>
-              <option value="indent">Sangría — Ambas márgenes</option>
-              <option value="minimal">Minimalista — Texto suave</option>
-            </select>
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Aplicar plantillas</legend>
-            <button 
-              className="btn btn-small" 
-              style={{ width: '100%', marginBottom: '8px' }}
-              disabled={chapters?.some(ch => ch.html?.includes('blockquote class="quote'))}
-              onClick={() => {
-                if (chapters?.some(ch => ch.html?.includes('blockquote class="quote'))) {
-                  alert('Las citas ya han sido aplicadas. Recarga la página o modifica el contenido manualmente.');
-                  return;
-                }
-                if (confirm('¿Aplicar estilo de cita a todo el documento?')) {
-                  try {
-                    const applyToAll = useEditorStore.getState().applyQuoteTemplate;
-                    const template = safeConfig?.quote?.template || 'classic';
-                    if (applyToAll) applyToAll(template);
-                  } catch (error) {
-                    console.error('Error applying quote template:', error);
-                    alert('Error al aplicar estilos de cita: ' + error.message);
-                  }
-                }
-              }}
-            >
-              Aplicar a todas las citas detectadas
-            </button>
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Sangría</legend>
-            <div className="number-row">
-              <label>Izquierda:</label>
-              <input type="number" min="0" max="4" step="0.5" value={safeConfig.quote.indentLeft} onChange={(e) => updateQuote('indentLeft', parseFloat(e.target.value))} />
-              <span>em</span>
-            </div>
-            <div className="number-row">
-              <label>Derecha:</label>
-              <input type="number" min="0" max="4" step="0.5" value={safeConfig.quote.indentRight} onChange={(e) => updateQuote('indentRight', parseFloat(e.target.value))} />
-              <span>em</span>
-            </div>
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Estilo</legend>
-            <label className="checkbox-label">
-              <input type="checkbox" checked={safeConfig.quote.italic} onChange={(e) => updateQuote('italic', e.target.checked)} />
-              Cursiva
-            </label>
-            <label className="checkbox-label">
-              <input type="checkbox" checked={safeConfig.quote.showLine} onChange={(e) => updateQuote('showLine', e.target.checked)} />
-              Línea decorativa izquierda
-            </label>
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Tamaño</legend>
-            <div className="number-row">
-              <input type="number" min="0.7" max="1.2" step="0.05" value={safeConfig.quote.sizeMultiplier} onChange={(e) => updateQuote('sizeMultiplier', parseFloat(e.target.value))} />
-              <span>({Math.round(safeConfig.fontSize * safeConfig.quote.sizeMultiplier)}pt)</span>
-            </div>
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Márgenes</legend>
-            <div className="number-row">
-              <label>Superior:</label>
-              <input type="number" min="0" max="2" step="0.25" value={safeConfig.quote.marginTop} onChange={(e) => updateQuote('marginTop', parseFloat(e.target.value))} />
-              <span>em</span>
-            </div>
-            <div className="number-row">
-              <label>Inferior:</label>
-              <input type="number" min="0" max="2" step="0.25" value={safeConfig.quote.marginBottom} onChange={(e) => updateQuote('marginBottom', parseFloat(e.target.value))} />
-              <span>em</span>
-            </div>
-          </fieldset>
-        </>
+        <QuotePanel
+          safeConfig={safeConfig}
+          config={config}
+          chapters={chapters}
+          setConfig={setConfig}
+        />
       )
     },
     {
@@ -1367,435 +305,10 @@ function SidebarLeft() {
       title: 'Encabezados (Headers)',
       icon: <IconBookmark />,
       content: (
-        <>
-          <fieldset className="config-group">
-            <legend>Mostrar</legend>
-            <label className="checkbox-label">
-              <input type="checkbox" checked={safeConfig.showHeaders} onChange={(e) => setConfig({ 
-                showHeaders: e.target.checked,
-                header: { ...safeConfig.header, enabled: e.target.checked }
-              })} />
-              Mostrar encabezados en páginas
-            </label>
-          </fieldset>
-
-          {safeConfig.showHeaders && (
-            <>
-              <fieldset className="config-group">
-                <legend>Plantilla de encabezado</legend>
-                <HeaderTemplateSelector 
-                  value={safeConfig.header?.template || 'classic'}
-                  onChange={(templateId) => {
-                    const templateConfig = getHeaderTemplateConfig(templateId);
-                    setConfig({ 
-                      showHeaders: true,
-                      header: { 
-                        ...safeConfig.header,
-                        ...templateConfig,
-                        enabled: true 
-                      } 
-                    });
-                  }}
-                  templates={Object.values(HEADER_TEMPLATES)}
-                />
-              </fieldset>
-
-              {/* Custom configuration when template is 'custom' */}
-              {safeConfig.header?.template === 'custom' && (
-                <>
-                  <fieldset className="config-group">
-                    <legend>Páginas pares (izquierda)</legend>
-                    <div className="header-page-config">
-                      <div className="header-cell-config">
-                        <label>Izquierda</label>
-                        <select 
-                          value={safeConfig.header?.evenPage?.leftContent || 'title'}
-                          onChange={(e) => setConfig({ 
-                            header: { 
-                              ...safeConfig.header, 
-                              evenPage: { ...safeConfig.header?.evenPage, leftContent: e.target.value }
-                            }
-                          })}
-                        >
-                          {Object.entries(HEADER_CONTENT_LABELS).map(([value, label]) => (
-                            <option key={value} value={value}>{label}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="header-cell-config">
-                        <label>Centro</label>
-                        <select 
-                          value={safeConfig.header?.evenPage?.centerContent || 'none'}
-                          onChange={(e) => setConfig({ 
-                            header: { 
-                              ...safeConfig.header, 
-                              evenPage: { ...safeConfig.header?.evenPage, centerContent: e.target.value }
-                            }
-                          })}
-                        >
-                          {Object.entries(HEADER_CONTENT_LABELS).map(([value, label]) => (
-                            <option key={value} value={value}>{label}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="header-cell-config">
-                        <label>Derecha</label>
-                        <select 
-                          value={safeConfig.header?.evenPage?.rightContent || 'none'}
-                          onChange={(e) => setConfig({ 
-                            header: { 
-                              ...safeConfig.header, 
-                              evenPage: { ...safeConfig.header?.evenPage, rightContent: e.target.value }
-                            }
-                          })}
-                        >
-                          {Object.entries(HEADER_CONTENT_LABELS).map(([value, label]) => (
-                            <option key={value} value={value}>{label}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </fieldset>
-
-                  <fieldset className="config-group">
-                    <legend>Páginas impares (derecha)</legend>
-                    <div className="header-page-config">
-                      <div className="header-cell-config">
-                        <label>Izquierda</label>
-                        <select 
-                          value={safeConfig.header?.oddPage?.leftContent || 'none'}
-                          onChange={(e) => setConfig({ 
-                            header: { 
-                              ...safeConfig.header, 
-                              oddPage: { ...safeConfig.header?.oddPage, leftContent: e.target.value }
-                            }
-                          })}
-                        >
-                          {Object.entries(HEADER_CONTENT_LABELS).map(([value, label]) => (
-                            <option key={value} value={value}>{label}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="header-cell-config">
-                        <label>Centro</label>
-                        <select 
-                          value={safeConfig.header?.oddPage?.centerContent || 'none'}
-                          onChange={(e) => setConfig({ 
-                            header: { 
-                              ...safeConfig.header, 
-                              oddPage: { ...safeConfig.header?.oddPage, centerContent: e.target.value }
-                            }
-                          })}
-                        >
-                          {Object.entries(HEADER_CONTENT_LABELS).map(([value, label]) => (
-                            <option key={value} value={value}>{label}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="header-cell-config">
-                        <label>Derecha</label>
-                        <select 
-                          value={safeConfig.header?.oddPage?.rightContent || 'chapter'}
-                          onChange={(e) => setConfig({ 
-                            header: { 
-                              ...safeConfig.header, 
-                              oddPage: { ...safeConfig.header?.oddPage, rightContent: e.target.value }
-                            }
-                          })}
-                        >
-                          {Object.entries(HEADER_CONTENT_LABELS).map(([value, label]) => (
-                            <option key={value} value={value}>{label}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </fieldset>
-                </>
-              )}
-
-              {/* Subheader tracking configuration */}
-              <fieldset className="config-group">
-                <legend>Vincular subtemas</legend>
-                <label className="checkbox-label">
-                  <input 
-                    type="checkbox" 
-                    checked={safeConfig.header?.trackSubheaders || false}
-                    onChange={(e) => setConfig({ 
-                      header: { ...safeConfig.header, trackSubheaders: e.target.checked }
-                    })}
-                  />
-                  Mostrar subtema actual (H1-H6) en encabezado
-                </label>
-                <label className="checkbox-label">
-                  <input 
-                    type="checkbox" 
-                    checked={safeConfig.header?.trackPseudoHeaders || false}
-                    onChange={(e) => setConfig({ 
-                      header: { ...safeConfig.header, trackPseudoHeaders: e.target.checked }
-                    })}
-                  />
-                  Detectar negritas como subtemas
-                </label>
-                
-                {/* Subtopic behavior options - show when either tracking option is enabled */}
-                {(safeConfig.header?.trackSubheaders || safeConfig.header?.trackPseudoHeaders) && (
-                  <div className="subtopic-options" style={{ marginTop: '12px' }}>
-                    <div className="subtopic-behavior">
-                      <label style={{ fontWeight: '500', marginBottom: '6px', display: 'block' }}>
-                        Comportamiento del subtema:
-                      </label>
-                      <select 
-                        value={safeConfig.header?.subtopicBehavior || 'none'}
-                        onChange={(e) => setConfig({ 
-                          header: { ...safeConfig.header, subtopicBehavior: e.target.value }
-                        })}
-                        style={{ width: '100%', marginBottom: '8px' }}
-                      >
-                        {SUBTOPIC_BEHAVIORS.map(behavior => (
-                          <option key={behavior.value} value={behavior.value}>
-                            {behavior.label}
-                          </option>
-                        ))}
-                      </select>
-                      <small style={{ color: '#6b7280', display: 'block', marginBottom: '12px' }}>
-                        {SUBTOPIC_BEHAVIORS.find(b => b.value === (safeConfig.header?.subtopicBehavior || 'none'))?.description}
-                      </small>
-                    </div>
-                    
-                    {/* Separator options - show when behavior is 'combine' */}
-                    {safeConfig.header?.subtopicBehavior === 'combine' && (
-                      <div className="separator-options">
-                        <label style={{ fontWeight: '500', marginBottom: '6px', display: 'block' }}>
-                          Separador:
-                        </label>
-                        <select 
-                          value={SEPARATOR_OPTIONS.some(opt => opt.value === safeConfig.header?.subtopicSeparator) 
-                            ? safeConfig.header?.subtopicSeparator 
-                            : 'custom'}
-                          onChange={(e) => {
-                            if (e.target.value !== 'custom') {
-                              setConfig({ 
-                                header: { ...safeConfig.header, subtopicSeparator: e.target.value }
-                              });
-                            }
-                          }}
-                          style={{ width: '100%', marginBottom: '8px' }}
-                        >
-                          {SEPARATOR_OPTIONS.map(opt => (
-                            <option key={opt.value} value={opt.value}>
-                              {opt.label} - {opt.example}
-                            </option>
-                          ))}
-                        </select>
-                        
-                        {/* Custom separator input */}
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          <input 
-                            type="text"
-                            placeholder="Separador personalizado"
-                            value={!SEPARATOR_OPTIONS.some(opt => opt.value === safeConfig.header?.subtopicSeparator) 
-                              ? safeConfig.header?.subtopicSeparator || ''
-                              : ''}
-                            onChange={(e) => setConfig({ 
-                              header: { ...safeConfig.header, subtopicSeparator: e.target.value }
-                            })}
-                            style={{ flex: 1, padding: '4px 8px' }}
-                          />
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Max length for subtopics */}
-                    <div className="subtopic-max-length" style={{ marginTop: '12px' }}>
-                      <label style={{ fontWeight: '500', marginBottom: '6px', display: 'block' }}>
-                        Longitud máxima del subtema:
-                      </label>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <input 
-                          type="number"
-                          min="20"
-                          max="100"
-                          step="5"
-                          value={safeConfig.header?.subtopicMaxLength || 60}
-                          onChange={(e) => setConfig({ 
-                            header: { ...safeConfig.header, subtopicMaxLength: parseInt(e.target.value) || 60 }
-                          })}
-                          style={{ width: '80px', padding: '4px 8px' }}
-                        />
-                        <span style={{ color: '#6b7280' }}>caracteres</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </fieldset>
-
-              {/* Display mode selector */}
-              <fieldset className="config-group">
-                <legend>Mostrar en</legend>
-                <select 
-                  value={safeConfig.header?.displayMode || 'alternate'}
-                  onChange={(e) => setConfig({ 
-                    header: { ...safeConfig.header, displayMode: e.target.value }
-                  })}
-                >
-                  {HEADER_DISPLAY_MODES.map(mode => (
-                    <option key={mode.value} value={mode.value}>{mode.label}</option>
-                  ))}
-                </select>
-              </fieldset>
-
-              {safeConfig.header?.trackSubheaders && (
-                <>
-                  <fieldset className="config-group">
-                    <legend>Niveles a rastrear</legend>
-                    <div className="subheader-levels">
-                      {['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].map(level => (
-                        <button
-                          key={level}
-                          type="button"
-                          className={`subheader-level-btn ${(safeConfig.header?.subheaderLevels || ['h1', 'h2']).includes(level) ? 'active' : ''}`}
-                          onClick={() => {
-                            const currentLevels = safeConfig.header?.subheaderLevels || ['h1', 'h2'];
-                            const newLevels = currentLevels.includes(level)
-                              ? currentLevels.filter(l => l !== level)
-                              : [...currentLevels, level];
-                            setConfig({ 
-                              header: { ...safeConfig.header, subheaderLevels: newLevels }
-                            });
-                          }}
-                        >
-                          {level.toUpperCase()}
-                        </button>
-                      ))}
-                    </div>
-                  </fieldset>
-
-                  <fieldset className="config-group">
-                    <legend>Formato del subtema</legend>
-                    <select 
-                      value={safeConfig.header?.subheaderFormat || 'full'}
-                      onChange={(e) => setConfig({ 
-                        header: { ...safeConfig.header, subheaderFormat: e.target.value }
-                      })}
-                    >
-                      {SUBHEADER_FORMAT_OPTIONS.map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                  </fieldset>
-                </>
-              )}
-
-              {/* Style options */}
-              <fieldset className="config-group">
-                <legend>Estilo visual</legend>
-                <div className="header-style-options">
-                  <div className="style-option">
-                    <label>Fuente</label>
-                    <select 
-                      value={safeConfig.header?.fontFamily || 'same'}
-                      onChange={(e) => setConfig({ 
-                        header: { ...safeConfig.header, fontFamily: e.target.value }
-                      })}
-                    >
-                      {FONT_STYLE_OPTIONS.map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="style-option">
-                    <label>Tamaño (%)</label>
-                    <input 
-                      type="number" 
-                      min="50" 
-                      max="100" 
-                      step="5"
-                      value={safeConfig.header?.fontSize || 70}
-                      onChange={(e) => setConfig({ 
-                        header: { ...safeConfig.header, fontSize: parseInt(e.target.value) }
-                      })}
-                    />
-                  </div>
-                </div>
-              </fieldset>
-
-              <fieldset className="config-group">
-                <legend>Línea divisoria</legend>
-                <label className="checkbox-label">
-                  <input 
-                    type="checkbox" 
-                    checked={safeConfig.header?.showLine ?? true}
-                    onChange={(e) => setConfig({ 
-                      header: { ...safeConfig.header, showLine: e.target.checked }
-                    })}
-                  />
-                  Mostrar línea
-                </label>
-                {safeConfig.header?.showLine && (
-                  <div className="header-style-options" style={{ marginTop: '8px' }}>
-                    <div className="style-option">
-                      <label>Estilo</label>
-                      <select 
-                        value={safeConfig.header?.lineStyle || 'solid'}
-                        onChange={(e) => setConfig({ 
-                          header: { ...safeConfig.header, lineStyle: e.target.value }
-                        })}
-                      >
-                        {LINE_STYLE_OPTIONS.map(opt => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="style-option">
-                      <label>Grosor (pt)</label>
-                      <input 
-                        type="number" 
-                        min="0.25" 
-                        max="2" 
-                        step="0.25"
-                        value={safeConfig.header?.lineWidth || 0.5}
-                        onChange={(e) => setConfig({ 
-                          header: { ...safeConfig.header, lineWidth: parseFloat(e.target.value) }
-                        })}
-                      />
-                    </div>
-                  </div>
-                )}
-              </fieldset>
-
-              {/* Pagination conflict resolution */}
-              {safeConfig.pageNumberPos === 'top' && (
-                <fieldset className="config-group">
-                  <legend>Cuando paginación también está arriba</legend>
-                  <select 
-                    value={safeConfig.header?.whenPaginationSamePosition || 'merge'}
-                    onChange={(e) => setConfig({ 
-                      header: { ...safeConfig.header, whenPaginationSamePosition: e.target.value }
-                    })}
-                  >
-                    {PAGINATION_CONFLICT_OPTIONS.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                </fieldset>
-              )}
-
-              <fieldset className="config-group">
-                <legend>Opciones avanzadas</legend>
-                <label className="checkbox-label">
-                  <input 
-                    type="checkbox" 
-                    checked={safeConfig.header?.skipFirstChapterPage ?? true}
-                    onChange={(e) => setConfig({ 
-                      header: { ...safeConfig.header, skipFirstChapterPage: e.target.checked }
-                    })}
-                  />
-                  Omitir en primera página de capítulo
-                </label>
-              </fieldset>
-            </>
-          )}
-        </>
+        <HeaderPanel
+          safeConfig={safeConfig}
+          setConfig={setConfig}
+        />
       )
     },
     {
@@ -1854,46 +367,26 @@ function SidebarLeft() {
       title: 'Reglas de Paginación',
       icon: <IconTitle />,
       content: (
-        <>
-          <fieldset className="config-group">
-            <legend>Páginas huérfanas (orphan)</legend>
-            <div className="number-row">
-              <label>Mín. líneas al final:</label>
-              <input type="number" min="1" max="4" value={safeConfig.pagination.minOrphanLines} onChange={(e) => updatePagination('minOrphanLines', parseInt(e.target.value))} />
-            </div>
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Páginas viudas (widow)</legend>
-            <div className="number-row">
-              <label>Mín. líneas al inicio:</label>
-              <input type="number" min="1" max="4" value={safeConfig.pagination.minWidowLines} onChange={(e) => updatePagination('minWidowLines', parseInt(e.target.value))} />
-            </div>
-          </fieldset>
-
-          <fieldset className="config-group">
-            <legend>Párrafos largos</legend>
-            <label className="checkbox-label">
-              <input type="checkbox" checked={safeConfig.pagination.splitLongParagraphs} onChange={(e) => updatePagination('splitLongParagraphs', e.target.checked)} />
-              Dividir párrafos entre páginas
-            </label>
-          </fieldset>
-        </>
+        <PaginationPanel
+          safeConfig={safeConfig}
+          config={config}
+          setConfig={setConfig}
+        />
       )
     }
-  ], [selectedSubheaderLevel, stableConfigHash, safeBookData?.bookType, handleBookTypeChange, setConfig, currentSubheaderConfig]);
+  ], [stableConfigHash, safeBookData?.bookType, handleBookTypeChange, setConfig]);
 
   return (
     <aside className="sidebar sidebar-left" role="complementary" aria-label="Panel de estructura y configuración">
       <div className="sidebar-tabs">
-        <button 
+        <button
           className={`sidebar-tab ${activeTab === 'structure' ? 'active' : ''}`}
           onClick={() => setActiveTab('structure')}
           aria-selected={activeTab === 'structure'}
         >
           Estructura
         </button>
-        <button 
+        <button
           className={`sidebar-tab ${activeTab === 'config' ? 'active' : ''}`}
           onClick={() => setActiveTab('config')}
           aria-selected={activeTab === 'config'}
@@ -1903,79 +396,19 @@ function SidebarLeft() {
       </div>
 
       {activeTab === 'structure' && (
-        <section className="sidebar-section">
-          <h2 className="sidebar-title">Estructura del Libro</h2>
-          
-          <div className="document-metadata">
-            <label className="metadata-label">
-              <span>Título del libro</span>
-              <input 
-                type="text" 
-                value={safeBookData?.title || ''} 
-                onChange={handleDocumentTitleChange}
-                placeholder="Título de tu libro"
-                className="metadata-input"
-              />
-            </label>
-            <label className="metadata-label">
-              <span>Autor</span>
-              <input 
-                type="text" 
-                value={safeBookData?.author || ''} 
-                onChange={handleDocumentAuthorChange}
-                placeholder="Nombre del autor"
-                className="metadata-input"
-              />
-            </label>
-          </div>
-          
-          <div className="structure-controls">
-            <button className="btn btn-small" onClick={handleAddChapter}>
-              + Capítulo
-            </button>
-            <button className="btn btn-small btn-secondary" onClick={handleAddSection}>
-              + Sección
-            </button>
-          </div>
-
-          <nav className="structure-panel" aria-label="Estructura de capítulos">
-            <div className="chapters-list">
-              {safeBookData?.chapters?.length === 0 ? (
-                <p className="empty-state">Sin capítulos cargados</p>
-              ) : (
-                safeBookData?.chapters?.map((chapter, index) => (
-                  <ChapterItem
-                    key={chapter.id}
-                    chapter={chapter}
-                    index={index}
-                    isActive={activeChapterId === chapter.id}
-                    onSelect={setActiveChapter}
-                    onDelete={deleteChapter}
-                    onMove={moveChapter}
-                    onTitleChange={handleTitleChange}
-                    totalChapters={safeBookData.chapters.length}
-                  />
-                ))
-              )}
-            </div>
-          </nav>
-
-          <div className="document-stats">
-            <h3 className="stats-title">Estadísticas</h3>
-            <dl className="stats-list">
-              <dt>Capítulos:</dt>
-              <dd>{stats.chapters}</dd>
-              <dt>Palabras:</dt>
-              <dd>{stats.words}</dd>
-              <dt>Caracteres:</dt>
-              <dd>{stats.characters}</dd>
-              <dt>Páginas estimadas:</dt>
-              <dd>{stats.pages}</dd>
-              <dt>Tiempo de lectura:</dt>
-              <dd>{stats.readingTime} min</dd>
-            </dl>
-          </div>
-        </section>
+        <StructureTab
+          bookData={safeBookData}
+          activeChapterId={activeChapterId}
+          stats={stats}
+          onTitleChange={handleDocumentTitleChange}
+          onAuthorChange={handleDocumentAuthorChange}
+          onAddChapter={handleAddChapter}
+          onAddSection={handleAddSection}
+          onSelectChapter={setActiveChapter}
+          onDeleteChapter={deleteChapter}
+          onMoveChapter={moveChapter}
+          onChapterTitleChange={handleTitleChange}
+        />
       )}
 
       {activeTab === 'config' && (
@@ -1987,126 +420,5 @@ function SidebarLeft() {
     </aside>
   );
 }
-
-const ChapterItem = memo(function ChapterItem({ 
-  chapter, 
-  index, 
-  isActive, 
-  onSelect, 
-  onDelete, 
-  onMove, 
-  onTitleChange,
-  totalChapters 
-}) {
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
-
-  const handleDragStart = useCallback((e) => {
-    setIsDragging(true);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', index);
-  }, [index]);
-
-  const handleDragEnd = useCallback(() => {
-    setIsDragging(false);
-    setDragOver(false);
-  }, []);
-
-  const handleDragOver = useCallback((e) => {
-    e.preventDefault();
-    if (!isDragging) {
-      setDragOver(true);
-    }
-  }, [isDragging]);
-
-  const handleDragLeave = useCallback(() => {
-    setDragOver(false);
-  }, []);
-
-  const handleDrop = useCallback((e) => {
-    e.preventDefault();
-    setDragOver(false);
-    const fromIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
-    if (fromIndex !== index) {
-      onMove(fromIndex, index);
-    }
-    setIsDragging(false);
-  }, [index, onMove]);
-
-  return (
-    <div 
-      className={`chapter-item ${isActive ? 'active' : ''} ${dragOver ? 'drag-over' : ''} ${isDragging ? 'dragging' : ''}`}
-      onClick={() => onSelect(chapter.id)}
-      draggable
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-    >
-      <div className="chapter-item-header">
-        <span className="chapter-drag-handle" title="Arrastrar">⋮⋮</span>
-        <span className={`item-type-badge ${chapter.type === 'section' ? 'section-badge' : 'chapter-badge'}`}>
-          {chapter.type === 'section' ? 'Sección' : 'Cap.'}
-        </span>
-        <input 
-          className="chapter-item-title-input"
-          value={chapter.title}
-          onChange={(e) => onTitleChange(chapter.id, e.target.value)}
-          onClick={(e) => e.stopPropagation()}
-          onFocus={(e) => e.stopPropagation()}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              e.target.blur();
-            }
-          }}
-          onBlur={(e) => {
-            if (!e.target.value.trim()) {
-              onTitleChange(chapter.id, 'Sin título');
-            }
-          }}
-        />
-        <div className="reorder-buttons">
-          <button 
-            className="btn-reorder"
-            onClick={(e) => {
-              e.stopPropagation();
-              onMove(index, index - 1);
-            }}
-            disabled={index === 0}
-            title="Subir"
-          >
-            ↑
-          </button>
-          <button 
-            className="btn-reorder"
-            onClick={(e) => {
-              e.stopPropagation();
-              onMove(index, index + 1);
-            }}
-            disabled={index === totalChapters - 1}
-            title="Bajar"
-          >
-            ↓
-          </button>
-        </div>
-        <button 
-          className="btn-delete-item" 
-          onClick={(e) => {
-            e.stopPropagation();
-            if (confirm(`¿Eliminar "${chapter.title}"?`)) {
-              onDelete(chapter.id);
-            }
-          }}
-          aria-label="Eliminar"
-        >
-          ✕
-        </button>
-      </div>
-      <span className="chapter-item-meta">{chapter.wordCount} palabras</span>
-    </div>
-  );
-});
 
 export default memo(SidebarLeft);

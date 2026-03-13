@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getNextPlan } from '../services/subscriptions';
+import { getNextPlan } from '../../services/subscriptions';
 import './UpgradeModal.css';
 
 const UPGRADE_MESSAGES = {
