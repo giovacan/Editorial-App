@@ -211,6 +211,10 @@ const mergeIntoOne = (htmlA, htmlB) => {
       // Use elA's outerHTML to preserve the original paragraph's styles
       // (especially text-indent). elB is typically a continuation with text-indent:0.
       elA.innerHTML = elA.innerHTML + ' ' + elB.innerHTML;
+      // Merged paragraph is complete — reset text-align-last to left.
+      // The first chunk may have had justify (for split continuity) but
+      // after reunification the last line must be left-aligned.
+      elA.style.textAlignLast = 'left';
       return elA.outerHTML;
     }
   } catch (e) {
