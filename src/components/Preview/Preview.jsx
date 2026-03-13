@@ -110,8 +110,9 @@ function Preview() {
     if (pages[0]?.html) console.log('[PREVIEW] Primera página HTML:', pages[0].html.slice(0, 150));
   }, [pages, config?.chapterTitle?.layout]);
 
-  const paginationProgress = useEditorStore((s) => s.paginationProgress);
-  const isPaginationRunning = paginationProgress > 0 && paginationProgress < 100;
+  const paginationProgressObj = useEditorStore((s) => s.paginationProgress);
+  const isPaginationRunning = paginationProgressObj?.isActive ?? false;
+  const paginationPercent = paginationProgressObj?.percent ?? 0;
   const totalPageCount = pages.length;
 
   const gutterValue = safeConfig.gutterStrategy === 'custom'
@@ -186,7 +187,7 @@ function Preview() {
     position: 'absolute',
     ...(pageNumberPos === 'top' ? { top: `${pageNumY}px` } : { bottom: `${pageNumY}px` }),
     ...pageNumHorizontalStyle,
-    fontSize: `${fontSize * 0.8}pt`
+    fontSize: `${fontSize * 0.8}px`
   };
 
   const pageNumHtml = showPageNumber ? (
@@ -220,7 +221,7 @@ function Preview() {
         <PreviewDebugPanel config={config} onChange={setConfig} onClose={() => setShowDebugPanel(false)} />
       )}
 
-      <PaginationProgressBar progress={paginationProgress} isVisible={isPaginationRunning} compact={false} />
+      <PaginationProgressBar progress={paginationPercent} isVisible={isPaginationRunning} compact={false} />
 
       <div className="preview-scroll" ref={previewScrollRef}>
         <div
