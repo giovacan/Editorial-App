@@ -404,12 +404,12 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
           && orphanLines >= 1
           && widowLines >= 2;
         // Underfill prevention: when rejecting would waste ≥4 lines (>15% page),
-        // accept even 1-line widows as long as orphans are solid (≥3).
-        // A 1-line widow on the next page is better than 40% empty on this page.
+        // accept split with relaxed constraints. Requires ≥2 widow lines to avoid
+        // typographic orphans at page top. The fill-pass handles remaining cases.
         const meetsUnderfill = !meetsStrict && !meetsRelaxed && !meetsAggressive
           && remainingLines >= 4
-          && orphanLines >= 3
-          && widowLines >= 1;
+          && orphanLines >= 2
+          && widowLines >= 2;
 
         if (meetsStrict || meetsRelaxed || meetsAggressive || meetsUnderfill) {
           if (process.env.NODE_ENV === 'development' && (meetsAggressive || meetsUnderfill)) {
