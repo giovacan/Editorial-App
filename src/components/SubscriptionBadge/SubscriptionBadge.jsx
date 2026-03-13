@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { useSubscription } from '../hooks/useSubscription';
+import { useSubscription } from '../../hooks/useSubscription';
 import './SubscriptionBadge.css';
 
 export function SubscriptionBadge() {
