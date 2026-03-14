@@ -172,7 +172,12 @@ const splitInTwo = (
 
   if (fullPageSplit.length >= 2) {
     const pageChunk = fullPageSplit[0];
-    const restChunk = fullPageSplit[1];
+    // Merge ALL remaining chunks — not just [1].
+    // splitParagraphByLines can return 3+ chunks for very long paragraphs.
+    let restChunk = fullPageSplit[1];
+    for (let k = 2; k < fullPageSplit.length; k++) {
+      restChunk = mergeIntoOne(restChunk, fullPageSplit[k]);
+    }
 
     const fitSplit = splitParagraphByLines(
       pageChunk, measureDiv, remainingSpace,
@@ -183,7 +188,11 @@ const splitInTwo = (
     if (fitSplit.length < 2) {
       return [firstChunk, restChunk];
     }
-    const leftover = fitSplit[1];
+    // Merge leftover from fitSplit with the rest
+    let leftover = fitSplit[1];
+    for (let k = 2; k < fitSplit.length; k++) {
+      leftover = mergeIntoOne(leftover, fitSplit[k]);
+    }
     const mergedRest = mergeIntoOne(leftover, restChunk);
     return [firstChunk, mergedRest];
   }
@@ -194,7 +203,12 @@ const splitInTwo = (
   );
 
   if (directSplit.length < 2) return null;
-  return [directSplit[0], directSplit[1]];
+  // Merge all chunks after [0] into a single "rest"
+  let rest = directSplit[1];
+  for (let k = 2; k < directSplit.length; k++) {
+    rest = mergeIntoOne(rest, directSplit[k]);
+  }
+  return [directSplit[0], rest];
 };
 
 /**
@@ -547,22 +561,15 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
         const widowLines = Math.floor(measure(restChunk) / lineHeightPx);
 
         const meetsStrict = orphanLines >= minOrphanLines && widowLines >= minWidowLines;
-        // Relaxed: accept if at least 2 orphan + 2 widow lines and
-        // rejecting would waste significant space (≥2 lines of remaining room).
         const meetsRelaxed = !meetsStrict
           && remainingLines >= 2
           && orphanLines >= 2
           && widowLines >= 2;
-        // Extra aggressive for title pages — accept split with just 1 orphan
-        // line if rejecting would leave 50%+ of the page empty
         const meetsAggressive = !meetsStrict && !meetsRelaxed
           && pageHasTitle
           && remainingLines >= 2
           && orphanLines >= 1
           && widowLines >= 2;
-        // Underfill prevention: when rejecting would waste ≥4 lines (>15% page),
-        // accept split with relaxed constraints. Requires ≥2 widow lines to avoid
-        // typographic orphans at page top. The fill-pass handles remaining cases.
         const meetsUnderfill = !meetsStrict && !meetsRelaxed && !meetsAggressive
           && remainingLines >= 4
           && orphanLines >= 2
