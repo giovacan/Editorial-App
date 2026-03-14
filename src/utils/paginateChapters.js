@@ -520,10 +520,13 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
       }
     }
 
-    // Try splitting (DIV is included because buildParagraphHtml wraps it as <p>)
+    // Only split paragraphs that are LONGER than a full page.
+    // Shorter paragraphs that don't fit get pushed to the next page intact,
+    // preserving reading coherence across page breaks.
     const canSplit = splitLongParagraphs
       && (el.tag === 'P' || el.tag === 'DIV' || el.tag === 'BLOCKQUOTE')
-      && remainingLines >= 1;
+      && remainingLines >= 1
+      && elHeight > contentHeight;
 
     if (canSplit) {
       const hasIndent = el.tag === 'P';
@@ -760,8 +763,10 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
         continue;
       }
 
-      // Element doesn't fit whole — try splitting
-      if (!splitLongParagraphs || isHeader || tag === 'UL' || tag === 'OL') break;
+      // Element doesn't fit whole — only split if it's longer than a full page
+      const firstElHeight = measure(firstElHtml);
+      if (!splitLongParagraphs || isHeader || tag === 'UL' || tag === 'OL'
+        || firstElHeight <= contentHeight) break;
 
       // Detect if element is a continuation (text-indent:0) or fresh paragraph
       const isContChunk = /text-indent:\s*0[^.]/.test(firstElHtml);
