@@ -80,6 +80,9 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig) =>
   // Fill-pass with multi-pass convergence
   applyFillPass(allPages, layoutCtx, canvasCtx, measureDiv, safeConfig);
 
+  // Fix widows created by greedy/fill passes using lookback word-spacing + resplit
+  fixWidowsWithLookback(allPages, layoutCtx, canvasCtx, measureDiv, safeConfig);
+
   // E5: Fix orphaned headings left at bottom of pages after fill-pass
   fixHeadingsAtBottom(allPages, canvasCtx);
 
@@ -221,6 +224,136 @@ const mergeIntoOne = (htmlA, htmlB) => {
     // fallback
   }
   return htmlA + htmlB;
+};
+
+/**
+ * Inject or update word-spacing on an element's inline style.
+ * Uses setAttribute (not el.style) to preserve the `em` unit in serialized HTML,
+ * which extractStyles() in textLayoutEngine reads back correctly.
+ *
+ * @private
+ * @param {string} elementHtml - Outer HTML of a single element
+ * @param {number} wordSpacingEm - Value in em (e.g. -0.02)
+ * @returns {string} Updated outer HTML
+ */
+const injectWordSpacing = (elementHtml, wordSpacingEm) => {
+  const div = document.createElement('div');
+  div.innerHTML = elementHtml;
+  const el = div.firstElementChild;
+  if (!el) return elementHtml;
+  const style = (el.getAttribute('style') || '').replace(/word-spacing:[^;]+;?/gi, '').trim();
+  const sep = style && !style.endsWith(';') ? ';' : '';
+  el.setAttribute('style', `${style}${sep}word-spacing:${wordSpacingEm}em;`);
+  return el.outerHTML;
+};
+
+/**
+ * TeX-inspired lookback micro-adjustment.
+ *
+ * When a page break would produce a bad result (element almost fits, or split
+ * creates a widow < 2 lines), this function tries tightening word-spacing on
+ * paragraphs already placed on the current page to reclaim 1-2 lines of space.
+ *
+ * Only adjusts <p> elements (never headings, lists, blockquotes).
+ * Steps are imperceptible: -0.01em to -0.03em (~3-7% tighter than normal).
+ *
+ * @private
+ * @param {string} currentHtml - HTML of all elements on current page so far
+ * @param {object} canvasCtx - Canvas layout context
+ * @param {number} lineHeightPx
+ * @param {number} linesNeeded - How many lines we need to reclaim (1 or 2)
+ * @param {number} pageNum - For logging
+ * @returns {{ success: boolean, adjustedHtml?: string, linesGained?: number }}
+ */
+const tryLookbackAdjust = (currentHtml, canvasCtx, lineHeightPx, linesNeeded, pageNum) => {
+  if (!currentHtml) return { success: false };
+
+  const measure = (html) => measureHtmlHeight(html, canvasCtx);
+  const originalHeight = measure(currentHtml);
+  const div = document.createElement('div');
+  div.innerHTML = currentHtml;
+  const children = Array.from(div.children);
+
+  // Build candidate list: only <p>, no headings/lists/blockquotes, no existing word-spacing
+  const candidates = [];
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i];
+    if (child.tagName !== 'P') continue;
+    if (/word-spacing:/i.test(child.getAttribute('style') || '')) continue;
+    const lines = Math.floor(measure(child.outerHTML) / lineHeightPx);
+    if (lines < 2) continue; // Need at least 2 lines
+    candidates.push({ index: i, html: child.outerHTML, lines });
+  }
+
+  if (candidates.length === 0) return { success: false };
+
+  // Sort by line count descending (longer paragraphs more likely to gain a line)
+  candidates.sort((a, b) => b.lines - a.lines);
+  const topCandidates = candidates.slice(0, 5);
+
+  // Tightening steps: -0.01em to -0.05em (~3-10% tighter). At body text
+  // sizes this range is imperceptible — TeX allows up to -33%.
+  const steps = [-0.01, -0.02, -0.03, -0.04, -0.05];
+
+  // Strategy 1: Single paragraph adjustment (minimal visual impact)
+  for (const step of steps) {
+    for (const cand of topCandidates) {
+      const adjusted = injectWordSpacing(cand.html, step);
+      const newLines = Math.floor(measure(adjusted) / lineHeightPx);
+      const gained = cand.lines - newLines;
+
+      if (gained >= linesNeeded) {
+        children[cand.index].outerHTML = adjusted;
+        const adjustedHtml = div.innerHTML;
+
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[LOOKBACK] p${pageNum}: adjusted P#${cand.index} (${cand.lines}→${newLines} lines, ws:${step}em, gained:${gained})`);
+        }
+
+        return { success: true, adjustedHtml, linesGained: gained };
+      }
+    }
+  }
+
+  // Strategy 2: Cumulative adjustment — apply same step to ALL candidates.
+  // Individual paragraphs may each gain < 1 line (rounded to 0), but together
+  // the accumulated pixel savings can reclaim 1+ full lines.
+  // This is critical for early pages (title pages) with few short paragraphs.
+  const candidateIndexSet = new Set(topCandidates.map(c => c.index));
+
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[LOOKBACK-FAIL-S1] p${pageNum}: single-paragraph strategy failed (${candidates.length} candidates, top lines: ${topCandidates.map(c => c.lines).join(',')})`);
+  }
+
+  for (const step of steps) {
+    const parts = [];
+    for (let i = 0; i < children.length; i++) {
+      if (candidateIndexSet.has(i)) {
+        const cand = topCandidates.find(c => c.index === i);
+        parts.push(injectWordSpacing(cand.html, step));
+      } else {
+        parts.push(children[i].outerHTML);
+      }
+    }
+
+    const attemptHtml = parts.join('');
+    const newHeight = measure(attemptHtml);
+    const gainedPx = originalHeight - newHeight;
+    const gainedLines = Math.floor(gainedPx / lineHeightPx);
+
+    if (gainedLines >= linesNeeded) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[LOOKBACK-CUM] p${pageNum}: adjusted ${topCandidates.length} paragraphs (${originalHeight.toFixed(1)}→${newHeight.toFixed(1)}px, gained:${gainedLines} lines, ws:${step}em)`);
+      }
+      return { success: true, adjustedHtml: attemptHtml, linesGained: gainedLines };
+    }
+  }
+
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[LOOKBACK-FAIL] p${pageNum}: all strategies failed, needed ${linesNeeded} lines`);
+  }
+
+  return { success: false };
 };
 
 /**
@@ -369,6 +502,24 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
     const remainingSpace = contentHeight - actualCurrentHeight;
     const remainingLines = Math.floor(remainingSpace / lineHeightPx);
 
+    // LOOKBACK Point A — element almost fits (overflow ≤ 3 lines).
+    // Try tightening word-spacing on previous paragraphs to reclaim space
+    // so the current element can be absorbed without splitting.
+    // Threshold of 3 allows cumulative strategy to work on pages with several
+    // short paragraphs (e.g. title pages, early chapters).
+    const elHeight = measure(el.html);
+    const overflowLines = Math.ceil((elHeight - remainingSpace) / lineHeightPx);
+    if (overflowLines > 0 && overflowLines <= 3) {
+      const lb = tryLookbackAdjust(currentHtml, canvasCtx, lineHeightPx, overflowLines, pages.length + 1);
+      if (lb.success) {
+        const totalWithEl = measure(lb.adjustedHtml + el.html);
+        if (totalWithEl <= contentHeight) {
+          currentHtml = lb.adjustedHtml + el.html;
+          continue;
+        }
+      }
+    }
+
     // Try splitting (DIV is included because buildParagraphHtml wraps it as <p>)
     const canSplit = splitLongParagraphs
       && (el.tag === 'P' || el.tag === 'DIV' || el.tag === 'BLOCKQUOTE')
@@ -425,6 +576,38 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
           pushPage(currentHtml + firstChunk);
           currentHtml = restChunk;
           continue;
+        }
+      }
+
+      // LOOKBACK Point B — split was rejected because of bad widow (< 2 lines).
+      // Try tightening previous paragraphs to gain 1 line of space, then re-split.
+      if (splitResult) {
+        const [, rejectedRest] = splitResult;
+        const rejectedWidow = Math.floor(measure(rejectedRest) / lineHeightPx);
+        if (rejectedWidow >= 1 && rejectedWidow < minWidowLines) {
+          const lb = tryLookbackAdjust(currentHtml, canvasCtx, lineHeightPx, 1, pages.length + 1);
+          if (lb.success) {
+            const newRemaining = contentHeight - measure(lb.adjustedHtml);
+            const newSplit = splitInTwo(
+              el.html, measureDiv, canvasCtx, newRemaining, contentHeight,
+              textAlign, hasIndent, indentValue, preserveIndent, quoteOptions
+            );
+            if (newSplit) {
+              const [nFirst, nRest] = newSplit;
+              const nPageH = measure(lb.adjustedHtml + nFirst);
+              const nOrphan = Math.floor(nPageH / lineHeightPx)
+                - Math.floor(measure(lb.adjustedHtml) / lineHeightPx);
+              const nWidow = Math.floor(measure(nRest) / lineHeightPx);
+              if (nOrphan >= minOrphanLines && nWidow >= minWidowLines && nPageH <= contentHeight) {
+                if (process.env.NODE_ENV === 'development') {
+                  console.log(`[LOOKBACK-SPLIT] p${pages.length + 1}: improved split orphan=${nOrphan}, widow=${nWidow} (was widow=${rejectedWidow})`);
+                }
+                pushPage(lb.adjustedHtml + nFirst);
+                currentHtml = nRest;
+                continue;
+              }
+            }
+          }
         }
       }
     }
@@ -670,6 +853,212 @@ const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
     }
 
     page.html = div.innerHTML;
+  }
+};
+
+/**
+ * Post-pass: fix widows left after greedy + fill passes.
+ *
+ * Scans for pages that start with a continuation chunk (text-indent:0)
+ * shorter than minWidowLines.
+ *
+ * Strategy 1 — Lookback: tighten word-spacing on previous page paragraphs
+ *   to reclaim space, then absorb the widow back (merge with original paragraph).
+ *
+ * Strategy 2 — Unsplit: merge the split chunks back and move the whole
+ *   paragraph to the current page. Accepts slight underfill on prev page.
+ *
+ * Strategy 3 — Resplit: merge chunks back, then re-split with 1 fewer orphan
+ *   line on the previous page, giving the widow 1 more line (1 → 2). This is
+ *   the most reliable strategy — it directly shifts the split point without
+ *   depending on word-spacing granularity at small preview scales.
+ *
+ * @private
+ */
+const fixWidowsWithLookback = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
+  const { contentHeight, lineHeightPx, minWidowLines, minOrphanLines,
+    textAlign, baseFontSize, baseLineHeight } = layoutCtx;
+  const measure = (html) => measureHtmlHeight(html, canvasCtx);
+
+  const quoteOptions = {
+    config: safeConfig.quote || {
+      enabled: true, indentLeft: 2, indentRight: 2, showLine: true,
+      italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1
+    },
+    baseFontSize, baseLineHeight, textAlign, lineHeightPx
+  };
+
+  for (let i = 1; i < pages.length; i++) {
+    const page = pages[i];
+    if (!page || page.isBlank || !page.html) continue;
+
+    const tmp = document.createElement('div');
+    tmp.innerHTML = page.html;
+    const firstEl = tmp.firstElementChild;
+    if (!firstEl || firstEl.tagName !== 'P') continue;
+
+    // Detect continuation chunk (text-indent:0 = split remainder)
+    const firstStyle = firstEl.getAttribute('style') || '';
+    const isContinuation = /text-indent:\s*0/.test(firstStyle);
+    if (!isContinuation) continue;
+
+    const widowLines = Math.floor(measure(firstEl.outerHTML) / lineHeightPx);
+    if (widowLines >= minWidowLines || widowLines < 1) continue;
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[WIDOW-DETECT] p${i + 1}: found ${widowLines}-line widow at top`);
+    }
+
+    // Found a widow — try strategies on previous page
+    const prevPage = pages[i - 1];
+    if (!prevPage || prevPage.isBlank || !prevPage.html) continue;
+    if (prevPage.chapterTitle !== page.chapterTitle) continue;
+
+    // --- Strategy 1: Lookback (tighten word-spacing on prev page) ---
+    const lb = tryLookbackAdjust(prevPage.html, canvasCtx, lineHeightPx, 1, i);
+    if (lb.success) {
+      const combinedHeight = measure(lb.adjustedHtml + firstEl.outerHTML);
+      if (combinedHeight <= contentHeight) {
+        const prevDiv = document.createElement('div');
+        prevDiv.innerHTML = lb.adjustedHtml;
+        const lastPrev = prevDiv.lastElementChild;
+
+        if (lastPrev && lastPrev.tagName === 'P') {
+          const merged = mergeIntoOne(lastPrev.outerHTML, firstEl.outerHTML);
+          lastPrev.outerHTML = merged;
+
+          const mergedHeight = measure(prevDiv.innerHTML);
+          if (mergedHeight <= contentHeight) {
+            firstEl.remove();
+            const remainingHtml = tmp.innerHTML.trim();
+
+            pages[i - 1] = { ...prevPage, html: prevDiv.innerHTML };
+            pages[i] = remainingHtml
+              ? { ...page, html: remainingHtml }
+              : { ...page, html: '', isBlank: true };
+
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`[LOOKBACK-WIDOW] p${i + 1}: absorbed ${widowLines}-line widow into p${i}`);
+            }
+            continue;
+          }
+        }
+      }
+    }
+
+    // --- Helper: find split first-chunk on previous page ---
+    const prevDiv2 = document.createElement('div');
+    prevDiv2.innerHTML = prevPage.html;
+    const lastPrev2 = prevDiv2.lastElementChild;
+    const isSplitChunk = lastPrev2 && lastPrev2.tagName === 'P'
+      && /text-align-last:\s*justify/i.test(lastPrev2.getAttribute('style') || '');
+
+    if (!isSplitChunk) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[WIDOW-UNFIXED] p${i + 1}: prev page last element is not a split chunk`);
+      }
+      continue;
+    }
+
+    // --- Strategy 2: Unsplit (move full paragraph to current page) ---
+    {
+      const merged = mergeIntoOne(lastPrev2.outerHTML, firstEl.outerHTML);
+      const prevWithout = (() => {
+        const d = document.createElement('div');
+        d.innerHTML = prevPage.html;
+        d.lastElementChild.remove();
+        return d.innerHTML.trim();
+      })();
+
+      const remainingCurrentHtml = (() => {
+        const d = document.createElement('div');
+        d.innerHTML = page.html;
+        d.firstElementChild.remove();
+        return d.innerHTML.trim();
+      })();
+
+      const newCurrentHtml = remainingCurrentHtml
+        ? merged + remainingCurrentHtml
+        : merged;
+
+      if (measure(newCurrentHtml) <= contentHeight) {
+        pages[i - 1] = { ...prevPage, html: prevWithout || '', isBlank: !prevWithout };
+        pages[i] = { ...page, html: newCurrentHtml };
+
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[WIDOW-UNSPLIT] p${i + 1}: unsplit ${widowLines}-line widow, moved paragraph from p${i}`);
+        }
+        continue;
+      }
+    }
+
+    // --- Strategy 3: Resplit with shifted split point ---
+    // Merge the split chunks back into the full paragraph, then re-split
+    // with 1 fewer line on the previous page. This gives the widow 1 more
+    // line (1 → 2), which passes the minimum widow constraint.
+    {
+      const merged = mergeIntoOne(lastPrev2.outerHTML, firstEl.outerHTML);
+
+      // Calculate space available on prev page without the split chunk
+      const prevWithout = (() => {
+        const d = document.createElement('div');
+        d.innerHTML = prevPage.html;
+        d.lastElementChild.remove();
+        return d.innerHTML.trim();
+      })();
+      const prevWithoutHeight = prevWithout ? measure(prevWithout) : 0;
+
+      // Reduce available space by 1 line → orphan loses 1 line, widow gains 1 line
+      const reducedSpace = contentHeight - prevWithoutHeight - lineHeightPx;
+
+      if (reducedSpace >= minOrphanLines * lineHeightPx) {
+        const isContChunk = /text-indent:\s*0[^.]/.test(lastPrev2.outerHTML);
+        const indentValue = safeConfig.paragraph?.firstLineIndent || 1.5;
+
+        const newSplit = splitInTwo(
+          merged, measureDiv, canvasCtx, reducedSpace, contentHeight,
+          textAlign, true, indentValue, isContChunk, quoteOptions
+        );
+
+        if (newSplit) {
+          const [newFirst, newRest] = newSplit;
+          const newOrphanH = measure(newFirst);
+          const newOrphan = Math.floor(newOrphanH / lineHeightPx);
+          const newWidow = Math.floor(measure(newRest) / lineHeightPx);
+
+          // Verify: orphan >= min, widow >= min, fits on prev page
+          if (newOrphan >= minOrphanLines && newWidow >= minWidowLines
+            && (prevWithoutHeight + newOrphanH) <= contentHeight) {
+
+            // Build new prev page: everything before split chunk + new first chunk
+            const newPrevHtml = prevWithout ? prevWithout + newFirst : newFirst;
+
+            // Build new current page: new rest chunk + remaining elements
+            const remainingCurrentHtml = (() => {
+              const d = document.createElement('div');
+              d.innerHTML = page.html;
+              d.firstElementChild.remove();
+              return d.innerHTML.trim();
+            })();
+            const newCurrentHtml = remainingCurrentHtml
+              ? newRest + remainingCurrentHtml
+              : newRest;
+
+            pages[i - 1] = { ...prevPage, html: newPrevHtml };
+            pages[i] = { ...page, html: newCurrentHtml };
+
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`[WIDOW-RESPLIT] p${i + 1}: resplit orphan=${newOrphan} widow=${newWidow} (was widow=${widowLines})`);
+            }
+            continue;
+          }
+        }
+      }
+    }
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[WIDOW-UNFIXED] p${i + 1}: could not fix ${widowLines}-line widow`);
+    }
   }
 };
 
