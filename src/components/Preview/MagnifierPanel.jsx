@@ -85,7 +85,6 @@ function MagnifierPanel({
             overflowWrap: 'break-word',
             background: 'white',
             boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-            overflow: 'hidden',
             boxSizing: 'border-box',
             transform: `scale(${magScale}) translate(${tx / magScale}px, ${ty / magScale}px)`,
             transformOrigin: '0 0'

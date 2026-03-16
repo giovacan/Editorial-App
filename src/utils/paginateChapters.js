@@ -53,6 +53,31 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig) =>
     lineHeightPx: layoutCtx.lineHeightPx
   };
 
+  // Apply safety buffer ONCE — all pipeline stages use the same contentHeight.
+  // Canvas measureText() can undercount vs DOM rendering by a few pixels
+  // (font hinting, sub-pixel rounding, line-break differences).
+  // Half a line height (~5px at preview scale) is sufficient.
+  const safeContentHeight = layoutCtx.contentHeight - Math.ceil(layoutCtx.lineHeightPx * 0.5);
+
+  // Folio reserve: title pages reserve 1 lineHeight at bottom for page number.
+  // Computed once here, used by greedyPaginate + all post-passes.
+  const showPageNums = safeConfig.showPageNumbers !== false;
+  const pageNumAtBottom = (safeConfig.pageNumberPos || 'bottom') === 'bottom';
+  const folioReserve = (showPageNums && pageNumAtBottom) ? layoutCtx.lineHeightPx : 0;
+
+  const safeLayoutCtx = { ...layoutCtx, contentHeight: safeContentHeight, folioReserve };
+
+  // Log source text length for integrity comparison
+  if (process.env.NODE_ENV === 'development') {
+    const div = document.createElement('div');
+    let srcTotal = 0;
+    for (const ch of chapters) {
+      div.innerHTML = ch.html || '';
+      srcTotal += (div.textContent || '').length;
+    }
+    console.log(`[INTEGRITY] source chapters: ${srcTotal} chars, ${chapters.length} chapters`);
+  }
+
   for (let i = 0; i < chapters.length; i++) {
     const chapter = chapters[i];
 
@@ -69,28 +94,54 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig) =>
       }
     }
 
-    const elements = flattenChapterElements(chapter, layoutCtx, canvasCtx, measureDiv, safeConfig);
-    const chapterPages = greedyPaginate(elements, layoutCtx, canvasCtx, measureDiv, safeConfig, chapter);
+    const elements = flattenChapterElements(chapter, safeLayoutCtx, canvasCtx, measureDiv, safeConfig);
+    const chapterPages = greedyPaginate(elements, safeLayoutCtx, canvasCtx, measureDiv, safeConfig, chapter);
+
+    if (process.env.NODE_ENV === 'development') {
+      const startPage = allPages.length + 1;
+      const blankCount = chapterPages.filter(p => p.isBlank).length;
+      console.log(`[CHAPTER-MAP] Ch${i + 1} "${(chapter.title || '').substring(0, 40)}" → pages ${startPage}-${startPage + chapterPages.length - 1} (${chapterPages.length} pages, ${blankCount} blank, ${elements.length} elements)`);
+    }
+
     allPages.push(...chapterPages);
   }
 
   // Re-number all pages sequentially
   allPages.forEach((p, i) => { p.pageNumber = i + 1; });
 
+  // Content integrity helper — counts total text characters across all pages
+  const countTotalText = (pages, label) => {
+    if (process.env.NODE_ENV !== 'development') return;
+    const div = document.createElement('div');
+    let total = 0;
+    for (const p of pages) {
+      if (!p || p.isBlank || !p.html) continue;
+      div.innerHTML = p.html;
+      total += (div.textContent || '').length;
+    }
+    console.log(`[INTEGRITY] ${label}: ${total} chars, ${pages.filter(p => p && !p.isBlank && p.html).length} pages`);
+  };
+
+  countTotalText(allPages, 'after greedyPaginate');
+
   // Fill-pass with multi-pass convergence
-  applyFillPass(allPages, layoutCtx, canvasCtx, measureDiv, safeConfig);
+  applyFillPass(allPages, safeLayoutCtx, canvasCtx, measureDiv, safeConfig);
+  countTotalText(allPages, 'after applyFillPass');
 
   // Fix widows created by greedy/fill passes using lookback word-spacing + resplit
-  fixWidowsWithLookback(allPages, layoutCtx, canvasCtx, measureDiv, safeConfig);
+  fixWidowsWithLookback(allPages, safeLayoutCtx, canvasCtx, measureDiv, safeConfig);
+  countTotalText(allPages, 'after fixWidows');
 
   // E5: Fix orphaned headings left at bottom of pages after fill-pass
-  fixHeadingsAtBottom(allPages, canvasCtx);
+  fixHeadingsAtBottom(allPages, canvasCtx, safeLayoutCtx);
+  countTotalText(allPages, 'after fixHeadings');
 
   // E6: Distribute remaining vertical whitespace proportionally among elements
-  distributeVerticalSpace(allPages, layoutCtx, canvasCtx);
+  distributeVerticalSpace(allPages, safeLayoutCtx, canvasCtx);
 
   // E4: Cleanup nearly-empty pages after fill pass
-  cleanupNearlyEmptyPages(allPages, layoutCtx, canvasCtx);
+  cleanupNearlyEmptyPages(allPages, safeLayoutCtx, canvasCtx);
+  countTotalText(allPages, 'after cleanup (FINAL)');
 
   // Re-number again after fill-pass may have emptied some pages
   let pageNum = 1;
@@ -167,7 +218,7 @@ const splitInTwo = (
 ) => {
   const fullPageSplit = splitParagraphByLines(
     elHtml, measureDiv, contentHeight,
-    textAlign, hasIndent, indentValue, preserveIndent, quoteOptions
+    textAlign, hasIndent, indentValue, preserveIndent, quoteOptions, canvasCtx
   );
 
   if (fullPageSplit.length >= 2) {
@@ -181,7 +232,7 @@ const splitInTwo = (
 
     const fitSplit = splitParagraphByLines(
       pageChunk, measureDiv, remainingSpace,
-      textAlign, hasIndent, indentValue, preserveIndent, quoteOptions
+      textAlign, hasIndent, indentValue, preserveIndent, quoteOptions, canvasCtx
     );
 
     const firstChunk = fitSplit[0];
@@ -199,7 +250,7 @@ const splitInTwo = (
 
   const directSplit = splitParagraphByLines(
     elHtml, measureDiv, remainingSpace,
-    textAlign, hasIndent, indentValue, preserveIndent, quoteOptions
+    textAlign, hasIndent, indentValue, preserveIndent, quoteOptions, canvasCtx
   );
 
   if (directSplit.length < 2) return null;
@@ -379,7 +430,7 @@ const tryLookbackAdjust = (currentHtml, canvasCtx, lineHeightPx, linesNeeded, pa
 const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, chapter) => {
   const {
     contentHeight, lineHeightPx, baseFontSize, baseLineHeight, textAlign,
-    minOrphanLines, minWidowLines, splitLongParagraphs
+    minOrphanLines, minWidowLines, splitLongParagraphs, folioReserve
   } = layoutCtx;
 
   const pages = [];
@@ -400,6 +451,9 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
   let currentFirstElementIndex = 0;
   let pageHasTitle = false;
 
+  // Effective content limit: reduced on title pages to prevent content touching folio
+  const getPageLimit = () => pageHasTitle ? contentHeight - folioReserve : contentHeight;
+
   const pushPage = (html, opts = {}) => {
     pages.push({
       html,
@@ -407,7 +461,7 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
       chapterTitle: chapter.title,
       isBlank: false,
       isTitleOnlyPage: opts.isTitleOnlyPage || false,
-      isFirstChapterPage: opts.isFirstChapterPage || false,
+      isFirstChapterPage: opts.isFirstChapterPage || pageHasTitle,
       currentSubheader,
       firstElementIndex: currentFirstElementIndex
     });
@@ -482,7 +536,7 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
         const subConfig = safeConfig.subheaders?.[level];
         const effectiveMinLines = Math.max(minOrphanLines, subConfig?.minLinesAfter || 3);
         const minFollowHeight = effectiveMinLines * lineHeightPx;
-        const spaceAfterSub = contentHeight - pageWithSub;
+        const spaceAfterSub = getPageLimit() - pageWithSub;
 
         // Check 1: Not enough space for minimum follow lines
         // Check 2: Next element is small enough to fit entirely — great.
@@ -503,17 +557,22 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
       }
     }
 
-    // Check if element fits
+    // Check if element fits (title pages use reduced limit for folio reserve)
+    const pageLimit = getPageLimit();
     const candidateHeight = measure(currentHtml + el.html);
 
-    if (candidateHeight <= contentHeight) {
+    if (process.env.NODE_ENV === 'development' && pageHasTitle && candidateHeight > pageLimit && candidateHeight <= contentHeight) {
+      console.log(`[FOLIO-RESERVE] p${pages.length + 1}: title page limit saved ${(contentHeight - pageLimit).toFixed(1)}px (element would fit without reserve)`);
+    }
+
+    if (candidateHeight <= pageLimit) {
       currentHtml += el.html;
       continue;
     }
 
     // Doesn't fit — measure current page height
     const actualCurrentHeight = measure(currentHtml);
-    const remainingSpace = contentHeight - actualCurrentHeight;
+    const remainingSpace = pageLimit - actualCurrentHeight;
     const remainingLines = Math.floor(remainingSpace / lineHeightPx);
 
     // LOOKBACK Point A — element almost fits (overflow ≤ 3 lines).
@@ -527,7 +586,7 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
       const lb = tryLookbackAdjust(currentHtml, canvasCtx, lineHeightPx, overflowLines, pages.length + 1);
       if (lb.success) {
         const totalWithEl = measure(lb.adjustedHtml + el.html);
-        if (totalWithEl <= contentHeight) {
+        if (totalWithEl <= pageLimit) {
           currentHtml = lb.adjustedHtml + el.html;
           continue;
         }
@@ -557,32 +616,76 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
         const orphanLines = Math.floor(pageWithChunkHeight / lineHeightPx)
           - Math.floor(actualCurrentHeight / lineHeightPx);
 
-        // Measure widow lines (Canvas)
+        // Measure widow lines (Canvas) + word count sanity check
+        // Canvas widthSlack can over-count lines for very short text,
+        // so also require a minimum word count to avoid 3-word widows.
         const widowLines = Math.floor(measure(restChunk) / lineHeightPx);
+        const widowText = (restChunk.replace(/<[^>]+>/g, '') || '').trim();
+        const widowWords = widowText.split(/\s+/).filter(w => w).length;
+        const MIN_WIDOW_WORDS = 6;
+        const widowOk = widowLines >= minWidowLines && widowWords >= MIN_WIDOW_WORDS;
 
-        const meetsStrict = orphanLines >= minOrphanLines && widowLines >= minWidowLines;
+        const meetsStrict = orphanLines >= minOrphanLines && widowOk;
         const meetsRelaxed = !meetsStrict
           && remainingLines >= 2
           && orphanLines >= 2
-          && widowLines >= 2;
+          && widowOk;
         const meetsAggressive = !meetsStrict && !meetsRelaxed
           && pageHasTitle
           && remainingLines >= 2
-          && orphanLines >= 1
-          && widowLines >= 2;
+          && orphanLines >= 2
+          && widowOk;
         const meetsUnderfill = !meetsStrict && !meetsRelaxed && !meetsAggressive
           && remainingLines >= 4
           && orphanLines >= 2
-          && widowLines >= 2;
+          && widowOk;
 
         if (meetsStrict || meetsRelaxed || meetsAggressive || meetsUnderfill) {
           if (process.env.NODE_ENV === 'development' && (meetsAggressive || meetsUnderfill)) {
             const mode = meetsAggressive ? 'AGGRESSIVE' : 'UNDERFILL';
-            console.log(`[SPLIT-${mode}] p${pages.length + 1}: orphan=${orphanLines}, widow=${widowLines}, remaining=${remainingLines}, hasTitle=${pageHasTitle}`);
+            console.log(`[SPLIT-${mode}] p${pages.length + 1}: orphan=${orphanLines}, widow=${widowLines}, widowWords=${widowWords}, remaining=${remainingLines}, hasTitle=${pageHasTitle}`);
           }
           pushPage(currentHtml + firstChunk);
           currentHtml = restChunk;
           continue;
+        }
+
+        // Split rejected (bad widow) — retry with LESS space so widow gets more lines.
+        // E.g. 12-line paragraph with 11 lines free → 11/1 rejected → try 10/2, 9/3...
+        if (!widowOk && orphanLines >= minOrphanLines) {
+          let reducedAccepted = false;
+          for (let reduce = 1; reduce <= 3; reduce++) {
+            const reducedSpace = remainingSpace - (reduce * lineHeightPx);
+            if (reducedSpace < minOrphanLines * lineHeightPx) break;
+
+            const retry = splitInTwo(
+              el.html, measureDiv, canvasCtx, reducedSpace, contentHeight,
+              textAlign, hasIndent, indentValue, preserveIndent, quoteOptions
+            );
+            if (!retry) continue;
+
+            const [rFirst, rRest] = retry;
+            const rPageH = measure(currentHtml + rFirst);
+            if (rPageH > pageLimit) continue;
+
+            const rOrphan = Math.floor(rPageH / lineHeightPx)
+              - Math.floor(actualCurrentHeight / lineHeightPx);
+            const rWidow = Math.floor(measure(rRest) / lineHeightPx);
+            const rWidowText = (rRest.replace(/<[^>]+>/g, '') || '').trim();
+            const rWidowWords = rWidowText.split(/\s+/).filter(w => w).length;
+            const rWidowOk = rWidow >= minWidowLines && rWidowWords >= MIN_WIDOW_WORDS;
+
+            if (rOrphan >= minOrphanLines && rWidowOk) {
+              if (process.env.NODE_ENV === 'development') {
+                console.log(`[SPLIT-REDUCED] p${pages.length + 1}: reduced by ${reduce} lines → orphan=${rOrphan}, widow=${rWidow}`);
+              }
+              pushPage(currentHtml + rFirst);
+              currentHtml = rRest;
+              reducedAccepted = true;
+              break;
+            }
+          }
+          if (reducedAccepted) continue;
         }
       }
 
@@ -594,7 +697,7 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
         if (rejectedWidow >= 1 && rejectedWidow < minWidowLines) {
           const lb = tryLookbackAdjust(currentHtml, canvasCtx, lineHeightPx, 1, pages.length + 1);
           if (lb.success) {
-            const newRemaining = contentHeight - measure(lb.adjustedHtml);
+            const newRemaining = pageLimit - measure(lb.adjustedHtml);
             const newSplit = splitInTwo(
               el.html, measureDiv, canvasCtx, newRemaining, contentHeight,
               textAlign, hasIndent, indentValue, preserveIndent, quoteOptions
@@ -605,7 +708,8 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
               const nOrphan = Math.floor(nPageH / lineHeightPx)
                 - Math.floor(measure(lb.adjustedHtml) / lineHeightPx);
               const nWidow = Math.floor(measure(nRest) / lineHeightPx);
-              if (nOrphan >= minOrphanLines && nWidow >= minWidowLines && nPageH <= contentHeight) {
+              const nWidowWords = ((nRest.replace(/<[^>]+>/g, '') || '').trim().split(/\s+/).filter(w => w)).length;
+              if (nOrphan >= minOrphanLines && nWidow >= minWidowLines && nWidowWords >= 6 && nPageH <= pageLimit) {
                 if (process.env.NODE_ENV === 'development') {
                   console.log(`[LOOKBACK-SPLIT] p${pages.length + 1}: improved split orphan=${nOrphan}, widow=${nWidow} (was widow=${rejectedWidow})`);
                 }
@@ -639,7 +743,7 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
  */
 const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
   const { contentHeight, lineHeightPx, minOrphanLines, minWidowLines,
-    baseFontSize, baseLineHeight, textAlign, splitLongParagraphs } = layoutCtx;
+    baseFontSize, baseLineHeight, textAlign, splitLongParagraphs, folioReserve } = layoutCtx;
 
   const quoteOptions = {
     config: safeConfig.quote || {
@@ -652,6 +756,9 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
   // Helper: measure height using Canvas engine
   const measure = (html) => measureHtmlHeight(html, canvasCtx);
 
+  // Folio-aware content limit: title pages reserve space for page number
+  const pageLimit = (page) => page.isFirstChapterPage ? contentHeight - folioReserve : contentHeight;
+
   // E5: Two forward fill-passes to handle cascading fills
   // (page N fills from N+1, then N+1 can fill from N+2 on second pass)
   for (let pass = 0; pass < 2; pass++) {
@@ -659,9 +766,11 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
     if (i < 0 || i >= pages.length - 1) continue;
     if (pages[i].isBlank || pages[i].isTitleOnlyPage || !pages[i].html) continue;
 
+    const effectiveHeight = pageLimit(pages[i]);
+
     for (let attempt = 0; attempt < 30; attempt++) {
       const currentHtml = pages[i].html;
-      const remainingSpace = contentHeight - measure(currentHtml);
+      const remainingSpace = effectiveHeight - measure(currentHtml);
       const remainingLines = Math.floor(remainingSpace / lineHeightPx);
 
       if (remainingLines < minOrphanLines) {
@@ -697,13 +806,13 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
       // If next page starts with a header we can't move, try skipping to the page after
       if (isHeader) {
         const candidateWithHeader = measure(currentHtml + firstElHtml);
-        const spaceAfterHeader = contentHeight - candidateWithHeader;
+        const spaceAfterHeader = effectiveHeight - candidateWithHeader;
         const nextSibling = firstEl.nextElementSibling;
         const headerLevel = tag.toLowerCase();
         const headerSubConfig = safeConfig.subheaders?.[headerLevel];
         const effectiveMinFollowLines = Math.max(minOrphanLines, headerSubConfig?.minLinesAfter || minOrphanLines);
         const minFollowHeight = effectiveMinFollowLines * lineHeightPx;
-        const headerBlocked = candidateWithHeader > contentHeight
+        const headerBlocked = candidateWithHeader > effectiveHeight
           || (nextSibling && spaceAfterHeader < Math.min(measure(nextSibling.outerHTML), minFollowHeight));
         if (headerBlocked) {
           if (process.env.NODE_ENV === 'development') {
@@ -715,7 +824,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
 
       // Try fitting the whole element (Canvas measurement)
       const candidateFitHeight = measure(currentHtml + firstElHtml);
-      if (candidateFitHeight <= contentHeight) {
+      if (candidateFitHeight <= effectiveHeight) {
 
         firstEl.remove();
         const sourceHtml = tmp.innerHTML.trim();
@@ -729,7 +838,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
         // E3: Quality gate — reject only if move creates a serious violation
         // (heading at bottom or single-line orphan/widow on source page)
         if (sourceHtml) {
-          const qSource = evaluatePageQualityCanvas(sourceHtml, contentHeight, lineHeightPx, canvasCtx);
+          const qSource = evaluatePageQualityCanvas(sourceHtml, effectiveHeight, lineHeightPx, canvasCtx);
           if (qSource.violations.includes('heading_at_bottom')
             || qSource.violations.includes('orphan')
             || qSource.violations.includes('widow')) {
@@ -783,8 +892,13 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
 
       const [chunk, rest] = splitResult;
 
+      // Check rest chunk has enough words to avoid short widows
+      const restText = (rest.replace(/<[^>]+>/g, '') || '').trim();
+      const restWords = restText.split(/\s+/).filter(w => w).length;
+      if (restWords < 6) break; // MIN_WIDOW_WORDS
+
       const chunkFitHeight = measure(currentHtml + chunk);
-      if (chunkFitHeight > contentHeight) break;
+      if (chunkFitHeight > effectiveHeight) break;
 
       const chunkLines = Math.floor(measure(chunk) / lineHeightPx);
 
@@ -802,7 +916,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
       if (newSourceLines < minWidowLines) break;
 
       // E3b: Quality gate on split result — don't create heading_at_bottom on source
-      const qSplitSource = evaluatePageQualityCanvas(newSourceHtml, contentHeight, lineHeightPx, canvasCtx);
+      const qSplitSource = evaluatePageQualityCanvas(newSourceHtml, effectiveHeight, lineHeightPx, canvasCtx);
       if (qSplitSource.violations.includes('heading_at_bottom')) break;
 
       pages[i] = { ...pages[i], html: currentHtml + chunk };
@@ -859,7 +973,14 @@ const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
       el.style.marginBottom = `${(existing + perGap).toFixed(1)}px`;
     }
 
-    page.html = div.innerHTML;
+    // Safety: verify the adjusted page doesn't exceed contentHeight
+    const adjustedHtml = div.innerHTML;
+    const adjustedHeight = measure(adjustedHtml);
+    if (adjustedHeight > contentHeight) {
+      // Revert — don't risk overflow
+      continue;
+    }
+    page.html = adjustedHtml;
   }
 };
 
@@ -884,8 +1005,11 @@ const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
  */
 const fixWidowsWithLookback = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
   const { contentHeight, lineHeightPx, minWidowLines, minOrphanLines,
-    textAlign, baseFontSize, baseLineHeight } = layoutCtx;
+    textAlign, baseFontSize, baseLineHeight, folioReserve } = layoutCtx;
   const measure = (html) => measureHtmlHeight(html, canvasCtx);
+
+  // Folio-aware content limit: title pages reserve space for page number
+  const pageLimitFor = (page) => page.isFirstChapterPage ? contentHeight - folioReserve : contentHeight;
 
   const quoteOptions = {
     config: safeConfig.quote || {
@@ -921,11 +1045,14 @@ const fixWidowsWithLookback = (pages, layoutCtx, canvasCtx, measureDiv, safeConf
     if (!prevPage || prevPage.isBlank || !prevPage.html) continue;
     if (prevPage.chapterTitle !== page.chapterTitle) continue;
 
+    const prevLimit = pageLimitFor(prevPage);
+    const currLimit = pageLimitFor(page);
+
     // --- Strategy 1: Lookback (tighten word-spacing on prev page) ---
     const lb = tryLookbackAdjust(prevPage.html, canvasCtx, lineHeightPx, 1, i);
     if (lb.success) {
       const combinedHeight = measure(lb.adjustedHtml + firstEl.outerHTML);
-      if (combinedHeight <= contentHeight) {
+      if (combinedHeight <= prevLimit) {
         const prevDiv = document.createElement('div');
         prevDiv.innerHTML = lb.adjustedHtml;
         const lastPrev = prevDiv.lastElementChild;
@@ -935,7 +1062,7 @@ const fixWidowsWithLookback = (pages, layoutCtx, canvasCtx, measureDiv, safeConf
           lastPrev.outerHTML = merged;
 
           const mergedHeight = measure(prevDiv.innerHTML);
-          if (mergedHeight <= contentHeight) {
+          if (mergedHeight <= prevLimit) {
             firstEl.remove();
             const remainingHtml = tmp.innerHTML.trim();
 
@@ -988,7 +1115,7 @@ const fixWidowsWithLookback = (pages, layoutCtx, canvasCtx, measureDiv, safeConf
         ? merged + remainingCurrentHtml
         : merged;
 
-      if (measure(newCurrentHtml) <= contentHeight) {
+      if (measure(newCurrentHtml) <= currLimit) {
         pages[i - 1] = { ...prevPage, html: prevWithout || '', isBlank: !prevWithout };
         pages[i] = { ...page, html: newCurrentHtml };
 
@@ -1016,7 +1143,7 @@ const fixWidowsWithLookback = (pages, layoutCtx, canvasCtx, measureDiv, safeConf
       const prevWithoutHeight = prevWithout ? measure(prevWithout) : 0;
 
       // Reduce available space by 1 line → orphan loses 1 line, widow gains 1 line
-      const reducedSpace = contentHeight - prevWithoutHeight - lineHeightPx;
+      const reducedSpace = prevLimit - prevWithoutHeight - lineHeightPx;
 
       if (reducedSpace >= minOrphanLines * lineHeightPx) {
         const isContChunk = /text-indent:\s*0[^.]/.test(lastPrev2.outerHTML);
@@ -1032,10 +1159,12 @@ const fixWidowsWithLookback = (pages, layoutCtx, canvasCtx, measureDiv, safeConf
           const newOrphanH = measure(newFirst);
           const newOrphan = Math.floor(newOrphanH / lineHeightPx);
           const newWidow = Math.floor(measure(newRest) / lineHeightPx);
+          const newWidowText = (newRest.replace(/<[^>]+>/g, '') || '').trim();
+          const newWidowWords = newWidowText.split(/\s+/).filter(w => w).length;
 
-          // Verify: orphan >= min, widow >= min, fits on prev page
-          if (newOrphan >= minOrphanLines && newWidow >= minWidowLines
-            && (prevWithoutHeight + newOrphanH) <= contentHeight) {
+          // Verify: orphan >= min, widow >= min + enough words, fits on prev page
+          if (newOrphan >= minOrphanLines && newWidow >= minWidowLines && newWidowWords >= 6
+            && (prevWithoutHeight + newOrphanH) <= prevLimit) {
 
             // Build new prev page: everything before split chunk + new first chunk
             const newPrevHtml = prevWithout ? prevWithout + newFirst : newFirst;
@@ -1050,6 +1179,14 @@ const fixWidowsWithLookback = (pages, layoutCtx, canvasCtx, measureDiv, safeConf
             const newCurrentHtml = remainingCurrentHtml
               ? newRest + remainingCurrentHtml
               : newRest;
+
+            // Safety: verify current page doesn't overflow
+            if (measure(newCurrentHtml) > currLimit) {
+              if (process.env.NODE_ENV === 'development') {
+                console.log(`[WIDOW-RESPLIT-SKIP] p${i + 1}: resplit would overflow current page`);
+              }
+              break;
+            }
 
             pages[i - 1] = { ...prevPage, html: newPrevHtml };
             pages[i] = { ...page, html: newCurrentHtml };
@@ -1076,7 +1213,14 @@ const fixWidowsWithLookback = (pages, layoutCtx, canvasCtx, measureDiv, safeConf
  *
  * @private
  */
-const fixHeadingsAtBottom = (pages, canvasCtx) => {
+const fixHeadingsAtBottom = (pages, canvasCtx, layoutCtx) => {
+  const measure = (html) => measureHtmlHeight(html, canvasCtx);
+  const contentHeight = layoutCtx?.contentHeight ?? Infinity;
+  const folioReserve = layoutCtx?.folioReserve ?? 0;
+
+  // Folio-aware content limit: title pages reserve space for page number
+  const pageLimitFor = (page) => page.isFirstChapterPage ? contentHeight - folioReserve : contentHeight;
+
   for (let i = 0; i < pages.length - 1; i++) {
     const page = pages[i];
     if (!page || page.isBlank || !page.html) continue;
@@ -1102,13 +1246,21 @@ const fixHeadingsAtBottom = (pages, canvasCtx) => {
     const next = pages[ni];
     if (page.chapterTitle !== next.chapterTitle) continue;
 
-    // Move heading to top of next page
+    // Move heading to top of next page — but only if it fits
     const headingHtml = last.outerHTML;
+    const newNextHtml = headingHtml + next.html;
+    if (measure(newNextHtml) > pageLimitFor(next)) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[HEADING-FIX-SKIP] p${i + 1}→p${ni + 1}: heading would overflow next page, skipping`);
+      }
+      continue;
+    }
+
     last.remove();
     const remainingHtml = div.innerHTML.trim();
 
     pages[i] = { ...page, html: remainingHtml, isBlank: !remainingHtml };
-    pages[ni] = { ...next, html: headingHtml + next.html };
+    pages[ni] = { ...next, html: newNextHtml };
 
     if (process.env.NODE_ENV === 'development') {
       console.log(`[HEADING-FIX] Moved orphaned heading from p${i + 1} to p${ni + 1}`);
@@ -1124,9 +1276,12 @@ const fixHeadingsAtBottom = (pages, canvasCtx) => {
  * @private
  */
 const cleanupNearlyEmptyPages = (pages, layoutCtx, canvasCtx) => {
-  const { contentHeight, lineHeightPx, minOrphanLines } = layoutCtx;
+  const { contentHeight, lineHeightPx, minOrphanLines, folioReserve } = layoutCtx;
   const measure = (html) => measureHtmlHeight(html, canvasCtx);
   const minContentThreshold = minOrphanLines * lineHeightPx * 0.5;
+
+  // Folio-aware content limit: title pages reserve space for page number
+  const pageLimitFor = (page) => page.isFirstChapterPage ? contentHeight - (folioReserve || 0) : contentHeight;
 
   for (let i = pages.length - 1; i > 0; i--) {
     const page = pages[i];
@@ -1141,7 +1296,7 @@ const cleanupNearlyEmptyPages = (pages, layoutCtx, canvasCtx) => {
 
     // Try merging into previous page
     const mergedHeight = measure(prevPage.html + page.html);
-    if (mergedHeight <= contentHeight) {
+    if (mergedHeight <= pageLimitFor(prevPage)) {
       pages[i - 1] = { ...prevPage, html: prevPage.html + page.html };
       page.html = '';
       page.isBlank = true;

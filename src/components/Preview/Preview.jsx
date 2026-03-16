@@ -1,4 +1,4 @@
-import { useRef, memo, useEffect, useState } from 'react';
+import { useRef, memo, useEffect, useState, useCallback } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import useEditorStore from '../../store/useEditorStore';
@@ -70,10 +70,7 @@ function Preview() {
     paragraphs.forEach(p => { p.style.wordSpacing = ''; });
   };
 
-  useEffect(() => {
-    adjustWordSpacing(previewContentRef.current);
-    adjustWordSpacing(magnifierContentRef.current);
-  });
+  // adjustWordSpacing effect moved below — needs currentPage and debugHtml
 
   const safeBookData = bookData || { bookType: 'novela', chapters: [], title: '' };
   const safeConfig = config || DEFAULT_CONFIG;
@@ -129,6 +126,11 @@ function Preview() {
   const debugHtml = debugConfig.enabled
     ? addDebugTags(currentPageData.html, debugConfig, safeConfig.paragraph)
     : currentPageData.html;
+
+  useEffect(() => {
+    adjustWordSpacing(previewContentRef.current);
+    adjustWordSpacing(magnifierContentRef.current);
+  }, [currentPage, debugHtml]);
 
   const isCurrentPageEven = currentPageData.pageNumber % 2 === 0;
   const isTitleOnlyPage = currentPageData.isTitleOnlyPage === true;
@@ -201,6 +203,15 @@ function Preview() {
     hasHeaderContent, headerHtml
   };
 
+  const [showOptMenu, setShowOptMenu] = useState(false);
+  const setPageOverride = useEditorStore(s => s.setPageOptimizationOverride);
+
+  const handlePageOptimize = useCallback((mode) => {
+    const pageNum = currentPageData.pageNumber;
+    setPageOverride(pageNum, mode);
+    setShowOptMenu(false);
+  }, [currentPageData.pageNumber, setPageOverride]);
+
   return (
     <div className="preview-wrapper">
       <PreviewControls
@@ -239,6 +250,25 @@ function Preview() {
           onMouseEnter={handleMouseEnterPreview}
           onMouseLeave={handleMouseLeavePreview}
         >
+          {!currentPageData.isBlank && (
+            <div className="page-optimize-wrapper">
+              <button
+                className="page-optimize-btn"
+                title="Optimizar esta página"
+                onClick={(e) => { e.stopPropagation(); setShowOptMenu(v => !v); }}
+              >
+                ⚡
+              </button>
+              {showOptMenu && (
+                <div className="page-optimize-menu">
+                  <button onClick={() => handlePageOptimize('consolidate')}>Consolidate</button>
+                  <button onClick={() => handlePageOptimize('fillPass')}>Fill Pass</button>
+                  <button onClick={() => handlePageOptimize('widowFix')}>Fix Widows</button>
+                  <button onClick={() => handlePageOptimize('headingFix')}>Fix Headings</button>
+                </div>
+              )}
+            </div>
+          )}
           {showHeaders && !currentPageData.isBlank && !skipHeader && hasHeaderContent && (
             <div className="preview-header" dangerouslySetInnerHTML={{ __html: headerHtml }} style={{ marginBottom: '0.5em' }} />
           )}

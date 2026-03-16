@@ -152,6 +152,7 @@ export const usePagination = (bookData, config, measureRef) => {
 
   const extraEndPages = safeConfig.extraEndPages || 0;
   const extraEndPagesNumbered = safeConfig.extraEndPagesNumbered || false;
+  const globalOptMode = useEditorStore(s => s.layoutOptimization?.globalMode ?? 'auto');
 
   // Gutter recalculation - NOT dependent on pages.length to avoid loops
   useEffect(() => {
@@ -233,7 +234,9 @@ export const usePagination = (bookData, config, measureRef) => {
       safeConfig.showPageNumbers, safeConfig.pageNumberPos, safeConfig.pageNumberAlign, safeConfig.pageNumberMargin,
       // other
       safeConfig.showHeaders, safeConfig.chaptersOnRight,
-      safeConfig.extraEndPages, safeConfig.extraEndPagesNumbered
+      safeConfig.extraEndPages, safeConfig.extraEndPagesNumbered,
+      // optimization mode
+      useEditorStore.getState().layoutOptimization?.globalMode || 'auto'
     ].join('|');
     const contentHash = JSON.stringify(safeBookData.chapters.map(ch => ch.id + (ch.html?.length || 0))) + '||' + layoutKey;
     console.log('📄 Hash de paginación:', contentHash.slice(-50), '| Layout:', safeConfig.chapterTitle?.layout);
@@ -358,12 +361,14 @@ export const usePagination = (bookData, config, measureRef) => {
       if (cancelled) return;
 
       let generatedPages;
+      const optimizationMode = useEditorStore.getState().layoutOptimization?.globalMode || 'auto';
       try {
         generatedPages = paginateChapters(
           safeBookData.chapters,
           layoutCtx,
           measureDiv,
-          safeConfig
+          safeConfig,
+          optimizationMode
         );
       } catch (e) {
         console.error('[PAGINATE] ERROR en paginateChapters:', e, e?.stack);
@@ -424,7 +429,8 @@ export const usePagination = (bookData, config, measureRef) => {
     safeConfig.marginBottom,
     safeConfig.marginLeft,
     safeConfig.marginRight,
-    safeConfig.marginStrategy
+    safeConfig.marginStrategy,
+    globalOptMode
   ]);
   
   const confirmedChapterTitles = useEditorStore(s => s.confirmedChapterTitles ?? []);

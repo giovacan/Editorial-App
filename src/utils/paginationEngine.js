@@ -1,25 +1,33 @@
 import { measureHtmlHeight, insertHtmlLineBreaks } from './textLayoutEngine';
 
-export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, hasIndent = false, indentValue = 1.5, preserveFirstIndent = false, quoteConfig = null) => {
+export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, hasIndent = false, indentValue = 1.5, preserveFirstIndent = false, quoteConfig = null, externalCanvasCtx = null) => {
 
-  // Build Canvas layout context from quoteConfig (passed from paginateChapters)
+  // These values are needed by getChunkStyle/getQuoteStyle regardless of canvasCtx source
   const effectiveBaseFontSize = quoteConfig?.baseFontSize || 12;
   const effectiveBaseLineHeight = quoteConfig?.baseLineHeight || 1.6;
   const effectiveTextAlign = quoteConfig?.textAlign || textAlign;
-  const PX_PER_PT = 96 / 72;
-  const baseFontSizePx = effectiveBaseFontSize * PX_PER_PT;
 
-  // Build canvasCtx for deterministic measurement
-  const effectiveContentWidth = measureDiv ? parseFloat(measureDiv.style?.width) || 400 : 400;
-  const justifySlack = effectiveTextAlign === 'justify' ? effectiveContentWidth * 0.02 : 0;
-  const canvasCtx = {
-    baseFontSizePx,
-    baseLineHeight: effectiveBaseLineHeight,
-    contentWidth: effectiveContentWidth,
-    fontFamily: measureDiv ? (measureDiv.style?.fontFamily || 'Georgia, serif') : 'Georgia, serif',
-    widthSlack: justifySlack,
-    lineHeightPx: quoteConfig?.lineHeightPx || Math.ceil(baseFontSizePx * effectiveBaseLineHeight)
-  };
+  // Use external Canvas context if provided (ensures identical measurement
+  // to greedyPaginate — eliminates rounding/construction discrepancies).
+  let canvasCtx;
+  if (externalCanvasCtx) {
+    canvasCtx = externalCanvasCtx;
+  } else {
+    // Build Canvas layout context from quoteConfig (legacy path)
+    const PX_PER_PT = 96 / 72;
+    const baseFontSizePx = effectiveBaseFontSize * PX_PER_PT;
+
+    const effectiveContentWidth = measureDiv ? parseFloat(measureDiv.style?.width) || 400 : 400;
+    const justifySlack = effectiveTextAlign === 'justify' ? effectiveContentWidth * 0.02 : 0;
+    canvasCtx = {
+      baseFontSizePx,
+      baseLineHeight: effectiveBaseLineHeight,
+      contentWidth: effectiveContentWidth,
+      fontFamily: measureDiv ? (measureDiv.style?.fontFamily || 'Georgia, serif') : 'Georgia, serif',
+      widthSlack: justifySlack,
+      lineHeightPx: quoteConfig?.lineHeightPx || Math.ceil(baseFontSizePx * effectiveBaseLineHeight)
+    };
+  }
 
   // Deterministic measure function (Canvas, no DOM layout)
   const measure = (htmlStr) => measureHtmlHeight(htmlStr, canvasCtx);
