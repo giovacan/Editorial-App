@@ -21,7 +21,8 @@ import {
 
 import {
   measureHtmlHeight,
-  createLayoutContext
+  createLayoutContext,
+  getLastLineWordCount
 } from './textLayoutEngine';
 
 /**
@@ -131,6 +132,10 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig) =>
   // Fix widows created by greedy/fill passes using lookback word-spacing + resplit
   fixWidowsWithLookback(allPages, safeLayoutCtx, canvasCtx, measureDiv, safeConfig);
   countTotalText(allPages, 'after fixWidows');
+
+  // Fix split chunks whose last line has too few words for justify
+  fixShortLastLines(allPages, safeLayoutCtx, canvasCtx, measureDiv, safeConfig);
+  countTotalText(allPages, 'after fixShortLastLines');
 
   // E5: Fix orphaned headings left at bottom of pages after fill-pass
   fixHeadingsAtBottom(allPages, canvasCtx, safeLayoutCtx);
@@ -1202,6 +1207,139 @@ const fixWidowsWithLookback = (pages, layoutCtx, canvasCtx, measureDiv, safeConf
 
     if (process.env.NODE_ENV === 'development') {
       console.log(`[WIDOW-UNFIXED] p${i + 1}: could not fix ${widowLines}-line widow`);
+    }
+  }
+};
+
+/**
+ * Post-pass: fix split paragraphs whose last line has too few words.
+ *
+ * When text-align-last:justify is applied to a split first-chunk and the
+ * last line has <= SHORT_LINE_THRESHOLD words, the justified spacing looks
+ * ugly (3 words stretched across the full width).
+ *
+ * Strategy: add inter-paragraph spacing between preceding elements on the
+ * same page to consume ~1 lineHeight of space, then re-split the paragraph
+ * with the reduced remaining space. The short last line gets pushed to the
+ * next page as part of the continuation chunk.
+ *
+ * @private
+ */
+const fixShortLastLines = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
+  const SHORT_LINE_THRESHOLD = 6; // Canvas/browser disagree by ±2 words; 6 catches browser≤4
+
+  const { contentHeight, lineHeightPx, minOrphanLines, minWidowLines,
+    textAlign, baseFontSize, baseLineHeight, folioReserve } = layoutCtx;
+  const measure = (html) => measureHtmlHeight(html, canvasCtx);
+  const MIN_WIDOW_WORDS = 6;
+
+  const pageLimitFor = (page) => page.isFirstChapterPage ? contentHeight - folioReserve : contentHeight;
+
+  const quoteOptions = {
+    config: safeConfig.quote || {
+      enabled: true, indentLeft: 2, indentRight: 2, showLine: true,
+      italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1
+    },
+    baseFontSize, baseLineHeight, textAlign, lineHeightPx
+  };
+
+  for (let i = 0; i < pages.length - 1; i++) {
+    const page = pages[i];
+    if (!page || page.isBlank || page.isTitleOnlyPage || page.isFirstChapterPage || !page.html) continue;
+
+    // 1. Parse page HTML
+    const div = document.createElement('div');
+    div.innerHTML = page.html;
+    const children = Array.from(div.children);
+    if (children.length < 2) continue; // Need at least 1 preceding element + split chunk
+
+    // 2. Check if last element is a split first-chunk (text-align-last: justify)
+    const lastEl = children[children.length - 1];
+    if (lastEl.tagName !== 'P') continue;
+    const lastStyle = lastEl.getAttribute('style') || '';
+    const isSplitChunk = /text-align-last:\s*justify/i.test(lastStyle);
+    if (!isSplitChunk) continue;
+
+    // 3. Count words on last line (Canvas estimate — unreliable but good enough for threshold)
+    const wordCount = getLastLineWordCount(lastEl.outerHTML, canvasCtx);
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[SHORT-LINE-SCAN] p${page.pageNumber}: lastLineWords=${wordCount}, children=${children.length}`);
+    }
+
+    if (wordCount === 0 || wordCount > SHORT_LINE_THRESHOLD) continue;
+
+    // 4. Find continuation on next page
+    let nextIdx = i + 1;
+    while (nextIdx < pages.length && pages[nextIdx]?.isBlank) nextIdx++;
+    if (nextIdx >= pages.length) continue;
+
+    const nextPage = pages[nextIdx];
+    if (!nextPage?.html || page.chapterTitle !== nextPage.chapterTitle) continue;
+
+    const nextDiv = document.createElement('div');
+    nextDiv.innerHTML = nextPage.html;
+    const firstNextEl = nextDiv.firstElementChild;
+    if (!firstNextEl || firstNextEl.tagName !== 'P') continue;
+    const nextStyle = firstNextEl.getAttribute('style') || '';
+    if (!/text-indent:\s*0/.test(nextStyle)) continue;
+
+    // 5. Measure old split chunk and calculate reduced space (1 line less)
+    const oldSplitHeight = measure(lastEl.outerHTML);
+    const oldOrphanLines = Math.floor(oldSplitHeight / lineHeightPx);
+    if (oldOrphanLines <= minOrphanLines) continue; // Can't reduce further
+
+    lastEl.remove();
+    const prevHtml = div.innerHTML;
+    const prevHeight = prevHtml ? measure(prevHtml) : 0;
+    const pageLimit = pageLimitFor(page);
+    const reducedSpace = pageLimit - prevHeight - lineHeightPx; // force 1 line less
+
+    if (reducedSpace < minOrphanLines * lineHeightPx) continue;
+
+    // 6. Merge split chunks and re-split with reduced space
+    const merged = mergeIntoOne(lastEl.outerHTML, firstNextEl.outerHTML);
+    const isContChunk = /text-indent:\s*0[^.]/.test(lastEl.outerHTML);
+    const indentValue = safeConfig.paragraph?.firstLineIndent || 1.5;
+
+    const newSplit = splitInTwo(
+      merged, measureDiv, canvasCtx, reducedSpace, contentHeight,
+      textAlign, true, indentValue, isContChunk, quoteOptions
+    );
+    if (!newSplit) continue;
+
+    // 7. Validate — line count must decrease, orphan/widow constraints must hold
+    const [newFirst, newRest] = newSplit;
+    const newOrphanLines = Math.floor(measure(newFirst) / lineHeightPx);
+    const newWidowLines = Math.floor(measure(newRest) / lineHeightPx);
+    const newWidowText = (newRest.replace(/<[^>]+>/g, '') || '').trim();
+    const newWidowWords = newWidowText.split(/\s+/).filter(w => w).length;
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[SHORT-LINE-EVAL] p${page.pageNumber}: oldLines=${oldOrphanLines}, newOrphan=${newOrphanLines}, newWidow=${newWidowLines}, newWidowWords=${newWidowWords}`);
+    }
+
+    if (newOrphanLines >= oldOrphanLines) continue; // Didn't actually reduce
+    if (newOrphanLines < minOrphanLines) continue;
+    if (newWidowLines < minWidowLines || newWidowWords < MIN_WIDOW_WORDS) continue;
+
+    // 8. Check current page doesn't overflow
+    const newPageHeight = measure(prevHtml + newFirst);
+    if (newPageHeight > pageLimit) continue;
+
+    // 9. Check next page doesn't overflow
+    firstNextEl.remove();
+    const remainingNextHtml = nextDiv.innerHTML.trim();
+    const newNextHtml = remainingNextHtml ? newRest + remainingNextHtml : newRest;
+    const nextLimit = pageLimitFor(nextPage);
+    if (measure(newNextHtml) > nextLimit) continue;
+
+    // 10. Apply — distributeVerticalSpace will fill the freed line cosmetically
+    pages[i] = { ...page, html: prevHtml + newFirst };
+    pages[nextIdx] = { ...nextPage, html: newNextHtml };
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[SHORT-LINE-FIX] p${page.pageNumber}: ${oldOrphanLines}->${newOrphanLines} lines (was ~${wordCount} words on last line)`);
     }
   }
 };

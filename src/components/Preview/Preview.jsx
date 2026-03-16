@@ -1,4 +1,4 @@
-import { useRef, memo, useEffect, useState, useCallback } from 'react';
+import { useRef, memo, useMemo, useEffect, useState, useCallback } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import useEditorStore from '../../store/useEditorStore';
@@ -127,11 +127,6 @@ function Preview() {
     ? addDebugTags(currentPageData.html, debugConfig, safeConfig.paragraph)
     : currentPageData.html;
 
-  useEffect(() => {
-    adjustWordSpacing(previewContentRef.current);
-    adjustWordSpacing(magnifierContentRef.current);
-  }, [currentPage, debugHtml]);
-
   const isCurrentPageEven = currentPageData.pageNumber % 2 === 0;
   const isTitleOnlyPage = currentPageData.isTitleOnlyPage === true;
   const effectiveGutter = layoutDims?.gutterValue ?? gutterValue;
@@ -152,8 +147,31 @@ function Preview() {
   const showNums = safeConfig.showPageNumbers !== false;
 
   const { showMagnifier, setShowMagnifier, magnifierZoom, setMagnifierZoom, magnifierPanelRef,
-    magnifierPos, updateMagnifierPosition, handleMouseEnterPreview, handleMouseLeavePreview,
-    handleMouseEnterMagnifier, handleMouseLeaveMagnifier } = useMagnifier(previewPageRef);
+    magnifierPosRef, magnifierPageRef, updateMagnifierPosition, handleMouseEnterPreview,
+    handleMouseLeavePreview, handleMouseEnterMagnifier, handleMouseLeaveMagnifier } = useMagnifier(previewPageRef);
+
+  // adjustWordSpacing + dev overflow check: only on page/content change
+  useEffect(() => {
+    adjustWordSpacing(previewContentRef.current);
+    if (process.env.NODE_ENV === 'development') {
+      const el = previewContentRef.current;
+      if (el) {
+        requestAnimationFrame(() => {
+          const overflow = el.scrollHeight - el.clientHeight;
+          if (overflow > 2) {
+            console.warn(`[OVERFLOW] Page ${currentPage + 1}: overflow=${overflow.toFixed(1)}px`);
+          }
+        });
+      }
+    }
+  }, [currentPage, debugHtml]);
+
+  // adjustWordSpacing on magnifier when it appears
+  useEffect(() => {
+    if (showMagnifier) {
+      requestAnimationFrame(() => adjustWordSpacing(magnifierContentRef.current));
+    }
+  }, [showMagnifier, currentPage, debugHtml]);
 
   const { showHeaders, headerLeft, headerCenter, headerRight, headerConfig } =
     useHeaderFooter(safeConfig, currentPageData, totalPages, safeBookData.title);
@@ -273,17 +291,7 @@ function Preview() {
             <div className="preview-header" dangerouslySetInnerHTML={{ __html: headerHtml }} style={{ marginBottom: '0.5em' }} />
           )}
           <div
-            ref={(el) => {
-              previewContentRef.current = el;
-              if (el && process.env.NODE_ENV === 'development') {
-                requestAnimationFrame(() => {
-                  const overflow = el.scrollHeight - el.clientHeight;
-                  if (overflow > 2) {
-                    console.warn(`[OVERFLOW] Page ${currentPage + 1}: overflow=${overflow.toFixed(1)}px (${(overflow / lineHeightPx).toFixed(1)} lines)`);
-                  }
-                });
-              }
-            }}
+            ref={previewContentRef}
             className="preview-content"
             style={{ height: `${effectiveContentHeight}px` }}
             dangerouslySetInnerHTML={{ __html: debugHtml || '' }}
@@ -296,9 +304,10 @@ function Preview() {
         <MagnifierPanel
           {...sharedPageProps}
           magnifierPanelRef={magnifierPanelRef}
+          magnifierPageRef={magnifierPageRef}
           magnifierContentRef={magnifierContentRef}
           magnifierZoom={magnifierZoom}
-          magnifierPos={magnifierPos}
+          magnifierPosRef={magnifierPosRef}
           handleMouseEnterMagnifier={handleMouseEnterMagnifier}
           handleMouseLeaveMagnifier={handleMouseLeaveMagnifier}
         />

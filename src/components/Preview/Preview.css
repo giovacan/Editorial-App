@@ -370,12 +370,11 @@
   top: 3px;
   right: 3px;
   z-index: 10;
-  opacity: 0;
-  transition: opacity 0.15s;
+  visibility: hidden;
 }
 
 .preview-page:hover .page-optimize-wrapper {
-  opacity: 1;
+  visibility: visible;
 }
 
 .page-optimize-btn {
