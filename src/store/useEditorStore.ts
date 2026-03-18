@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { nanoid } from 'nanoid';
-import type { EditorState, Chapter } from '../types';
+import type { EditorState, Chapter, OptimizationMode } from '../types';
 
 const STORAGE_KEY = 'editorial-app-storage';
 
@@ -195,7 +195,11 @@ const initialState = {
     isActive: false,
     percent: 0
   },
-  confirmedChapterTitles: [] as string[]
+  confirmedChapterTitles: [] as string[],
+  layoutOptimization: {
+    globalMode: 'auto' as const,
+    pageOverrides: {} as Record<number, string>
+  }
 };
 
 const mergeDeep = (target: any, source: any): any => {
@@ -514,7 +518,25 @@ const useEditorStore = create<EditorState>()(
 
     setConfirmedChapterTitles: (titles: string[]) => set({
       confirmedChapterTitles: titles
-    })
+    }),
+
+    setGlobalOptimizationMode: (mode: OptimizationMode) => set((state) => ({
+      layoutOptimization: { ...state.layoutOptimization, globalMode: mode }
+    })),
+
+    setPageOptimizationOverride: (pageNum: number, mode: OptimizationMode | null) => set((state) => {
+      const overrides = { ...state.layoutOptimization.pageOverrides };
+      if (mode === null) {
+        delete overrides[pageNum];
+      } else {
+        overrides[pageNum] = mode;
+      }
+      return { layoutOptimization: { ...state.layoutOptimization, pageOverrides: overrides } };
+    }),
+
+    clearPageOverrides: () => set((state) => ({
+      layoutOptimization: { ...state.layoutOptimization, pageOverrides: {} }
+    }))
   })
   )
 );

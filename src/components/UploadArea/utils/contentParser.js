@@ -32,7 +32,7 @@ const isSectionHeaderText = (text) => {
   const trimmed = text.trim();
   if (trimmed.startsWith('## ') || trimmed.startsWith('### ') || /^#{3,}\s+/.test(trimmed)) return true;
   if (/^subtítulo|^subtitle/i.test(trimmed)) return true;
-  if (/^nota\s+/i.test(trimmed)) return true;
+  if (/^nota\s*:/i.test(trimmed)) return true;
   if (/^\d+\.\d+/.test(trimmed)) return true;
   return false;
 };
@@ -115,7 +115,7 @@ export const parseHtmlContent = (htmlContent) => {
     if (tag === 'h3' || tag === 'h4') return true;
     if (tag === 'p' || tag === 'div') {
       if (/^subtítulo|subtitle/i.test(text)) return true;
-      if (/^nota\s+/i.test(text)) return true;
+      if (/^nota\s*:/i.test(text)) return true;
       if (/^reseña/i.test(text)) return true;
       if (/^\d+\.\d+/.test(text)) return true;
       if (text.length > 80) return false;

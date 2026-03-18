@@ -72,6 +72,13 @@ export interface PaginationRules {
   splitLongParagraphs: boolean;
 }
 
+export type OptimizationMode = 'auto' | 'fillPass' | 'consolidate' | 'widowFix' | 'headingFix' | 'none';
+
+export interface LayoutOptimization {
+  globalMode: OptimizationMode;
+  pageOverrides: Record<number, OptimizationMode>;
+}
+
 // Header Configuration Interfaces
 export interface HeaderPageConfig {
   leftContent: HeaderCellContent;
@@ -226,6 +233,7 @@ export interface EditorState {
   ui: UI;
   paginationProgress: PaginationProgress;
   confirmedChapterTitles: string[];
+  layoutOptimization: LayoutOptimization;
   setBookData: (doc: Partial<Document>) => void;
   setConfig: (config: Partial<Config>) => void;
   setUi: (ui: Partial<UI>) => void;
@@ -241,6 +249,9 @@ export interface EditorState {
   newProject: () => void;
   getStats: () => Stats;
   setConfirmedChapterTitles: (titles: string[]) => void;
+  setGlobalOptimizationMode: (mode: OptimizationMode) => void;
+  setPageOptimizationOverride: (pageNum: number, mode: OptimizationMode | null) => void;
+  clearPageOverrides: () => void;
 }
 
 // ===== AUTH & USER TYPES =====

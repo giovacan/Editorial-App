@@ -55,23 +55,6 @@ function Preview() {
     }
   }, []);
 
-  // Tighten word-spacing on overflow by < 1 line
-  const adjustWordSpacing = (el) => {
-    if (!el) return;
-    el.querySelectorAll('p, blockquote').forEach(p => { p.style.wordSpacing = ''; });
-    const overflow = el.scrollHeight - el.offsetHeight;
-    if (overflow <= 0 || overflow > 12) return;
-    const paragraphs = el.querySelectorAll('p, blockquote');
-    if (!paragraphs.length) return;
-    for (const ws of [-0.01, -0.02, -0.03, -0.04, -0.05]) {
-      paragraphs.forEach(p => { p.style.wordSpacing = `${ws}em`; });
-      if (el.scrollHeight <= el.offsetHeight) return;
-    }
-    paragraphs.forEach(p => { p.style.wordSpacing = ''; });
-  };
-
-  // adjustWordSpacing effect moved below — needs currentPage and debugHtml
-
   const safeBookData = bookData || { bookType: 'novela', chapters: [], title: '' };
   const safeConfig = config || DEFAULT_CONFIG;
   const debugConfig = safeConfig.previewDebug || {
@@ -146,13 +129,12 @@ function Preview() {
   const textAlign = safeConfig.paragraph?.align || 'justify';
   const showNums = safeConfig.showPageNumbers !== false;
 
-  const { showMagnifier, setShowMagnifier, magnifierZoom, setMagnifierZoom, magnifierPanelRef,
-    magnifierPosRef, magnifierPageRef, updateMagnifierPosition, handleMouseEnterPreview,
+  const { showMagnifierRef, magnifierWrapperRef, magnifierZoom, setMagnifierZoom, magnifierPanelRef,
+    magnifierPosRef, magnifierPageRef, onShowCallbackRef, updateMagnifierPosition, handleMouseEnterPreview,
     handleMouseLeavePreview, handleMouseEnterMagnifier, handleMouseLeaveMagnifier } = useMagnifier(previewPageRef);
 
-  // adjustWordSpacing + dev overflow check: only on page/content change
+  // Dev overflow check (word-spacing is now handled deterministically in paginateChapters)
   useEffect(() => {
-    adjustWordSpacing(previewContentRef.current);
     if (process.env.NODE_ENV === 'development') {
       const el = previewContentRef.current;
       if (el) {
@@ -165,13 +147,6 @@ function Preview() {
       }
     }
   }, [currentPage, debugHtml]);
-
-  // adjustWordSpacing on magnifier when it appears
-  useEffect(() => {
-    if (showMagnifier) {
-      requestAnimationFrame(() => adjustWordSpacing(magnifierContentRef.current));
-    }
-  }, [showMagnifier, currentPage, debugHtml]);
 
   const { showHeaders, headerLeft, headerCenter, headerRight, headerConfig } =
     useHeaderFooter(safeConfig, currentPageData, totalPages, safeBookData.title);
@@ -300,18 +275,21 @@ function Preview() {
         </div>
       </div>
 
-      {showMagnifier && previewPageRef.current && !currentPageData.isBlank && (
-        <MagnifierPanel
-          {...sharedPageProps}
-          magnifierPanelRef={magnifierPanelRef}
-          magnifierPageRef={magnifierPageRef}
-          magnifierContentRef={magnifierContentRef}
-          magnifierZoom={magnifierZoom}
-          magnifierPosRef={magnifierPosRef}
-          handleMouseEnterMagnifier={handleMouseEnterMagnifier}
-          handleMouseLeaveMagnifier={handleMouseLeaveMagnifier}
-        />
-      )}
+      {/* MagnifierPanel is ALWAYS in the DOM — visibility controlled via ref (no re-render) */}
+      <div ref={magnifierWrapperRef} style={{ display: 'none' }}>
+        {!currentPageData.isBlank && (
+          <MagnifierPanel
+            {...sharedPageProps}
+            magnifierPanelRef={magnifierPanelRef}
+            magnifierPageRef={magnifierPageRef}
+            magnifierContentRef={magnifierContentRef}
+            magnifierZoom={magnifierZoom}
+            magnifierPosRef={magnifierPosRef}
+            handleMouseEnterMagnifier={handleMouseEnterMagnifier}
+            handleMouseLeaveMagnifier={handleMouseLeaveMagnifier}
+          />
+        )}
+      </div>
 
       {showErrorDialog && currentError && (
         <ValidationErrorDialog

@@ -12,6 +12,7 @@ import {
   IconQuote,
   IconBookmark,
   IconHash,
+  IconSettings,
 } from './icons';
 import StructureTab from './StructureTab';
 import FormatPanel from './config/FormatPanel';
@@ -22,6 +23,7 @@ import ParagraphPanel from './config/ParagraphPanel';
 import QuotePanel from './config/QuotePanel';
 import HeaderPanel from './config/HeaderPanel';
 import PaginationPanel from './config/PaginationPanel';
+import OptimizationPanel from './config/OptimizationPanel';
 import './SidebarLeft.css';
 
 function SidebarLeft() {
@@ -373,6 +375,12 @@ function SidebarLeft() {
           setConfig={setConfig}
         />
       )
+    },
+    {
+      id: 'optimizacion',
+      title: 'Optimización de Maquetación',
+      icon: <IconSettings />,
+      content: <OptimizationPanel />
     }
   ], [stableConfigHash, safeBookData?.bookType, handleBookTypeChange, setConfig]);
 
