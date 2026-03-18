@@ -733,6 +733,18 @@ const calculateElementHeight = (parsed, layoutCtx) => {
     ? resolveSize(styles.wordSpacing, styles.wordSpacingUnit, elFontSizePx)
     : 0;
 
+  // WS-DEBUG: one-shot diagnostic when word-spacing is non-zero
+  if (process.env.NODE_ENV === 'development' && wordSpacingPx !== 0 && !calculateElementHeight._wsDbg) {
+    calculateElementHeight._wsDbg = true;
+    console.log('[WS-ENGINE]', {
+      wordSpacingPx,
+      rawWS: styles.wordSpacing,
+      rawUnit: styles.wordSpacingUnit,
+      elFontSizePx,
+      text: (text || '').slice(0, 60)
+    });
+  }
+
   // Resolve horizontal padding/margin that reduce available width
   const paddingH = (styles.paddingLeft || 0) + (styles.paddingRight || 0);
   const marginLPx = resolveSize(styles.marginLeft, styles.marginLeftUnit, elFontSizePx);
@@ -831,6 +843,13 @@ export const measureHtmlHeight = (html, layoutCtx) => {
 
   const elements = parseMultiElementHtml(html);
   if (elements.length === 0) return 0;
+
+  // WS-DEBUG: check if word-spacing in HTML is being parsed
+  if (process.env.NODE_ENV === 'development' && /word-spacing/i.test(html) && !measureHtmlHeight._wsDbg) {
+    measureHtmlHeight._wsDbg = true;
+    const wsValues = elements.map(e => ({ ws: e.styles.wordSpacing, unit: e.styles.wordSpacingUnit }));
+    console.log('[WS-PARSE] measureHtmlHeight sees word-spacing in HTML, parsed:', JSON.stringify(wsValues));
+  }
 
   let totalHeight = 0;
   let prevMarginBottom = 0;
@@ -1012,6 +1031,72 @@ export const insertHtmlLineBreaks = (html, layoutCtx) => {
     }
     return html;
   }
+};
+
+// ─── Last-line word count for split quality decisions ────────────────
+
+/**
+ * Count words on the last line of an HTML element using the Canvas line-break engine.
+ * Used to detect short last lines that would look bad with text-align-last:justify.
+ *
+ * @param {string} html - Single element HTML (e.g. <p>...</p>)
+ * @param {object} layoutCtx - Canvas layout context
+ * @returns {number} Word count on the last line (0 if unable to determine)
+ */
+export const getLastLineWordCount = (html, layoutCtx) => {
+  if (!html || !layoutCtx) return 0;
+
+  try {
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    const el = div.firstElementChild;
+    if (!el) return 0;
+
+    const text = el.textContent || '';
+    if (!text.trim()) return 0;
+
+    const styles = extractStyles(el.style);
+    const elFontSizePx = styles.fontSize
+      ? resolveSize(styles.fontSize, styles.fontSizeUnit, layoutCtx.baseFontSizePx)
+      : layoutCtx.baseFontSizePx;
+    const isBold = styles.fontWeight === 'bold' || parseInt(styles.fontWeight) >= 700;
+    const isItalic = styles.fontStyle === 'italic';
+    const fontFamily = layoutCtx.fontFamily || 'Georgia, serif';
+    const fontString = buildFontString(elFontSizePx, fontFamily, isBold, isItalic);
+    const indentPx = styles.textIndent ? styles.textIndent * elFontSizePx : 0;
+
+    const paddingH = (styles.paddingLeft || 0) + (styles.paddingRight || 0);
+    const marginLPx = resolveSize(styles.marginLeft, styles.marginLeftUnit, elFontSizePx);
+    const marginRPx = resolveSize(styles.marginRight, styles.marginRightUnit, elFontSizePx);
+    const borderLeft = styles.borderLeftWidth || 0;
+    const widthSlack = layoutCtx.widthSlack || 0;
+    const availableWidth = layoutCtx.contentWidth - paddingH - marginLPx - marginRPx - borderLeft - widthSlack;
+
+    const collapsed = collapseWhitespace(text);
+    const lineStarts = getLineBreakPositions(collapsed, availableWidth, fontString, indentPx);
+
+    if (lineStarts.length === 0) return 0;
+
+    const words = collapsed.split(/\s+/).filter(w => w);
+    const lastLineStart = lineStarts[lineStarts.length - 1];
+    return words.length - lastLineStart;
+  } catch (e) {
+    return 0;
+  }
+};
+
+/**
+ * Measure raw text width using the module canvas singleton.
+ * No justification applied — returns the natural width of the text.
+ * @param {string} text - Plain text (no HTML)
+ * @param {string} fontStr - CSS font string (e.g. "12px Georgia, serif")
+ * @returns {number} Width in px
+ */
+export const measureRawTextWidth = (text, fontStr) => {
+  if (!text) return 0;
+  const ctx = getCtx();
+  ctx.font = fontStr;
+  return ctx.measureText(text).width;
 };
 
 // ─── Exports for testing ────────────────────────────────────────────

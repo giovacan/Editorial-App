@@ -25,6 +25,48 @@ import {
   getLastLineWordCount
 } from './textLayoutEngine';
 
+const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvasCtx) => {
+  if (!pageHtml) return { score: Infinity, fillPct: 0, violations: [] };
+
+  const measure = (html) => measureHtmlHeight(html, canvasCtx);
+  const pageHeight = measure(pageHtml);
+  const remainingSpace = contentHeight - pageHeight;
+  const violations = [];
+  let score = 0;
+
+  score += Math.max(0, remainingSpace) * 0.5;
+
+  const div = document.createElement('div');
+  div.innerHTML = pageHtml;
+  const children = Array.from(div.children);
+
+  if (children.length > 0) {
+    const lastChild = children[children.length - 1];
+    const lastTag = lastChild.tagName || '';
+
+    if (/^H[1-6]$/i.test(lastTag)) {
+      score += 40;
+      violations.push('heading_at_bottom');
+    }
+
+    if (lastTag === 'P' && children.length === 1) {
+      const lines = Math.floor(measure(lastChild.outerHTML) / lineHeightPx);
+      if (lines === 1) { score += 50; violations.push('widow'); }
+    }
+
+    if (children.length === 1) {
+      const lines = Math.floor(measure(children[0].outerHTML) / lineHeightPx);
+      if (lines === 1) { score += 50; violations.push('orphan'); }
+    }
+  }
+
+  return {
+    score,
+    fillPct: pageHeight > 0 ? (pageHeight / contentHeight) * 100 : 0,
+    violations
+  };
+};
+
 /**
  * Main entry point — same interface as before.
  *
@@ -137,9 +179,16 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig) =>
   fixShortLastLines(allPages, safeLayoutCtx, canvasCtx, measureDiv, safeConfig);
   countTotalText(allPages, 'after fixShortLastLines');
 
+  // Absorb short orphan continuations (last page of chapter with ≤5 lines)
+  absorbOrphanContinuations(allPages, safeLayoutCtx, canvasCtx);
+  countTotalText(allPages, 'after absorbOrphanContinuations');
+
   // E5: Fix orphaned headings left at bottom of pages after fill-pass
   fixHeadingsAtBottom(allPages, canvasCtx, safeLayoutCtx);
   countTotalText(allPages, 'after fixHeadings');
+
+  // E7: Fix sub-line overflows with deterministic word-spacing (Canvas-based)
+  applyWordSpacingPass(allPages, safeLayoutCtx, canvasCtx);
 
   // E6: Distribute remaining vertical whitespace proportionally among elements
   distributeVerticalSpace(allPages, safeLayoutCtx, canvasCtx);
@@ -153,6 +202,56 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig) =>
   for (const p of allPages) {
     if (!p.isBlank) p.pageNumber = pageNum++;
   }
+
+  // ── P40 FINAL DIAGNOSTIC (flat logs, no grouping) ──────────────────
+  if (process.env.NODE_ENV === 'development') {
+    // Check for remaining orphan continuations that absorb pass should have caught
+    console.log(`[P40-FINAL] ════════════════════════════════════════════`);
+    console.log(`[P40-FINAL] absorbOrphanContinuations ran: ${typeof absorbOrphanContinuations === 'function' ? 'YES (function exists)' : 'NO'}`);
+
+    // Scan for orphan single-continuation pages near page 40
+    for (const p of allPages) {
+      if (!p || p.isBlank || !p.html) continue;
+      const d = document.createElement('div');
+      d.innerHTML = p.html;
+      const ch = Array.from(d.children);
+      if (ch.length === 1 && ch[0].tagName === 'P' && /text-indent:\s*0/.test(ch[0].getAttribute('style') || '')) {
+        const h = measureHtmlHeight(p.html, canvasCtx);
+        const lines = Math.floor(h / safeLayoutCtx.lineHeightPx);
+        if (lines <= 5) {
+          console.log(`[P40-FINAL] ⚠ ORPHAN STILL EXISTS: p${p.pageNumber} (${lines} lines, ${h.toFixed(0)}px) chapter="${p.chapterTitle}"`);
+        }
+      }
+    }
+
+    for (const p of allPages) {
+      if (p.pageNumber >= 39 && p.pageNumber <= 41 && !p.isBlank && p.html) {
+        const div = document.createElement('div');
+        div.innerHTML = p.html;
+        const children = Array.from(div.children);
+        const totalHeight = measureHtmlHeight(p.html, canvasCtx);
+        const limit = p.isFirstChapterPage ? safeContentHeight - folioReserve : safeContentHeight;
+
+        console.log(`[P40-FINAL] Page ${p.pageNumber} (${children.length} elements, ${totalHeight.toFixed(1)}px / ${limit.toFixed(1)}px limit, firstChapterPage=${!!p.isFirstChapterPage})`);
+        children.forEach((ch, idx) => {
+          const chHeight = measureHtmlHeight(ch.outerHTML, canvasCtx);
+          const chLines = Math.floor(chHeight / safeLayoutCtx.lineHeightPx);
+          const chText = (ch.textContent || '').trim();
+          const isSplit = /text-align-last:\s*justify/i.test(ch.getAttribute('style') || '');
+          const isCont = /text-indent:\s*0/.test(ch.getAttribute('style') || '');
+          const ws = /word-spacing:[^;]+/.exec(ch.getAttribute('style') || '');
+          const lastWords = isSplit ? getLastLineWordCount(ch.outerHTML, canvasCtx) : '-';
+          const flags = [isSplit && 'SPLIT-CHUNK', isCont && 'CONTINUATION', ws && ws[0]].filter(Boolean).join(', ');
+          console.log(`[P40-FINAL]   p${p.pageNumber}[${idx}] <${ch.tagName}> ${chLines} lines, ${chHeight.toFixed(1)}px | lastLineWords=${lastWords} | ${flags || 'normal'}`);
+          console.log(`[P40-FINAL]   p${p.pageNumber}[${idx}] text: "${chText.slice(0, 100)}${chText.length > 100 ? '...' : ''}"`);
+          if (isSplit) {
+            console.log(`[P40-FINAL]   p${p.pageNumber}[${idx}] LAST 100: "...${chText.slice(-100)}"`);
+          }
+        });
+      }
+    }
+  }
+  // ── END P40 FINAL DIAGNOSTIC ──────────────────────────────────────
 
   return allPages;
 };
@@ -315,6 +414,25 @@ const injectWordSpacing = (elementHtml, wordSpacingEm) => {
   const sep = style && !style.endsWith(';') ? ';' : '';
   el.setAttribute('style', `${style}${sep}word-spacing:${wordSpacingEm}em;`);
   return el.outerHTML;
+};
+
+/**
+ * Apply word-spacing to ALL paragraph/blockquote elements in an HTML block.
+ * @private
+ */
+const injectWordSpacingAll = (html, wordSpacingEm) => {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  const children = Array.from(div.children);
+  for (const el of children) {
+    const tag = el.tagName;
+    if (tag !== 'P' && tag !== 'BLOCKQUOTE') continue;
+    if (/word-spacing:/i.test(el.getAttribute('style') || '')) continue;
+    const style = (el.getAttribute('style') || '').trim();
+    const sep = style && !style.endsWith(';') ? ';' : '';
+    el.setAttribute('style', `${style}${sep}word-spacing:${wordSpacingEm}em;`);
+  }
+  return div.innerHTML;
 };
 
 /**
@@ -650,6 +768,29 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
             const mode = meetsAggressive ? 'AGGRESSIVE' : 'UNDERFILL';
             console.log(`[SPLIT-${mode}] p${pages.length + 1}: orphan=${orphanLines}, widow=${widowLines}, widowWords=${widowWords}, remaining=${remainingLines}, hasTitle=${pageHasTitle}`);
           }
+
+          // ── P40 DIAGNOSTIC ──────────────────────────────────────────
+          if (process.env.NODE_ENV === 'development') {
+            const splitPageNum = pages.length + 1;
+            if (splitPageNum >= 39 && splitPageNum <= 41) {
+              const firstText = (firstChunk.replace(/<[^>]+>/g, '') || '').trim();
+              const restText = (restChunk.replace(/<[^>]+>/g, '') || '').trim();
+              const lastLineWords = getLastLineWordCount(firstChunk, canvasCtx);
+              const firstChunkLines = Math.floor(measure(firstChunk) / lineHeightPx);
+              const restChunkLines = Math.floor(measure(restChunk) / lineHeightPx);
+              const mode = meetsStrict ? 'STRICT' : meetsRelaxed ? 'RELAXED' : meetsAggressive ? 'AGGRESSIVE' : 'UNDERFILL';
+              console.group(`[P40-DIAG] SPLIT ACCEPTED on page ${splitPageNum} (mode=${mode})`);
+              console.log(`  orphanLines=${orphanLines}, widowLines=${widowLines}, widowWords=${widowWords}`);
+              console.log(`  firstChunk: ${firstChunkLines} lines, lastLineWords=${lastLineWords}`);
+              console.log(`  firstChunk text (last 120 chars): "...${firstText.slice(-120)}"`);
+              console.log(`  restChunk: ${restChunkLines} lines, text (first 120 chars): "${restText.slice(0, 120)}..."`);
+              console.log(`  remainingSpace=${remainingSpace.toFixed(1)}px, pageLimit=${pageLimit.toFixed(1)}px`);
+              console.log(`  text-align-last in firstChunk:`, /text-align-last:[^;]+/i.exec(firstChunk)?.[0] || 'none');
+              console.groupEnd();
+            }
+          }
+          // ── END P40 DIAGNOSTIC ──────────────────────────────────────
+
           pushPage(currentHtml + firstChunk);
           currentHtml = restChunk;
           continue;
@@ -946,7 +1087,11 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
  * @private
  */
 const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
-  const { contentHeight, lineHeightPx } = layoutCtx;
+  const { contentHeight, lineHeightPx, folioReserve = 0 } = layoutCtx;
+  // Reserve folio space on all pages — page number sits in margin and content
+  // must not overflow into it. Canvas can undercount vs browser by a few px,
+  // so we cap at contentHeight - folioReserve to prevent text/page-number overlap.
+  const pageLimit = contentHeight - folioReserve;
   const measure = (html) => measureHtmlHeight(html, canvasCtx);
   const MIN_GAP = lineHeightPx;
   const MAX_PER_GAP = lineHeightPx * 0.5;
@@ -955,7 +1100,7 @@ const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
     if (!page || page.isBlank || page.isTitleOnlyPage || page.isFirstChapterPage || !page.html) continue;
 
     const actualHeight = measure(page.html);
-    const gap = contentHeight - actualHeight;
+    const gap = pageLimit - actualHeight;
     if (gap < MIN_GAP) continue;
 
     const div = document.createElement('div');
@@ -978,11 +1123,11 @@ const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
       el.style.marginBottom = `${(existing + perGap).toFixed(1)}px`;
     }
 
-    // Safety: verify the adjusted page doesn't exceed contentHeight
+    // Safety: verify the adjusted page doesn't exceed the effective limit
     const adjustedHtml = div.innerHTML;
     const adjustedHeight = measure(adjustedHtml);
-    if (adjustedHeight > contentHeight) {
-      // Revert — don't risk overflow
+    if (adjustedHeight > pageLimit) {
+      // Revert — don't risk overflow into page number area
       continue;
     }
     page.html = adjustedHtml;
@@ -1226,7 +1371,7 @@ const fixWidowsWithLookback = (pages, layoutCtx, canvasCtx, measureDiv, safeConf
  * @private
  */
 const fixShortLastLines = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
-  const SHORT_LINE_THRESHOLD = 6; // Canvas/browser disagree by ±2 words; 6 catches browser≤4
+  const SHORT_LINE_THRESHOLD = 2; // Only fix real orphans (1-2 words). 3+ is acceptable.
 
   const { contentHeight, lineHeightPx, minOrphanLines, minWidowLines,
     textAlign, baseFontSize, baseLineHeight, folioReserve } = layoutCtx;
@@ -1267,7 +1412,27 @@ const fixShortLastLines = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) 
       console.log(`[SHORT-LINE-SCAN] p${page.pageNumber}: lastLineWords=${wordCount}, children=${children.length}`);
     }
 
-    if (wordCount === 0 || wordCount > SHORT_LINE_THRESHOLD) continue;
+    // ── P40 DIAGNOSTIC (fixShortLastLines) ────────────────────────
+    if (process.env.NODE_ENV === 'development' && page.pageNumber >= 39 && page.pageNumber <= 41) {
+      const lastText = (lastEl.textContent || '').trim();
+      const lastElHeight = measure(lastEl.outerHTML);
+      const lastElLines = Math.floor(lastElHeight / lineHeightPx);
+      console.group(`[P40-DIAG] fixShortLastLines scan p${page.pageNumber}`);
+      console.log(`  isSplitChunk=true, lastLineWords=${wordCount}, threshold=${SHORT_LINE_THRESHOLD}`);
+      console.log(`  lastEl: ${lastElLines} lines, height=${lastElHeight.toFixed(1)}px`);
+      console.log(`  lastEl text (last 120 chars): "...${lastText.slice(-120)}"`);
+      console.log(`  lastEl style: "${lastStyle.slice(0, 200)}"`);
+      console.log(`  willFix=${wordCount > 0 && wordCount <= SHORT_LINE_THRESHOLD}`);
+      console.groupEnd();
+    }
+    // ── END P40 DIAGNOSTIC ────────────────────────────────────────
+
+    if (wordCount === 0 || wordCount > SHORT_LINE_THRESHOLD) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[SHORT-LINE-SKIP] p${page.pageNumber}: lastLineWords=${wordCount} > threshold=${SHORT_LINE_THRESHOLD} — skipped`);
+      }
+      continue;
+    }
 
     // 4. Find continuation on next page
     let nextIdx = i + 1;
@@ -1284,7 +1449,7 @@ const fixShortLastLines = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) 
     const nextStyle = firstNextEl.getAttribute('style') || '';
     if (!/text-indent:\s*0/.test(nextStyle)) continue;
 
-    // 5. Measure old split chunk and calculate reduced space (1 line less)
+    // 5. Measure old split chunk and calculate reduced space
     const oldSplitHeight = measure(lastEl.outerHTML);
     const oldOrphanLines = Math.floor(oldSplitHeight / lineHeightPx);
     if (oldOrphanLines <= minOrphanLines) continue; // Can't reduce further
@@ -1293,14 +1458,22 @@ const fixShortLastLines = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) 
     const prevHtml = div.innerHTML;
     const prevHeight = prevHtml ? measure(prevHtml) : 0;
     const pageLimit = pageLimitFor(page);
-    const reducedSpace = pageLimit - prevHeight - lineHeightPx; // force 1 line less
 
-    if (reducedSpace < minOrphanLines * lineHeightPx) continue;
-
-    // 6. Merge split chunks and re-split with reduced space
+    // 6. Merge split chunks and re-split with 1 fewer line.
+    //    Use split-based target to guarantee the chunk actually shrinks.
     const merged = mergeIntoOne(lastEl.outerHTML, firstNextEl.outerHTML);
     const isContChunk = /text-indent:\s*0[^.]/.test(lastEl.outerHTML);
     const indentValue = safeConfig.paragraph?.firstLineIndent || 1.5;
+
+    // Force 1 line less using split height, not page space.
+    // pageSpace (= pageLimit - prevHeight - lineH) can exceed oldSplitHeight,
+    // causing splitInTwo to recreate the same split. Always base on oldSplitHeight.
+    const reducedSpace = Math.min(
+      oldSplitHeight - lineHeightPx,         // 1 line less than current split
+      pageLimit - prevHeight - lineHeightPx  // never exceed page budget
+    );
+
+    if (reducedSpace < minOrphanLines * lineHeightPx) continue;
 
     const newSplit = splitInTwo(
       merged, measureDiv, canvasCtx, reducedSpace, contentHeight,
@@ -1315,21 +1488,28 @@ const fixShortLastLines = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) 
     const newWidowText = (newRest.replace(/<[^>]+>/g, '') || '').trim();
     const newWidowWords = newWidowText.split(/\s+/).filter(w => w).length;
 
+    const newLastLineWords = getLastLineWordCount(newFirst, canvasCtx);
+
     if (process.env.NODE_ENV === 'development') {
-      console.log(`[SHORT-LINE-EVAL] p${page.pageNumber}: oldLines=${oldOrphanLines}, newOrphan=${newOrphanLines}, newWidow=${newWidowLines}, newWidowWords=${newWidowWords}`);
+      console.log(`[SHORT-LINE-EVAL] p${page.pageNumber}: oldLines=${oldOrphanLines}, newOrphan=${newOrphanLines}, newLastWords=${newLastLineWords}, newWidow=${newWidowLines}, newWidowWords=${newWidowWords}`);
     }
 
     if (newOrphanLines >= oldOrphanLines) continue; // Didn't actually reduce
     if (newOrphanLines < minOrphanLines) continue;
     if (newWidowLines < minWidowLines || newWidowWords < MIN_WIDOW_WORDS) continue;
+    // Only apply if the fix improves (or maintains) the last-line word count.
+    // If reducing makes the orphan worse, skip — it's a regression.
+    if (newLastLineWords > 0 && newLastLineWords < wordCount) continue;
 
     // 8. Check current page doesn't overflow
     const newPageHeight = measure(prevHtml + newFirst);
     if (newPageHeight > pageLimit) continue;
 
     // 9. Check next page doesn't overflow
-    firstNextEl.remove();
-    const remainingNextHtml = nextDiv.innerHTML.trim();
+    const nextDivCopy = document.createElement('div');
+    nextDivCopy.innerHTML = nextPage.html;
+    nextDivCopy.firstElementChild?.remove(); // remove old continuation
+    const remainingNextHtml = nextDivCopy.innerHTML.trim();
     const newNextHtml = remainingNextHtml ? newRest + remainingNextHtml : newRest;
     const nextLimit = pageLimitFor(nextPage);
     if (measure(newNextHtml) > nextLimit) continue;
@@ -1342,6 +1522,171 @@ const fixShortLastLines = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) 
       console.log(`[SHORT-LINE-FIX] p${page.pageNumber}: ${oldOrphanLines}->${newOrphanLines} lines (was ~${wordCount} words on last line)`);
     }
   }
+};
+
+/**
+ * Absorb short orphan continuations back into the previous page.
+ *
+ * When a paragraph split leaves a short continuation (≤ MAX_ORPHAN_LINES) as the
+ * sole content on the last page of a chapter, this pass merges it back into the
+ * previous page by tightening word-spacing (lookback, merged paragraph, or both).
+ *
+ * @private
+ */
+const absorbOrphanContinuations = (pages, layoutCtx, canvasCtx) => {
+  const { contentHeight, lineHeightPx, folioReserve } = layoutCtx;
+  const measure = (html) => measureHtmlHeight(html, canvasCtx);
+  // Relaxed context: remove widthSlack so lines can hold more words.
+  // This is 100% deterministic (same HTML → same output) — only the
+  // width budget changes, not the algorithm.
+  const relaxedCtx = { ...canvasCtx, widthSlack: 0 };
+  const measureRelaxed = (html) => measureHtmlHeight(html, relaxedCtx);
+  const pageLimitFor = (page) => page.isFirstChapterPage ? contentHeight - folioReserve : contentHeight;
+  const DEV = process.env.NODE_ENV === 'development';
+
+  if (DEV) console.log(`[ABSORB] ═══ ABSORB PASS START ═══ (${pages.length} pages, lineH=${lineHeightPx}, contentH=${contentHeight}, widthSlack=${canvasCtx.widthSlack?.toFixed(1) || 0})`);
+
+  const MAX_ORPHAN_LINES = 5;
+  let candidates = 0;
+
+  for (let i = 1; i < pages.length; i++) {
+    const page = pages[i];
+    if (!page || page.isBlank || !page.html) continue;
+
+    // 1. Page must have exactly 1 element: a continuation paragraph
+    const div = document.createElement('div');
+    div.innerHTML = page.html;
+    const children = Array.from(div.children);
+    if (children.length !== 1) continue;
+
+    const el = children[0];
+    if (el.tagName !== 'P') continue;
+    const style = el.getAttribute('style') || '';
+    if (!/text-indent:\s*0/.test(style)) continue;
+
+    // 2. Must be short
+    const contHeight = measure(el.outerHTML);
+    const contLines = Math.floor(contHeight / lineHeightPx);
+    if (contLines > MAX_ORPHAN_LINES || contLines === 0) continue;
+
+    // 3. Must be last page of chapter (next non-blank is new chapter or end)
+    let nextIdx = i + 1;
+    while (nextIdx < pages.length && pages[nextIdx]?.isBlank) nextIdx++;
+    const isLastInChapter = nextIdx >= pages.length ||
+      pages[nextIdx]?.chapterTitle !== page.chapterTitle;
+
+    candidates++;
+    if (DEV) {
+      const nextTitle = nextIdx < pages.length ? pages[nextIdx]?.chapterTitle : '(end)';
+      console.log(`[ABSORB-SCAN] idx=${i} p${page.pageNumber}: ${contLines} lines, isLast=${isLastInChapter}, myTitle="${page.chapterTitle}", nextTitle="${nextTitle}"`);
+    }
+
+    if (!isLastInChapter) continue;
+
+    // 4. Previous non-blank page must be in same chapter
+    let prevIdx = i - 1;
+    while (prevIdx >= 0 && pages[prevIdx]?.isBlank) prevIdx--;
+    if (prevIdx < 0) continue;
+    const prevPage = pages[prevIdx];
+    if (!prevPage?.html || prevPage.chapterTitle !== page.chapterTitle) {
+      if (DEV) console.log(`[ABSORB-SKIP] idx=${i}: prev page chapter mismatch or no html`);
+      continue;
+    }
+
+    // 5. Previous page's last element must be the split first-chunk
+    const prevDiv = document.createElement('div');
+    prevDiv.innerHTML = prevPage.html;
+    const prevChildren = Array.from(prevDiv.children);
+    const lastPrev = prevChildren[prevChildren.length - 1];
+    if (!lastPrev || lastPrev.tagName !== 'P') {
+      if (DEV) console.log(`[ABSORB-SKIP] idx=${i}: prev last element not <P> (${lastPrev?.tagName || 'null'})`);
+      continue;
+    }
+    const lastPrevStyle = lastPrev.getAttribute('style') || '';
+    if (!/text-align-last:\s*justify/i.test(lastPrevStyle)) {
+      if (DEV) console.log(`[ABSORB-SKIP] idx=${i}: prev last element not split-chunk (no text-align-last:justify)`);
+      continue;
+    }
+
+    // 6. Merge split chunks back into one paragraph
+    const merged = mergeIntoOne(lastPrev.outerHTML, el.outerHTML);
+    const mergedHeight = measure(merged);
+
+    // Remove last element from prev page to get "base" HTML
+    lastPrev.remove();
+    const baseHtml = prevDiv.innerHTML;
+    const baseHeight = baseHtml ? measure(baseHtml) : 0;
+    const prevLimit = pageLimitFor(prevPage);
+    const totalNeeded = baseHeight + mergedHeight;
+    const deficit = totalNeeded - prevLimit;
+
+    if (DEV) {
+      console.log(`[ABSORB-MATH] idx=${i}: base=${baseHeight.toFixed(0)}px + merged=${mergedHeight.toFixed(0)}px = ${totalNeeded.toFixed(0)}px, limit=${prevLimit.toFixed(0)}px, deficit=${deficit.toFixed(1)}px (${Math.ceil(deficit / lineHeightPx)} lines)`);
+
+      // Compare normal vs relaxed measurement for diagnosis
+      const relaxedMergedH = measureRelaxed(merged);
+      console.log(`[ABSORB-WIDTH-TEST] merged: normal=${mergedHeight.toFixed(0)}px, relaxed(ws=0)=${relaxedMergedH.toFixed(0)}px, diff=${(mergedHeight - relaxedMergedH).toFixed(0)}px`);
+      const relaxedBaseH = baseHtml ? measureRelaxed(baseHtml) : 0;
+      console.log(`[ABSORB-WIDTH-TEST] base: normal=${baseHeight.toFixed(0)}px, relaxed(ws=0)=${relaxedBaseH.toFixed(0)}px, diff=${(baseHeight - relaxedBaseH).toFixed(0)}px`);
+    }
+
+    // Strategy A: Direct fit (normal measurement)
+    if (deficit <= 0) {
+      pages[prevIdx] = { ...prevPage, html: baseHtml + merged };
+      pages[i] = { ...page, html: '', isBlank: true };
+      if (DEV) console.log(`[ABSORB] p${page.pageNumber}: ${contLines} lines absorbed into p${prevPage.pageNumber} (direct fit)`);
+      continue;
+    }
+
+    // Strategy B: Relaxed measurement (widthSlack=0).
+    // The 2% widthSlack is a safety margin for browser hinting variance.
+    // For end-of-chapter last pages, we can safely remove it since slight
+    // overflow won't push content to a non-existent next element.
+    // This is 100% deterministic — same HTML → same output.
+    const relaxedCombined = measureRelaxed(baseHtml + merged);
+    const relaxedDeficit = relaxedCombined - prevLimit;
+    let absorbed = false;
+
+    if (DEV) {
+      console.log(`[ABSORB-RELAXED] normal=${totalNeeded.toFixed(0)}px, relaxed=${relaxedCombined.toFixed(0)}px, saved=${(totalNeeded - relaxedCombined).toFixed(0)}px, relaxedDeficit=${relaxedDeficit.toFixed(1)}px`);
+    }
+
+    if (relaxedDeficit <= 0) {
+      // Fits with relaxed measurement — inject minimal word-spacing so browser also fits
+      const safeCombined = injectWordSpacingAll(baseHtml + merged, -0.02);
+      pages[prevIdx] = { ...prevPage, html: safeCombined };
+      pages[i] = { ...page, html: '', isBlank: true };
+      if (DEV) console.log(`[ABSORB] p${page.pageNumber}: ${contLines} lines absorbed into p${prevPage.pageNumber} (relaxed, saved ${(totalNeeded - relaxedCombined).toFixed(0)}px)`);
+      absorbed = true;
+    }
+
+    // Strategy C: Relaxed measurement + use full contentHeight (no safety margin)
+    // The safeContentHeight subtracts half a lineHeight. For the last page of a
+    // chapter this is safe to skip.
+    if (!absorbed) {
+      const fullLimit = (prevPage.isFirstChapterPage ? layoutCtx.contentHeight - folioReserve : layoutCtx.contentHeight);
+      const fullDeficit = relaxedCombined - fullLimit;
+
+      if (DEV) {
+        console.log(`[ABSORB-FULL] fullLimit=${fullLimit.toFixed(0)}px (contentH=${layoutCtx.contentHeight}), fullDeficit=${fullDeficit.toFixed(1)}px`);
+      }
+
+      if (fullDeficit <= 0) {
+        const safeCombined = injectWordSpacingAll(baseHtml + merged, -0.02);
+        pages[prevIdx] = { ...prevPage, html: safeCombined };
+        pages[i] = { ...page, html: '', isBlank: true };
+        if (DEV) console.log(`[ABSORB] p${page.pageNumber}: ${contLines} lines absorbed into p${prevPage.pageNumber} (relaxed+full, saved ${(totalNeeded - relaxedCombined).toFixed(0)}px)`);
+        absorbed = true;
+      }
+    }
+    if (absorbed) continue;
+
+    if (DEV) {
+      console.log(`[ABSORB-FAIL] p${page.pageNumber}: ${contLines} lines could NOT be absorbed (normalDeficit=${deficit.toFixed(1)}px, relaxedDeficit=${relaxedDeficit.toFixed(1)}px)`);
+    }
+  }
+
+  if (DEV) console.log(`[ABSORB] ═══ ABSORB PASS END ═══ (${candidates} candidates found)`);
 };
 
 /**
@@ -1402,6 +1747,79 @@ const fixHeadingsAtBottom = (pages, canvasCtx, layoutCtx) => {
 
     if (process.env.NODE_ENV === 'development') {
       console.log(`[HEADING-FIX] Moved orphaned heading from p${i + 1} to p${ni + 1}`);
+    }
+  }
+};
+
+/**
+ * E7: Deterministic word-spacing pass for sub-line overflow.
+ *
+ * Replaces the DOM-dependent `adjustWordSpacing` from Preview.jsx.
+ * For each page with sub-line overflow (0 < overflow ≤ lineHeightPx),
+ * applies word-spacing tightening (-0.01em to -0.05em) on <p> and
+ * <blockquote> elements. Uses Canvas measurement only — 100% deterministic.
+ *
+ * Word-spacing is embedded in the HTML inline styles, so preview, magnifier,
+ * and PDF export all render the same result.
+ *
+ * @private
+ */
+const applyWordSpacingPass = (pages, layoutCtx, canvasCtx) => {
+  const { contentHeight, lineHeightPx, folioReserve } = layoutCtx;
+  const measure = (html) => measureHtmlHeight(html, canvasCtx);
+  const pageLimitFor = (page) =>
+    page.isFirstChapterPage ? contentHeight - folioReserve : contentHeight;
+
+  const WS_STEPS = [-0.01, -0.02, -0.03, -0.04, -0.05];
+
+  for (const page of pages) {
+    if (!page || page.isBlank || page.isTitleOnlyPage || !page.html) continue;
+
+    const effectiveLimit = pageLimitFor(page);
+    const actualHeight = measure(page.html);
+    const overflow = actualHeight - effectiveLimit;
+
+    // Only fix sub-line overflow
+    if (overflow <= 0 || overflow > lineHeightPx) continue;
+
+    const div = document.createElement('div');
+    div.innerHTML = page.html;
+    const children = Array.from(div.children);
+
+    // Collect <p> and <blockquote> that don't already have word-spacing
+    const candidates = [];
+    for (let i = 0; i < children.length; i++) {
+      const tag = children[i].tagName;
+      if (tag !== 'P' && tag !== 'BLOCKQUOTE') continue;
+      if (/word-spacing:/i.test(children[i].getAttribute('style') || '')) continue;
+      candidates.push(i);
+    }
+    if (candidates.length === 0) continue;
+
+    let fixed = false;
+    for (const ws of WS_STEPS) {
+      // Apply to all candidates at once (same as adjustWordSpacing behavior)
+      for (const idx of candidates) {
+        const el = children[idx];
+        const style = (el.getAttribute('style') || '').trim();
+        const sep = style && !style.endsWith(';') ? ';' : '';
+        el.setAttribute('style', `${style}${sep}word-spacing:${ws}em;`);
+      }
+
+      const adjustedHtml = div.innerHTML;
+      if (measure(adjustedHtml) <= effectiveLimit) {
+        page.html = adjustedHtml;
+        fixed = true;
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[WS-FIX] p${page.pageNumber}: overflow=${overflow.toFixed(1)}px fixed with ws:${ws}em on ${candidates.length} els`);
+        }
+        break;
+      }
+    }
+
+    if (!fixed) {
+      // Revert — rebuild without word-spacing changes
+      div.innerHTML = page.html;
     }
   }
 };
@@ -1481,61 +1899,4 @@ const checkSplitBalance = (prevHtml, restHtml, lineHeightPx, canvasCtx) => {
   return { needsRebalance: false };
 };
 
-/**
- * E3: Deterministic page quality scoring.
- * Lower score = better layout. Uses Canvas measurement only.
- *
- * @private
- * @param {string} pageHtml
- * @param {number} contentHeight
- * @param {number} lineHeightPx
- * @param {object} canvasCtx
- * @returns {{ score: number, fillPct: number, violations: string[] }}
- */
-const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvasCtx) => {
-  if (!pageHtml) return { score: Infinity, fillPct: 0, violations: [] };
-
-  const measure = (html) => measureHtmlHeight(html, canvasCtx);
-  const pageHeight = measure(pageHtml);
-  const remainingSpace = contentHeight - pageHeight;
-  const violations = [];
-  let score = 0;
-
-  // Whitespace penalty
-  score += Math.max(0, remainingSpace) * 0.5;
-
-  // Parse structure
-  const div = document.createElement('div');
-  div.innerHTML = pageHtml;
-  const children = Array.from(div.children);
-
-  if (children.length > 0) {
-    const lastChild = children[children.length - 1];
-    const lastTag = lastChild.tagName || '';
-
-    // Heading at bottom penalty
-    if (/^H[1-6]$/i.test(lastTag)) {
-      score += 40;
-      violations.push('heading_at_bottom');
-    }
-
-    // Widow: single paragraph as only element with 1 line
-    if (lastTag === 'P' && children.length === 1) {
-      const lines = Math.floor(measure(lastChild.outerHTML) / lineHeightPx);
-      if (lines === 1) { score += 50; violations.push('widow'); }
-    }
-
-    // Orphan: single element with 1 line
-    if (children.length === 1) {
-      const lines = Math.floor(measure(children[0].outerHTML) / lineHeightPx);
-      if (lines === 1) { score += 50; violations.push('orphan'); }
-    }
-  }
-
-  return {
-    score,
-    fillPct: pageHeight > 0 ? (pageHeight / contentHeight) * 100 : 0,
-    violations
-  };
-};
 

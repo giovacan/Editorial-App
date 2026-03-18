@@ -1,4 +1,4 @@
-import { measureHtmlHeight, insertHtmlLineBreaks } from './textLayoutEngine';
+import { measureHtmlHeight, insertHtmlLineBreaks, measureRawTextWidth, getLineBreakPositions, collapseWhitespace, buildFontString } from './textLayoutEngine';
 
 export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, hasIndent = false, indentValue = 1.5, preserveFirstIndent = false, quoteConfig = null, externalCanvasCtx = null) => {
 
@@ -31,6 +31,11 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
 
   // Deterministic measure function (Canvas, no DOM layout)
   const measure = (htmlStr) => measureHtmlHeight(htmlStr, canvasCtx);
+
+  // Pre-computed constants for last-line quality check (computed once per call)
+  const MIN_LAST_LINE_RATIO = 0.40;
+  const _fontStr = buildFontString(canvasCtx.baseFontSizePx, canvasCtx.fontFamily, false, false);
+  const _availableW = canvasCtx.contentWidth - (canvasCtx.widthSlack || 0);
 
   const lines = [];
   let remainingHtml = html;
@@ -150,6 +155,48 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
 
     const lastSpace = text.substring(0, fitLength).lastIndexOf(' ');
     let breakPoint = lastSpace > fitLength * 0.5 ? lastSpace : fitLength;
+
+    // ─── Tipografía: no dejar última línea del split demasiado corta ──────
+    {
+      const chunkText = text.substring(0, breakPoint);
+      const chunkCollapsed = collapseWhitespace(chunkText);
+      const chunkWords = chunkCollapsed.split(/\s+/).filter(w => w);
+
+      if (chunkWords.length > 1) {
+        // indent solo aplica en la primera línea REAL del párrafo
+        const indentPx = isFirstChunk ? (hasIndent ? indentValue * canvasCtx.baseFontSizePx : 0) : 0;
+
+        const lineStarts = getLineBreakPositions(chunkCollapsed, _availableW, _fontStr, indentPx);
+        const lastLineWordIdx = lineStarts[lineStarts.length - 1];
+
+        if (lineStarts.length > 1 && lastLineWordIdx > 0) {
+          const lastLineText = chunkWords.slice(lastLineWordIdx).join(' ');
+          const lastLineWidth = measureRawTextWidth(lastLineText, _fontStr);
+
+          // Only fix when the last line itself is visually too short.
+          // Widow case (1-line continuation) is handled by fixWidowsWithLookback post-pass.
+          if (lastLineWidth < _availableW * MIN_LAST_LINE_RATIO) {
+            // Forward scan para char offset del inicio de la última línea
+            let newBP = -1;
+            let wi = 0, ci = 0;
+            while (ci < chunkText.length) {
+              while (ci < chunkText.length && chunkText[ci] === ' ') ci++;
+              if (wi === lastLineWordIdx) { newBP = ci > 0 ? ci - 1 : -1; break; }
+              while (ci < chunkText.length && chunkText[ci] !== ' ') ci++;
+              wi++;
+            }
+            if (newBP > 0) {
+              breakPoint = newBP;
+              if (process.env.NODE_ENV === 'development') {
+                const ratio = (lastLineWidth / _availableW * 100).toFixed(0);
+                console.log(`[LAST-LINE-FIX] ratio=${ratio}% → cut 1 line`);
+              }
+            }
+          }
+        }
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────
 
     const indent = computeIndent(isFirstChunk);
 
