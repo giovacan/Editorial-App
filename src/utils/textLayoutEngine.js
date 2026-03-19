@@ -40,17 +40,20 @@ const getCtx = () => {
 
 // ─── Font loading guard ─────────────────────────────────────────────
 
-let _fontsReady = false;
+// Per-font readiness map — key is normalized font family name.
+// Prevents stale Canvas measurements when the user switches fonts mid-session.
+const _fontsReady = new Map();
 
 /**
- * Wait until all declared fonts are loaded.
- * Must be called once before pagination starts.
+ * Wait until the requested font is loaded before Canvas measurement starts.
+ * Tracks readiness per font family — switching fonts correctly invalidates caches.
  *
- * @param {string} [fontFamily] - Optional specific font to preload
+ * @param {string} [fontFamily] - Font to preload (e.g. 'Lato, sans-serif')
  * @param {number} [fontSize=12] - Font size in pt for the preload request
  */
-export const ensureFontsReady = async (fontFamily, fontSize = 12) => {
-  if (_fontsReady) return;
+export const ensureFontsReady = async (fontFamily = '', fontSize = 12) => {
+  const key = fontFamily.toLowerCase().split(',')[0].trim();
+  if (_fontsReady.get(key)) return;
 
   if (typeof document !== 'undefined' && document.fonts) {
     // Race font loading against a timeout — some system fonts (Georgia, serif)
@@ -70,8 +73,11 @@ export const ensureFontsReady = async (fontFamily, fontSize = 12) => {
       // Font loading failed or timed out — proceed with whatever is available
     }
   }
-  _fontsReady = true;
 
+  _fontsReady.set(key, true);
+
+  // CRITICAL: always clear all caches when a new font is registered.
+  // Mixed cache entries from previous fonts produce wrong line-break measurements.
   _wordWidthCache.clear();
   _spaceWidthCache.clear();
   _paragraphLayoutCache.clear();

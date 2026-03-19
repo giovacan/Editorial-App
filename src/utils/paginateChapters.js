@@ -25,6 +25,13 @@ import {
 } from './textLayoutEngine';
 
 /**
+ * Shared justify slack ratio — single source of truth.
+ * Used here (greedy paginator) and in paginationEngine.splitParagraphByLines.
+ * 4% compensates Canvas.measureText() underestimating Spanish chars (ñ, á, é).
+ */
+export const JUSTIFY_SLACK_RATIO = 0.04;
+
+/**
  * Main entry point — same interface as before.
  *
  * @param {Chapter[]} chapters
@@ -41,8 +48,9 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig) =>
   // (ñ, í, é, etc.) by ~0.15px/char → for 40-char lines = ~6px total.
   // 4% (~6.2px at 155px) ensures Canvas wraps borderline lines the same
   // way the browser does. Impact: <0.5% false extra wraps (imperceptible).
+  // SINGLE SOURCE OF TRUTH — imported by paginationEngine.splitParagraphByLines
   const justifySlack = layoutCtx.textAlign === 'justify'
-    ? layoutCtx.contentWidth * 0.04
+    ? layoutCtx.contentWidth * JUSTIFY_SLACK_RATIO
     : 0;
   const canvasCtx = {
     ...createLayoutContext(
@@ -83,13 +91,16 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig) =>
   applyFillPass(allPages, layoutCtx, canvasCtx, measureDiv, safeConfig);
 
   // E5: Fix orphaned headings left at bottom of pages after fill-pass
-  fixHeadingsAtBottom(allPages, canvasCtx);
+  fixHeadingsAtBottom(allPages, canvasCtx, layoutCtx);
+
+  // E4: Cleanup nearly-empty pages after heading fixes (before distributing space)
+  cleanupNearlyEmptyPages(allPages, layoutCtx, canvasCtx);
 
   // E6: Distribute remaining vertical whitespace proportionally among elements
   distributeVerticalSpace(allPages, layoutCtx, canvasCtx);
 
-  // E4: Cleanup nearly-empty pages after fill pass
-  cleanupNearlyEmptyPages(allPages, layoutCtx, canvasCtx);
+  // Invariant: enforce chapter-start parity LAST — after all structural mutations
+  enforceChapterStartParity(allPages, safeConfig);
 
   // Re-number again after fill-pass may have emptied some pages
   let pageNum = 1;
@@ -661,17 +672,40 @@ const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
     if (/^H[1-6]$/i.test(last.tagName)) continue;
 
     const numGaps = children.length - 1;
-    const perGap = Math.min(gap / numGaps, MAX_PER_GAP);
-    if (perGap < 1) continue;
+    const maxPerGap = Math.min(gap / numGaps, MAX_PER_GAP);
+    if (maxPerGap < 1) continue;
 
-    // Apply extra margin-bottom to all elements except the last
-    for (let i = 0; i < children.length - 1; i++) {
-      const el = children[i];
-      const existing = parseFloat(el.style.marginBottom) || 0;
-      el.style.marginBottom = `${(existing + perGap).toFixed(1)}px`;
+    // Binary search for the largest perGap that keeps total height ≤ contentHeight.
+    // Avoids overflow when Canvas and browser disagree on margin interactions.
+    const applyGap = (g) => {
+      // Reset margins to original before applying new gap
+      children.forEach((el, idx) => {
+        if (idx < children.length - 1) {
+          const original = parseFloat(el.dataset.origMarginBottom ?? el.style.marginBottom) || 0;
+          el.dataset.origMarginBottom = el.dataset.origMarginBottom ?? String(original);
+          el.style.marginBottom = `${(original + g).toFixed(1)}px`;
+        }
+      });
+      return div.innerHTML;
+    };
+
+    let lo = 0;
+    let hi = maxPerGap;
+    let bestGap = 0;
+    for (let iter = 0; iter < 8; iter++) {
+      const mid = (lo + hi) / 2;
+      const testHtml = applyGap(mid);
+      if (measure(testHtml) <= contentHeight) {
+        bestGap = mid;
+        lo = mid;
+      } else {
+        hi = mid;
+      }
     }
 
-    page.html = div.innerHTML;
+    if (bestGap >= 1) {
+      page.html = applyGap(bestGap);
+    }
   }
 };
 
@@ -682,7 +716,7 @@ const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
  *
  * @private
  */
-const fixHeadingsAtBottom = (pages, canvasCtx) => {
+const fixHeadingsAtBottom = (pages, canvasCtx, layoutCtx) => {
   for (let i = 0; i < pages.length - 1; i++) {
     const page = pages[i];
     if (!page || page.isBlank || !page.html) continue;
@@ -708,13 +742,22 @@ const fixHeadingsAtBottom = (pages, canvasCtx) => {
     const next = pages[ni];
     if (page.chapterTitle !== next.chapterTitle) continue;
 
-    // Move heading to top of next page
+    // Move heading to top of next page — only if it fits without overflow
     const headingHtml = last.outerHTML;
+    const mergedHtml = headingHtml + (next.html || '');
+    const mergedHeight = measureHtmlHeight(mergedHtml, canvasCtx);
+    if (mergedHeight > layoutCtx.contentHeight) {
+      // Heading doesn't fit on next page → mark current page as titleOnlyPage
+      // (heading stays, but page is flagged so preview renders it correctly)
+      pages[i] = { ...page, isTitleOnlyPage: true };
+      continue;
+    }
+
     last.remove();
     const remainingHtml = div.innerHTML.trim();
 
     pages[i] = { ...page, html: remainingHtml, isBlank: !remainingHtml };
-    pages[ni] = { ...next, html: headingHtml + next.html };
+    pages[ni] = { ...next, html: mergedHtml };
 
     if (process.env.NODE_ENV === 'development') {
       console.log(`[HEADING-FIX] Moved orphaned heading from p${i + 1} to p${ni + 1}`);
@@ -751,6 +794,38 @@ const cleanupNearlyEmptyPages = (pages, layoutCtx, canvasCtx) => {
       pages[i - 1] = { ...prevPage, html: prevPage.html + page.html };
       page.html = '';
       page.isBlank = true;
+    }
+  }
+};
+
+/**
+ * Invariant: ensure every chapter-starting page is on an odd (right-hand) page.
+ * Runs LAST — after all structural mutations (fill-pass, heading fixes, cleanup).
+ * If the fill-pass removed pages and shifted chapter positions, this re-inserts
+ * the necessary blank pages to restore the odd-page invariant.
+ *
+ * @private
+ */
+const enforceChapterStartParity = (pages, safeConfig) => {
+  if (!safeConfig?.chapterTitle?.startOnRightPage) return;
+
+  for (let i = 1; i < pages.length; i++) {
+    if (!pages[i]?.isFirstChapterPage) continue;
+
+    // Physical page position is i+1 (1-indexed). Must be odd for right-hand page.
+    if ((i + 1) % 2 === 0) {
+      const blankPage = {
+        html: '',
+        pageNumber: 0,
+        isBlank: true,
+        chapterTitle: pages[i - 1]?.chapterTitle || '',
+        currentSubheader: '',
+        isTitleOnlyPage: false,
+        isFirstChapterPage: false,
+        shouldShowPageNumber: false,
+      };
+      pages.splice(i, 0, blankPage);
+      i++; // skip the blank just inserted
     }
   }
 };
@@ -823,8 +898,8 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
   const children = Array.from(div.children);
 
   if (children.length > 0) {
-    const lastChild = children[children.length - 1];
-    const lastTag = lastChild.tagName || '';
+    const lastEl = children[children.length - 1];
+    const lastTag = lastEl.tagName || '';
 
     // Heading at bottom penalty
     if (/^H[1-6]$/i.test(lastTag)) {
@@ -832,16 +907,28 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
       violations.push('heading_at_bottom');
     }
 
-    // Widow: single paragraph as only element with 1 line
-    if (lastTag === 'P' && children.length === 1) {
-      const lines = Math.floor(measure(lastChild.outerHTML) / lineHeightPx);
-      if (lines === 1) { score += 50; violations.push('widow'); }
-    }
+    // Scan ALL paragraphs for orphan/widow violations.
+    // Orphan: any continuation paragraph (text-indent:0) with only 1 line — at any position.
+    // Widow: last paragraph on page with only 1 line.
+    for (let ci = 0; ci < children.length; ci++) {
+      const el = children[ci];
+      if (el.tagName?.toUpperCase() !== 'P') continue;
 
-    // Orphan: single element with 1 line
-    if (children.length === 1) {
-      const lines = Math.floor(measure(children[0].outerHTML) / lineHeightPx);
-      if (lines === 1) { score += 50; violations.push('orphan'); }
+      const elStyle = el.getAttribute('style') || '';
+      const isContinuation = /text-indent:\s*0[^.]/.test(elStyle);
+      const elLines = Math.floor(measure(el.outerHTML) / lineHeightPx);
+
+      // Orphan: continuation chunk with only 1 line (any position on page)
+      if (isContinuation && elLines <= 1) {
+        score += 1000;
+        violations.push('orphan');
+      }
+
+      // Widow: last paragraph on page with only 1 line
+      if (ci === children.length - 1 && elLines <= 1) {
+        score += 1000;
+        violations.push('widow');
+      }
     }
   }
 

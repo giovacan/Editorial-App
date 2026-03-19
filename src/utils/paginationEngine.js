@@ -1,4 +1,5 @@
 import { measureHtmlHeight, insertHtmlLineBreaks } from './textLayoutEngine';
+import { JUSTIFY_SLACK_RATIO } from './paginateChapters';
 
 export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, hasIndent = false, indentValue = 1.5, preserveFirstIndent = false, quoteConfig = null) => {
 
@@ -11,7 +12,7 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
 
   // Build canvasCtx for deterministic measurement
   const effectiveContentWidth = measureDiv ? parseFloat(measureDiv.style?.width) || 400 : 400;
-  const justifySlack = effectiveTextAlign === 'justify' ? effectiveContentWidth * 0.02 : 0;
+  const justifySlack = effectiveTextAlign === 'justify' ? effectiveContentWidth * JUSTIFY_SLACK_RATIO : 0;
   const canvasCtx = {
     baseFontSizePx,
     baseLineHeight: effectiveBaseLineHeight,
@@ -438,36 +439,29 @@ export const shouldStartOnRightPage = (chapter, _chapterIndex, config) => {
 };
 
 export const detectQuotes = (html) => {
-  // DEBUG: Log quote detection parameters
-  console.log('🔍 detectQuotes called with:', {
-    htmlLength: html.length,
-    htmlPreview: html.substring(0, 100) + '...'
-  });
-  
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🔍 detectQuotes called with:', {
+      htmlLength: html.length,
+      htmlPreview: html.substring(0, 100) + '...'
+    });
+  }
+
   const detectedQuotes = [];
   const tempDiv = document.createElement('div');
   tempDiv.innerHTML = html;
-  
+
   const patterns = {
     guionLargo: /^[\s]*—/,
     comillasItalianas: /^[\s]*[«『]/,
     comillasInglesas: /^[\s]*[""]/,
     comillasBajas: /^[\s]*[„]/,
   };
-  
+
   const findQuotes = (element, parentIndex = 0) => {
-    // DEBUG: Log quote detection progress
-    console.log('🔍 findQuotes processing element:', {
-      nodeType: element.nodeType,
-      tagName: element.tagName,
-      textContent: element.textContent?.substring(0, 50) + '...',
-      parentIndex
-    });
-    
     if (element.nodeType === Node.TEXT_NODE) {
       const text = element.textContent;
       if (!text.trim()) return;
-      
+
       for (const [patternName, pattern] of Object.entries(patterns)) {
         if (pattern.test(text)) {
           const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
@@ -479,13 +473,14 @@ export const detectQuotes = (html) => {
             startIndex: parentIndex,
             confidence: 0.9
           });
-          // DEBUG: Log detected quote
-          console.log('✅ Quote detected:', {
-            pattern: patternName,
-            text: text.trim().substring(0, 50) + '...',
-            wordCount,
-            startIndex: parentIndex
-          });
+          if (process.env.NODE_ENV === 'development') {
+            console.log('✅ Quote detected:', {
+              pattern: patternName,
+              text: text.trim().substring(0, 50) + '...',
+              wordCount,
+              startIndex: parentIndex
+            });
+          }
           break;
         }
       }
@@ -546,13 +541,14 @@ export const detectQuotes = (html) => {
 };
 
 export const applyQuoteTemplate = (text, template = 'classic', config = {}) => {
-  // DEBUG: Log applyQuoteTemplate parameters
-  console.log('🎭 applyQuoteTemplate called with:', {
-    textLength: text.length,
-    textPreview: text.substring(0, 50) + '...',
-    template,
-    config
-  });
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🎭 applyQuoteTemplate called with:', {
+      textLength: text.length,
+      textPreview: text.substring(0, 50) + '...',
+      template,
+      config
+    });
+  }
   
   const templates = {
     classic: {
@@ -582,30 +578,11 @@ export const applyQuoteTemplate = (text, template = 'classic', config = {}) => {
 };
 
 export const wrapInQuote = (html, template = 'classic') => {
-  // DEBUG: Log wrapInQuote parameters
-  console.log('🎭 wrapInQuote called with:', {
-    htmlLength: html.length,
-    htmlPreview: html.substring(0, 50) + '...',
-    template
-  });
-  
   const result = applyQuoteTemplate(html, template);
-  
-  // DEBUG: Log wrapInQuote result
-  console.log('🎭 wrapInQuote result:', {
-    resultLength: result.length,
-    resultPreview: result.substring(0, 100) + '...'
-  });
-  
   return result;
 };
 
 export const unwrapQuote = (html) => {
-  // DEBUG: Log unwrapQuote parameters
-  console.log('🎭 unwrapQuote called with:', {
-    htmlLength: html.length,
-    htmlPreview: html.substring(0, 50) + '...'
-  });
   
   const tempDiv = document.createElement('div');
   tempDiv.innerHTML = html;
@@ -619,13 +596,5 @@ export const unwrapQuote = (html) => {
     parent.removeChild(bq);
   });
   
-  const result = tempDiv.innerHTML;
-  
-  // DEBUG: Log unwrapQuote result
-  console.log('🎭 unwrapQuote result:', {
-    resultLength: result.length,
-    resultPreview: result.substring(0, 100) + '...'
-  });
-  
-  return result;
+  return tempDiv.innerHTML;
 };

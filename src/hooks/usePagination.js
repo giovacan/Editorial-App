@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import murmurhash from 'imurmurhash';
 import { KDP_STANDARDS } from '../utils/kdpStandards';
 import useEditorStore from '../store/useEditorStore';
 import {
@@ -235,7 +236,9 @@ export const usePagination = (bookData, config, measureRef) => {
       safeConfig.showHeaders, safeConfig.chaptersOnRight,
       safeConfig.extraEndPages, safeConfig.extraEndPagesNumbered
     ].join('|');
-    const contentHash = JSON.stringify(safeBookData.chapters.map(ch => ch.id + (ch.html?.length || 0))) + '||' + layoutKey;
+    const contentHash = JSON.stringify(safeBookData.chapters.map(ch =>
+      ch.id + murmurhash(ch.html || '').result()
+    )) + '||' + layoutKey;
     console.log('📄 Hash de paginación:', contentHash.slice(-50), '| Layout:', safeConfig.chapterTitle?.layout);
     if (measureRef.current._lastContentHash === contentHash) {
       console.log('⏭️ Saltando paginación - hash igual');
@@ -325,7 +328,9 @@ export const usePagination = (bookData, config, measureRef) => {
         return;
       }
 
-      const headerSpaceEstimate = safeConfig.header?.enabled ? Math.round(lineHeightPx * 1.5) : 0;
+      // Reserve space for header — 3.0 lines covers 2-line headers + padding + border.
+      // TODO: replace with measureHtmlHeight(buildHeaderHtmlPure(...), canvasCtx) for exact measurement.
+      const headerSpaceEstimate = safeConfig.header?.enabled ? Math.round(lineHeightPx * 3.0) : 0;
       const minOrphanLines = safeConfig.pagination?.minOrphanLines ?? 2;
       // Floor to line grid — rounding provides up to 1 line of safety.
       const rawContentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight) - headerSpaceEstimate;
