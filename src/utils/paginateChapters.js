@@ -675,15 +675,15 @@ const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
     const maxPerGap = Math.min(gap / numGaps, MAX_PER_GAP);
     if (maxPerGap < 1) continue;
 
+    // Capture original margins before any modification
+    const origMargins = children.map(el => parseFloat(el.style.marginBottom) || 0);
+
     // Binary search for the largest perGap that keeps total height ≤ contentHeight.
     // Avoids overflow when Canvas and browser disagree on margin interactions.
     const applyGap = (g) => {
-      // Reset margins to original before applying new gap
       children.forEach((el, idx) => {
         if (idx < children.length - 1) {
-          const original = parseFloat(el.dataset.origMarginBottom ?? el.style.marginBottom) || 0;
-          el.dataset.origMarginBottom = el.dataset.origMarginBottom ?? String(original);
-          el.style.marginBottom = `${(original + g).toFixed(1)}px`;
+          el.style.marginBottom = `${(origMargins[idx] + g).toFixed(1)}px`;
         }
       });
       return div.innerHTML;
@@ -694,8 +694,7 @@ const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
     let bestGap = 0;
     for (let iter = 0; iter < 8; iter++) {
       const mid = (lo + hi) / 2;
-      const testHtml = applyGap(mid);
-      if (measure(testHtml) <= contentHeight) {
+      if (measure(applyGap(mid)) <= contentHeight) {
         bestGap = mid;
         lo = mid;
       } else {
