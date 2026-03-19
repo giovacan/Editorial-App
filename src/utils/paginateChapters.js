@@ -561,9 +561,12 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
           : { score: 0, violations: [] };
         const badnessAfter = qMovedCurrent.score + qMovedSource.score;
 
-        if (badnessAfter >= badnessBefore) {
+        // Minimum delta threshold — require at least 50 point improvement.
+        // Prevents micro-optimisations that create layout instability.
+        const BADNESS_MIN_DELTA = 50;
+        if (badnessAfter > badnessBefore - BADNESS_MIN_DELTA) {
           if (process.env.NODE_ENV === 'development') {
-            console.log(`[FILL-BADNESS] p${i + 1}: move rejected — badness ${badnessBefore.toFixed(0)} → ${badnessAfter.toFixed(0)}`);
+            console.log(`[FILL-BADNESS] p${i + 1}: move rejected — badness ${badnessBefore.toFixed(0)} → ${badnessAfter.toFixed(0)} (Δ${(badnessBefore - badnessAfter).toFixed(0)} < ${BADNESS_MIN_DELTA})`);
           }
           break;
         }
@@ -641,9 +644,9 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
       const qSplitSource  = evaluatePageQualityCanvas(newSourceHtml, contentHeight, lineHeightPx, canvasCtx);
       const splitBadnessAfter = qSplitCurrent.score + qSplitSource.score;
 
-      if (splitBadnessAfter >= badnessBefore) {
+      if (splitBadnessAfter > badnessBefore - 50) {
         if (process.env.NODE_ENV === 'development') {
-          console.log(`[FILL-BADNESS-SPLIT] p${i + 1}: split rejected — badness ${badnessBefore.toFixed(0)} → ${splitBadnessAfter.toFixed(0)}`);
+          console.log(`[FILL-BADNESS-SPLIT] p${i + 1}: split rejected — badness ${badnessBefore.toFixed(0)} → ${splitBadnessAfter.toFixed(0)} (Δ${(badnessBefore - splitBadnessAfter).toFixed(0)})`);
         }
         break;
       }
@@ -911,10 +914,12 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
   let score = 0;
 
   // Whitespace penalty — line-based tiers (TeX-style)
+  // 80/line for 1-2 lines: enough "inertia" to avoid micro-optimisations.
+  // Steps up at 3+ and 5+ lines to force the fill-pass to act on serious underfill.
   const unusedLines = Math.floor(Math.max(0, remainingSpace) / lineHeightPx);
-  if (unusedLines > 4)      score += 500; // severe underfill
-  else if (unusedLines > 2) score += 200; // moderate underfill
-  else                      score += unusedLines * 30; // 0–2 lines: minor penalty
+  if (unusedLines > 4)      score += 500; // severe underfill (5+ lines)
+  else if (unusedLines > 2) score += 200; // moderate underfill (3-4 lines)
+  else                      score += unusedLines * 80; // 1-2 lines: 80/160 — add inertia
 
   // Parse structure
   const div = document.createElement('div');
@@ -952,6 +957,20 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
       if (ci === children.length - 1 && elLines <= 1) {
         score += 1000;
         violations.push('widow');
+      }
+
+      // Fragmentation penalty: continuation chunk with <3 lines is a "bad split"
+      // Not a hard violation but editorially weak (too little content carried over).
+      if (isContinuation && elLines > 1 && elLines < 3) {
+        score += 200;
+        violations.push('split_shallow');
+      }
+
+      // Fragmentation penalty: any paragraph fragment crossing pages adds cost.
+      // Discourages unnecessary splits when the page could absorb the whole element.
+      if (isContinuation) {
+        score += 100;
+        violations.push('fragment');
       }
     }
   }
