@@ -37,10 +37,12 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig) =>
   const allPages = [];
 
   // Build Canvas layout context for deterministic measurement
-  // widthSlack compensates for Canvas measureText() vs browser font hinting
-  // at small preview scales. 2% is sufficient without hyphens:auto.
+  // ctx.measureText() underestimates word widths for Spanish characters
+  // (ñ, í, é, etc.) by ~0.15px/char → for 40-char lines = ~6px total.
+  // 4% (~6.2px at 155px) ensures Canvas wraps borderline lines the same
+  // way the browser does. Impact: <0.5% false extra wraps (imperceptible).
   const justifySlack = layoutCtx.textAlign === 'justify'
-    ? layoutCtx.contentWidth * 0.02
+    ? layoutCtx.contentWidth * 0.04
     : 0;
   const canvasCtx = {
     ...createLayoutContext(

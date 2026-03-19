@@ -717,7 +717,7 @@ const calculateElementHeight = (parsed, layoutCtx) => {
   }
   const hasCustomFont = styles.fontSize || styles.lineHeight;
   const lineHeightPx = hasCustomFont
-    ? elFontSizePx * elLineHeight
+    ? Math.ceil(elFontSizePx * elLineHeight)
     : (layoutCtx.lineHeightPx || Math.ceil(elFontSizePx * elLineHeight));
 
   // Resolve indentation
@@ -738,7 +738,9 @@ const calculateElementHeight = (parsed, layoutCtx) => {
   const marginLPx = resolveSize(styles.marginLeft, styles.marginLeftUnit, elFontSizePx);
   const marginRPx = resolveSize(styles.marginRight, styles.marginRightUnit, elFontSizePx);
   const borderLeft = styles.borderLeftWidth || 0;
-  const availableWidth = contentWidth - paddingH - marginLPx - marginRPx - borderLeft - widthSlack;
+  // Heading elements: bold fonts have higher per-character measurement variance
+  const headingSlack = /^H[1-6]$/.test(tag) ? 3 : 0;
+  const availableWidth = contentWidth - paddingH - marginLPx - marginRPx - borderLeft - widthSlack - headingSlack;
 
   // Count lines — use runs if available (handles inline bold/italic/size),
   // fall back to plain text measurement
