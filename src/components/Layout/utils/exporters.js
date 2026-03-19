@@ -1,4 +1,5 @@
 import { KDP_STANDARDS } from '../../../utils/kdpStandards';
+import { buildHeaderHtmlPure } from '../../../hooks/useHeaderFooter';
 
 /**
  * Creates a minimal ZIP file from an array of { name, content } entries.
@@ -101,55 +102,190 @@ const downloadBlob = (blob, filename) => {
 };
 
 /**
- * Export book as PDF using html2pdf.js
+ * Export book as PDF using html2canvas + jsPDF.
+ *
+ * Renders each paginatedPage div (at previewScale) to a canvas, then
+ * assembles a jsPDF at the correct book dimensions in mm.
+ * Direct download — no print dialog.
+ *
+ * @param {object}   bookData
+ * @param {object}   config
+ * @param {Array}    paginatedPages  - Pages from usePagination (at previewScale)
+ * @param {object}   dims            - { pageWidthPx, pageHeightPx, marginTop, marginRight,
+ *                                       marginBottom, marginLeft, fontSize, fontFamily,
+ *                                       lineHeightPx, previewScale }
+ * @param {Function} onProgress      - (current, total) callback for progress updates
+ * @param {string}  [quality]       - 'fast' (~80 DPI) | 'print' (~220 DPI, default)
  */
-export const exportPdf = async (bookData, config) => {
-  const { default: html2pdf } = await import('html2pdf.js');
-
-  const bookConfig = KDP_STANDARDS.getBookTypeConfig(bookData.bookType);
-  const pageFormat = KDP_STANDARDS.getPageFormat(config.pageFormat || bookConfig.recommendedFormat);
-
-  const marginMM = {
-    top: bookConfig.marginTop * 25.4,
-    bottom: bookConfig.marginBottom * 25.4,
-    left: (bookConfig.marginLeft + (bookConfig.gutter || 0)) * 25.4,
-    right: bookConfig.marginRight * 25.4
-  };
-
-  let contentHtml = `<div style="font-family: ${bookConfig.fontFamily}; font-size: ${bookConfig.fontSize}pt; line-height: ${bookConfig.lineHeight};">`;
-
-  bookData.chapters.forEach((chapter, index) => {
-    contentHtml += `
-      <div style="page-break-before: ${index === 0 ? 'avoid' : 'always'}; margin-top: 1em;">
-        <h2 style="text-align: center; font-size: 1.3em; margin-bottom: 1em;">${chapter.title}</h2>
-        <div>${chapter.html}</div>
-      </div>
-    `;
-  });
-
-  contentHtml += '</div>';
-
-  const container = window.document.createElement('div');
-  container.innerHTML = contentHtml;
-  container.style.width = `${pageFormat.width * 10}mm`;
-  container.style.padding = `${marginMM.top}mm ${marginMM.right}mm ${marginMM.bottom}mm ${marginMM.left}mm`;
-  window.document.body.appendChild(container);
-
-  const opt = {
-    margin: [marginMM.top / 25.4, marginMM.right / 25.4, marginMM.bottom / 25.4, marginMM.left / 25.4],
-    filename: `${bookData.title || 'libro'}.pdf`,
-    image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true },
-    jsPDF: { unit: 'mm', format: [pageFormat.width * 10, pageFormat.height * 10], orientation: 'portrait' }
-  };
-
-  try {
-    await html2pdf().set(opt).from(container).save();
-  } catch (error) {
-    alert('Error al generar PDF: ' + error.message);
+export const exportPdf = async (bookData, config, paginatedPages, dims, onProgress, quality = 'print') => {
+  if (!paginatedPages?.length || !dims) {
+    alert('No hay páginas para exportar. Abre la Vista previa primero.');
+    return;
   }
 
-  window.document.body.removeChild(container);
+  const bookConfig = KDP_STANDARDS.getBookTypeConfig(bookData?.bookType || 'novela');
+  const formatId   = config?.pageFormat || bookConfig?.recommendedFormat || '6x9';
+  const pageFormat = KDP_STANDARDS.getPageFormat(formatId);
+
+  if (!pageFormat) {
+    alert('Formato de página no reconocido: ' + formatId);
+    return;
+  }
+
+  // Import libraries — both available in node_modules
+  let jsPDFModule, html2canvasModule;
+  try {
+    [jsPDFModule, html2canvasModule] = await Promise.all([
+      import('jspdf'),
+      import('html2canvas'),
+    ]);
+  } catch (err) {
+    alert('Error cargando dependencias PDF: ' + err.message);
+    return;
+  }
+  const { jsPDF }     = jsPDFModule;
+  const html2canvas   = html2canvasModule.default;
+
+  // Page dimensions in mm
+  const toMM = (val, unit) => unit === 'inches' ? val * 25.4 : val;
+  const W = toMM(pageFormat.width,  pageFormat.unit);
+  const H = toMM(pageFormat.height, pageFormat.unit);
+
+  const {
+    pageWidthPx, pageHeightPx,
+    marginTop, marginRight, marginBottom, marginLeft,
+    fontSize, fontFamily, lineHeightPx,
+    baseFontSize,
+    previewScale = 0.42,
+  } = dims;
+
+  // Dynamic DPI: target_dpi / 96 * (1 / previewScale)
+  // 'fast' → ~80 DPI (quick preview), 'print' → ~220 DPI (KDP min), 'high' → ~300 DPI (images)
+  const TARGET_DPI   = quality === 'fast' ? 80 : quality === 'high' ? 300 : 220;
+  const CANVAS_SCALE = (TARGET_DPI / 96) * (1 / previewScale);
+  // Example A5 (previewScale=0.42): fast → 1.98×, print → 5.46×, high → 7.44×
+
+  const doc = new jsPDF({
+    unit: 'mm',
+    format: [W, H],
+    orientation: 'portrait',
+    compress: true,
+  });
+
+  // Off-screen render container — position:absolute below page content
+  // (position:fixed confuses html2canvas scroll-offset logic)
+  const container = document.createElement('div');
+  container.setAttribute('aria-hidden', 'true');
+  container.style.cssText = [
+    'position:absolute',
+    'left:0',
+    `top:${document.documentElement.scrollHeight + 2000}px`,
+    `width:${pageWidthPx}px`,
+    'pointer-events:none',
+    'z-index:-1',
+  ].join(';');
+  document.body.appendChild(container);
+
+  const bookTitle = bookData?.title || '';
+  const pageBaseStyle = [
+    `width:${pageWidthPx}px`,
+    `height:${pageHeightPx}px`,
+    'background:#fff',
+    'color:#000',
+    'box-sizing:border-box',
+    `padding:${marginTop}px ${marginRight}px ${marginBottom}px ${marginLeft}px`,
+    `font-size:${fontSize}px`,
+    `font-family:${fontFamily}`,
+    `line-height:${lineHeightPx}px`,
+    'text-align:justify',
+    'text-justify:inter-word',
+    'word-break:break-word',
+    'overflow-wrap:break-word',
+    'overflow:hidden',
+    'hyphens:none',
+    'position:relative',
+  ].join(';');
+
+  // Build a single page's DOM element (does not append to DOM)
+  const buildPageDiv = (page) => {
+    const headerHtml = buildHeaderHtmlPure(page, config, bookTitle, baseFontSize);
+    const pageDiv = document.createElement('div');
+    pageDiv.style.cssText = pageBaseStyle;
+
+    if (headerHtml) {
+      const headerDiv = document.createElement('div');
+      headerDiv.style.cssText = 'margin-bottom:0.5em;';
+      headerDiv.innerHTML = headerHtml;
+      pageDiv.appendChild(headerDiv);
+    }
+
+    const contentDiv = document.createElement('div');
+    contentDiv.style.cssText = `height:${dims.effectiveContentHeight ?? (pageHeightPx - marginTop - marginBottom)}px;overflow:hidden;`;
+    contentDiv.innerHTML = page.html || '';
+    pageDiv.appendChild(contentDiv);
+
+    if (page.pageNumber && !page.isBlank && config?.showPageNumbers !== false) {
+      const numSpan = document.createElement('span');
+      numSpan.style.cssText = `position:absolute;bottom:${marginBottom * 0.4}px;left:50%;transform:translateX(-50%);font-size:${fontSize * 0.8}px;color:#333;`;
+      numSpan.textContent = String(page.pageNumber);
+      pageDiv.appendChild(numSpan);
+    }
+
+    return pageDiv;
+  };
+
+  const h2cOptions = {
+    scale: CANVAS_SCALE,
+    useCORS: true,
+    allowTaint: false,
+    backgroundColor: '#ffffff',
+    width: pageWidthPx,
+    height: pageHeightPx,
+    logging: false,
+    scrollX: 0,
+    scrollY: 0,
+  };
+
+  // Render pages in parallel batches to maximise throughput.
+  // CONCURRENCY = 3 keeps peak canvas memory to ~28 MB (220 DPI) / ~52 MB (300 DPI).
+  const CONCURRENCY = 3;
+  const total = paginatedPages.length;
+
+  try {
+    for (let i = 0; i < total; i += CONCURRENCY) {
+      const batch = paginatedPages.slice(i, Math.min(i + CONCURRENCY, total));
+
+      // Attach all batch divs to the off-screen container
+      const divs = batch.map((page) => {
+        const div = buildPageDiv(page);
+        container.appendChild(div);
+        return div;
+      });
+
+      // Render batch in parallel
+      const canvases = await Promise.all(divs.map((div) => html2canvas(div, h2cOptions)));
+
+      // Add pages to PDF in order
+      canvases.forEach((canvas, j) => {
+        const pageIdx = i + j;
+        if (pageIdx > 0) doc.addPage([W, H], 'portrait');
+        doc.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, W, H);
+      });
+
+      // Clean up batch divs before next batch
+      divs.forEach((div) => container.removeChild(div));
+
+      onProgress?.(Math.min(i + CONCURRENCY, total), total);
+
+      // Yield once per batch so the spinner stays responsive
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+  } finally {
+    document.body.removeChild(container);
+  }
+
+  const safeTitle = (bookData.title || 'libro').replace(/[^\w\sáéíóúñÁÉÍÓÚÑ.-]/g, '_');
+  doc.save(`${safeTitle}.pdf`);
 };
 
 /**

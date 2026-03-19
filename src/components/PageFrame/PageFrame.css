@@ -1,0 +1,36 @@
+/* PageFrame — shared page rendering styles */
+
+.pf-page {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+}
+
+.pf-slot {
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* Margin guide */
+.pf-margin-guide {
+  position: absolute;
+  border: 1px dashed rgba(220, 38, 38, 0.55);
+  pointer-events: none;
+  z-index: 20;
+}
+
+/* Header */
+.pf-header {
+  /* height is auto — drives the 3.0×lineHeight reservation in usePagination */
+}
+
+/* Content — inherits preview-content class for paragraph styles */
+.pf-content {
+  /* height set via inline style (effectiveContentHeight) */
+}
+
+/* Page number */
+.pf-page-number {
+  font-weight: normal;
+  letter-spacing: 0.02em;
+  user-select: none;
+  pointer-events: none;
+}

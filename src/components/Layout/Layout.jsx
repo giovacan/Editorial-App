@@ -4,7 +4,7 @@ import useEditorStore from '../../store/useEditorStore';
 import { useBookSync } from '../../hooks/useBookSync';
 import { useConfigHistory } from '../../hooks/useConfigHistory';
 import { addRecentBook } from '../../utils/recentBooks';
-import { exportPdf, exportEpub, exportHtml } from './utils/exporters';
+import ExportPreviewModal from '../ExportPreviewModal/ExportPreviewModal';
 import Header from '../Header/Header';
 import PaginationProgressBar from '../PaginationProgressBar/PaginationProgressBar';
 import SidebarLeft from '../SidebarLeft/SidebarLeft';
@@ -41,7 +41,8 @@ function Layout() {
     setShowHistoryPanel
   } = useConfigHistory(config);
 
-  const [editorUndoState, setEditorUndoState] = useState({ canUndo: false, canRedo: false });
+  const [editorUndoState, setEditorUndoState]   = useState({ canUndo: false, canRedo: false });
+  const [exportModal, setExportModal]            = useState({ open: false, format: 'pdf' });
   const [lastSaveTime, setLastSaveTime] = useState(null);
   const isRestoringRef = useRef(false);
   const prevConfigRef = useRef(config);
@@ -166,20 +167,9 @@ function Layout() {
     loadContent(loadedChapters);
   };
 
-  const handleExportPdf = () => {
-    const { bookData: bd, config: cfg } = useEditorStore.getState();
-    exportPdf(bd, cfg);
-  };
-
-  const handleExportEpub = () => {
-    const { bookData: bd } = useEditorStore.getState();
-    exportEpub(bd);
-  };
-
-  const handleExportHtml = () => {
-    const { bookData: bd } = useEditorStore.getState();
-    exportHtml(bd);
-  };
+  const handleExportPdf  = () => setExportModal({ open: true, format: 'pdf' });
+  const handleExportEpub = () => setExportModal({ open: true, format: 'epub' });
+  const handleExportHtml = () => setExportModal({ open: true, format: 'html' });
 
   const safeUi = ui || { showUpload: true };
   const showUpload = safeUi?.showUpload ?? true;
@@ -217,6 +207,13 @@ function Layout() {
           onExportHtml={handleExportHtml}
         />
       </main>
+
+      {exportModal.open && (
+        <ExportPreviewModal
+          initialFormat={exportModal.format}
+          onClose={() => setExportModal({ open: false, format: 'pdf' })}
+        />
+      )}
 
       <footer className="app-footer" role="contentinfo">
         <div className="footer-content">

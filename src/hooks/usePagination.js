@@ -407,6 +407,16 @@ export const usePagination = (bookData, config, measureRef) => {
           gutterValue: engineGutter,
         });
         setPages(validatedPages);
+        useEditorStore.getState().setPaginatedPages(validatedPages);
+        useEditorStore.getState().setLayoutDims({
+          contentHeight,
+          contentWidth,
+          lineHeightPx,
+          baseFontSizePx,
+          baseLineHeight,
+          previewScale,
+          gutterValue: engineGutter,
+        });
         useEditorStore.getState().setPaginationProgress(100);
       }
     };
