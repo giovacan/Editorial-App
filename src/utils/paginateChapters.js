@@ -507,6 +507,11 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
         break;
       }
 
+      // Baseline badness — sum of both pages before any move
+      const badnessBefore =
+        evaluatePageQualityCanvas(currentHtml, contentHeight, lineHeightPx, canvasCtx).score +
+        evaluatePageQualityCanvas(nextPage.html, contentHeight, lineHeightPx, canvasCtx).score;
+
       // Extract first element from next page
       const tmp = document.createElement('div');
       tmp.innerHTML = nextPage.html;
@@ -549,18 +554,25 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
           if (srcLines < minWidowLines) break;
         }
 
-        // E3: Quality gate — reject only if move creates a serious violation
-        // (heading at bottom or single-line orphan/widow on source page)
-        if (sourceHtml) {
-          const qSource = evaluatePageQualityCanvas(sourceHtml, contentHeight, lineHeightPx, canvasCtx);
-          if (qSource.violations.includes('heading_at_bottom')
-            || qSource.violations.includes('orphan')
-            || qSource.violations.includes('widow')) {
-            if (process.env.NODE_ENV === 'development') {
-              console.log(`[FILL-SKIP] p${i + 1}: quality gate blocked move (violations: ${qSource.violations.join(', ')}, ${remainingLines} lines free)`);
-            }
-            break;
+        // Badness gate — accept only if total layout quality improves across both pages
+        const qMovedCurrent = evaluatePageQualityCanvas(currentHtml + firstElHtml, contentHeight, lineHeightPx, canvasCtx);
+        const qMovedSource  = sourceHtml
+          ? evaluatePageQualityCanvas(sourceHtml, contentHeight, lineHeightPx, canvasCtx)
+          : { score: 0, violations: [] };
+        const badnessAfter = qMovedCurrent.score + qMovedSource.score;
+
+        if (badnessAfter >= badnessBefore) {
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`[FILL-BADNESS] p${i + 1}: move rejected — badness ${badnessBefore.toFixed(0)} → ${badnessAfter.toFixed(0)}`);
           }
+          break;
+        }
+        // Hard constraint: never strand a heading at the bottom of source page
+        if (qMovedSource.violations.includes('heading_at_bottom')) {
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`[FILL-SKIP] p${i + 1}: heading_at_bottom on source — blocked`);
+          }
+          break;
         }
 
         // Accept move — try to re-merge split chunks if the moved element
@@ -624,8 +636,18 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
       const newSourceLines = Math.floor(measure(newSourceHtml) / lineHeightPx);
       if (newSourceLines < minWidowLines) break;
 
-      // E3b: Quality gate on split result — don't create heading_at_bottom on source
-      const qSplitSource = evaluatePageQualityCanvas(newSourceHtml, contentHeight, lineHeightPx, canvasCtx);
+      // Badness gate for split — accept only if total quality improves
+      const qSplitCurrent = evaluatePageQualityCanvas(currentHtml + chunk, contentHeight, lineHeightPx, canvasCtx);
+      const qSplitSource  = evaluatePageQualityCanvas(newSourceHtml, contentHeight, lineHeightPx, canvasCtx);
+      const splitBadnessAfter = qSplitCurrent.score + qSplitSource.score;
+
+      if (splitBadnessAfter >= badnessBefore) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[FILL-BADNESS-SPLIT] p${i + 1}: split rejected — badness ${badnessBefore.toFixed(0)} → ${splitBadnessAfter.toFixed(0)}`);
+        }
+        break;
+      }
+      // Hard constraint: never strand heading at bottom of source
       if (qSplitSource.violations.includes('heading_at_bottom')) break;
 
       pages[i] = { ...pages[i], html: currentHtml + chunk };
@@ -888,8 +910,11 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
   const violations = [];
   let score = 0;
 
-  // Whitespace penalty
-  score += Math.max(0, remainingSpace) * 0.5;
+  // Whitespace penalty — line-based tiers (TeX-style)
+  const unusedLines = Math.floor(Math.max(0, remainingSpace) / lineHeightPx);
+  if (unusedLines > 4)      score += 500; // severe underfill
+  else if (unusedLines > 2) score += 200; // moderate underfill
+  else                      score += unusedLines * 30; // 0–2 lines: minor penalty
 
   // Parse structure
   const div = document.createElement('div');
@@ -900,9 +925,9 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
     const lastEl = children[children.length - 1];
     const lastTag = lastEl.tagName || '';
 
-    // Heading at bottom penalty
+    // Heading at bottom penalty — nearly as bad as widow/orphan
     if (/^H[1-6]$/i.test(lastTag)) {
-      score += 40;
+      score += 800;
       violations.push('heading_at_bottom');
     }
 
