@@ -400,44 +400,34 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
       if (splitResult) {
         const [firstChunk, restChunk] = splitResult;
 
-        // Measure orphan lines (Canvas)
+        // Absolute floor — both sides must have at least 1 line
         const pageWithChunkHeight = measure(currentHtml + firstChunk);
         const orphanLines = Math.floor(pageWithChunkHeight / lineHeightPx)
           - Math.floor(actualCurrentHeight / lineHeightPx);
-
-        // Measure widow lines (Canvas)
         const widowLines = Math.floor(measure(restChunk) / lineHeightPx);
 
-        const meetsStrict = orphanLines >= minOrphanLines && widowLines >= minWidowLines;
-        // Relaxed: accept if at least 2 orphan + 2 widow lines and
-        // rejecting would waste significant space (≥2 lines of remaining room).
-        const meetsRelaxed = !meetsStrict
-          && remainingLines >= 2
-          && orphanLines >= 2
-          && widowLines >= 2;
-        // Extra aggressive for title pages — accept split with just 1 orphan
-        // line if rejecting would leave 50%+ of the page empty
-        const meetsAggressive = !meetsStrict && !meetsRelaxed
-          && pageHasTitle
-          && remainingLines >= 2
-          && orphanLines >= 1
-          && widowLines >= 2;
-        // Underfill prevention: when rejecting would waste ≥4 lines (>15% page),
-        // accept split with relaxed constraints. Requires ≥2 widow lines to avoid
-        // typographic orphans at page top. The fill-pass handles remaining cases.
-        const meetsUnderfill = !meetsStrict && !meetsRelaxed && !meetsAggressive
-          && remainingLines >= 4
-          && orphanLines >= 2
-          && widowLines >= 2;
+        if (orphanLines >= 1 && widowLines >= 1) {
+          // Badness comparison: split vs flush
+          // split  → current page gets firstChunk,  next page starts with restChunk
+          // flush  → current page stays as-is,       next page starts with full el.html
+          const badnessSplit =
+            evaluatePageQualityCanvas(currentHtml + firstChunk, contentHeight, lineHeightPx, canvasCtx).score +
+            evaluatePageQualityCanvas(restChunk, contentHeight, lineHeightPx, canvasCtx).score;
 
-        if (meetsStrict || meetsRelaxed || meetsAggressive || meetsUnderfill) {
-          if (process.env.NODE_ENV === 'development' && (meetsAggressive || meetsUnderfill)) {
-            const mode = meetsAggressive ? 'AGGRESSIVE' : 'UNDERFILL';
-            console.log(`[SPLIT-${mode}] p${pages.length + 1}: orphan=${orphanLines}, widow=${widowLines}, remaining=${remainingLines}, hasTitle=${pageHasTitle}`);
+          const badnessFlush =
+            evaluatePageQualityCanvas(currentHtml, contentHeight, lineHeightPx, canvasCtx).score +
+            evaluatePageQualityCanvas(el.html, contentHeight, lineHeightPx, canvasCtx).score;
+
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`[GREEDY-SPLIT?] p${pages.length + 1}: split=${badnessSplit.toFixed(0)} flush=${badnessFlush.toFixed(0)} orphan=${orphanLines} widow=${widowLines}`);
           }
-          pushPage(currentHtml + firstChunk);
-          currentHtml = restChunk;
-          continue;
+
+          // Accept split only if it produces a meaningfully better layout (Δ > 50)
+          if (badnessSplit < badnessFlush - 50) {
+            pushPage(currentHtml + firstChunk);
+            currentHtml = restChunk;
+            continue;
+          }
         }
       }
     }
