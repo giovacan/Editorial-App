@@ -19,7 +19,7 @@
  *   - No layout thrashing, no sub-pixel rounding from DOM
  */
 
-import { initKnuthPlass, countLinesKP, countLinesFromRunsKP } from './knuthPlassAdapter.js';
+import { initKnuthPlass, countLinesKP, countLinesFromRunsKP, getLineBreakPositionsKP } from './knuthPlassAdapter.js';
 
 // ─── Canvas singleton ───────────────────────────────────────────────
 
@@ -258,6 +258,72 @@ const REPLACED_TAGS = new Set(['IMG', 'VIDEO', 'CANVAS', 'SVG', 'IFRAME']);
 
 // ─── Line breaker with runs ─────────────────────────────────────────
 
+// ─── Spanish syllabification ─────────────────────────────────────────
+// Implements core RAE syllabification rules for hyphenation.
+// Used by countLines / countLinesFromRuns to break Spanish words at
+// syllable boundaries instead of wrapping the whole word to the next line.
+// Canvas measurement and CSS hyphens:auto now agree on line counts.
+
+const _isVowel = (c) => 'aeiouáéíóúüAEIOUÁÉÍÓÚÜ'.includes(c);
+
+// Consonant pairs that always move together to the next syllable
+const _INSEP_PAIRS = new Set([
+  'ch', 'll', 'rr', 'qu', 'gu',
+  'bl', 'br', 'cl', 'cr', 'dr',
+  'fl', 'fr', 'gl', 'gr', 'pl', 'pr', 'tr',
+]);
+
+/**
+ * Returns valid hyphenation positions for a Spanish word.
+ * Each value i means: break between word[i-1] and word[i].
+ * Minimum 2 chars on each side. Results sorted ascending.
+ *
+ * @param {string} word - Raw word (mixed case, may include accents)
+ * @returns {number[]}
+ */
+const getSpanishHyphenPoints = (word) => {
+  if (word.length < 4) return [];
+  const w = word.toLowerCase();
+  const n = w.length;
+  const pts = new Set();
+  let i = 0;
+
+  while (i < n) {
+    while (i < n && _isVowel(w[i])) i++;   // skip vowel cluster
+    if (i >= n) break;
+
+    const cStart = i;
+    while (i < n && !_isVowel(w[i])) i++;  // collect consonant cluster
+    if (i >= n) break;                       // trailing consonants — no syllable follows
+
+    const cLen = i - cStart;
+    let breakAt;
+
+    if (cLen === 1) {
+      breakAt = cStart;                                          // V·CV
+    } else if (cLen === 2) {
+      const pair = w.slice(cStart, cStart + 2);
+      breakAt = _INSEP_PAIRS.has(pair) ? cStart : cStart + 1;  // V·CCV or VC·CV
+    } else {
+      const lastPair = w.slice(i - 2, i);
+      breakAt = _INSEP_PAIRS.has(lastPair) ? i - 2 : i - 1;    // VC…·(CC)V
+    }
+
+    if (breakAt >= 2 && breakAt <= n - 2) pts.add(breakAt);
+  }
+
+  return [...pts].sort((a, b) => a - b);
+};
+
+// ─── Hyphen character width cache ────────────────────────────────────
+const _hyphenWidthCache = new Map();
+const getHyphenWidth = (fontString) => {
+  if (_hyphenWidthCache.has(fontString)) return _hyphenWidthCache.get(fontString);
+  const w = measureTextWidth('-', fontString);
+  _hyphenWidthCache.set(fontString, w);
+  return w;
+};
+
 /**
  * Count lines for text with mixed inline styles (runs).
  * Each run can have different bold/italic/fontSize.
@@ -331,9 +397,25 @@ const countLinesFromRuns = (runs, contentWidth, baseFontSizePx, fontFamily, firs
         lines += broken.lines;
         currentLineWidth = broken.lastLineWidth;
       } else {
-        // Normal line break
-        lines++;
-        currentLineWidth = wordWidth;
+        // Try Spanish hyphenation before wrapping the whole word
+        const available = contentWidth - currentLineWidth;
+        const hyphenW = getHyphenWidth(token.fontStr);
+        const hpts = getSpanishHyphenPoints(token.text);
+        let hyphenated = false;
+        for (let k = hpts.length - 1; k >= 0; k--) {
+          const prefix = token.text.slice(0, hpts[k]);
+          if (measureWordWidth(prefix, token.fontStr) + hyphenW <= available) {
+            const suffix = token.text.slice(hpts[k]);
+            lines++;
+            currentLineWidth = measureWordWidth(suffix, token.fontStr);
+            hyphenated = true;
+            break;
+          }
+        }
+        if (!hyphenated) {
+          lines++;
+          currentLineWidth = wordWidth;
+        }
       }
     } else {
       currentLineWidth += wordWidth;
@@ -428,8 +510,29 @@ const countLines = (text, contentWidth, fontString, firstLineIndent = 0, letterS
         lines += broken.lines;
         currentLineWidth = broken.lastLineWidth;
       } else {
-        lines++;
-        currentLineWidth = wordWidth;
+        // Try Spanish hyphenation before wrapping the whole word
+        const available = contentWidth - currentLineWidth - spaceWidth;
+        const hyphenW = getHyphenWidth(fontString);
+        const hpts = getSpanishHyphenPoints(words[i]);
+        let hyphenated = false;
+        for (let k = hpts.length - 1; k >= 0; k--) {
+          const prefix = words[i].slice(0, hpts[k]);
+          let prefixW = measureWordWidth(prefix, fontString) + hyphenW;
+          if (letterSpacingPx && prefix.length > 1) prefixW += letterSpacingPx * (prefix.length - 1);
+          if (prefixW <= available) {
+            const suffix = words[i].slice(hpts[k]);
+            let suffixW = measureWordWidth(suffix, fontString);
+            if (letterSpacingPx && suffix.length > 1) suffixW += letterSpacingPx * (suffix.length - 1);
+            lines++;
+            currentLineWidth = suffixW;
+            hyphenated = true;
+            break;
+          }
+        }
+        if (!hyphenated) {
+          lines++;
+          currentLineWidth = wordWidth;
+        }
       }
     } else {
       currentLineWidth = widthWithWord;
@@ -1019,6 +1122,154 @@ export const insertHtmlLineBreaks = (html, layoutCtx) => {
       console.warn('[insertHtmlLineBreaks] Error, returning original:', e.message);
     }
     return html;
+  }
+};
+
+// ─── KP Rendering — apply optimal line breaks + word-spacing to page HTML ───
+//
+// This is the bridge between our KP measurement engine and browser rendering.
+// It transforms the clean page HTML (used for pagination) into render-ready HTML
+// where each paragraph line is explicitly broken at KP-optimal positions and
+// manually justified via CSS word-spacing.
+//
+// Key properties:
+//  - Deterministic: same pageHtml + layoutCtx → same output
+//  - Non-destructive: works on a copy, never mutates pages[] data
+//  - Safe fallback: any error returns the original HTML unchanged
+//  - Uniform-font only: styled-run paragraphs are skipped (too complex)
+
+/**
+ * Apply KP-optimal line breaks and word-spacing to all paragraphs in a page.
+ *
+ * For each uniform-font <p> or <blockquote>:
+ *   - Inserts <br> at KP-computed line start positions
+ *   - Wraps each non-last line in <span style="word-spacing:Xpx"> so the browser
+ *     renders exactly the words KP assigned to that line, justified to full width
+ *   - Last line is left unstyled (natural short ending, no CSS stretch)
+ *
+ * The outer <p> keeps text-align:justify and text-align-last:left unchanged.
+ * Lines before <br> are treated as "forced last lines" by CSS (not stretched),
+ * so the word-spacing on the span provides ALL justification for those lines.
+ *
+ * @param {string} pageHtml   - Full page content HTML (from page.html)
+ * @param {object} layoutCtx  - { baseFontSizePx, fontFamily, contentWidth, widthSlack }
+ * @returns {string} Render-ready HTML with KP line breaks and word-spacing
+ */
+export const applyKpRendering = (pageHtml, layoutCtx) => {
+  if (!pageHtml || !layoutCtx || !layoutCtx.contentWidth) return pageHtml;
+
+  try {
+    const div = document.createElement('div');
+    div.innerHTML = pageHtml;
+    let modified = false;
+
+    for (const el of Array.from(div.children)) {
+      const tag = el.tagName?.toUpperCase();
+      if (tag !== 'P' && tag !== 'BLOCKQUOTE') continue;
+
+      const text = el.textContent || '';
+      if (!text.trim()) continue;
+
+      // Skip styled-run paragraphs — mixed fonts require per-word measurement
+      // which complicates span wrapping. Greedy rendering is acceptable there.
+      const runs = extractTextRuns(el, { bold: false, italic: false, fontSize: null });
+      if (runs && hasStyledRuns(runs)) continue;
+
+      // Resolve element font
+      const styles = extractStyles(el.style);
+      const elFontSizePx = styles.fontSize
+        ? resolveSize(styles.fontSize, styles.fontSizeUnit, layoutCtx.baseFontSizePx)
+        : layoutCtx.baseFontSizePx;
+      const isBold   = styles.fontWeight === 'bold' || parseInt(styles.fontWeight) >= 700;
+      const isItalic = styles.fontStyle === 'italic';
+      const fontStr  = buildFontString(elFontSizePx, layoutCtx.fontFamily, isBold, isItalic);
+
+      // Resolve first-line indent (em → px)
+      const indentPx = styles.textIndent ? styles.textIndent * elFontSizePx : 0;
+
+      // Resolve element's available width (matching calculateElementHeight logic)
+      const paddingH  = (styles.paddingLeft || 0) + (styles.paddingRight || 0);
+      const marginLPx = resolveSize(styles.marginLeft,  styles.marginLeftUnit,  elFontSizePx);
+      const marginRPx = resolveSize(styles.marginRight, styles.marginRightUnit, elFontSizePx);
+      const borderL   = styles.borderLeftWidth || 0;
+      const availW    = layoutCtx.contentWidth - paddingH - marginLPx - marginRPx - borderL
+                        - (layoutCtx.widthSlack || 0);
+      if (availW <= 0) continue;
+
+      // Base word-spacing from element CSS (usually 0)
+      const wsFromStyle = styles.wordSpacing
+        ? resolveSize(styles.wordSpacing, styles.wordSpacingUnit, elFontSizePx)
+        : 0;
+
+      const collapsed = collapseWhitespace(text);
+      const kp = getLineBreakPositionsKP(collapsed, availW, fontStr, indentPx, wsFromStyle);
+      if (!kp || kp.lineStarts.length <= 1) continue; // single line or KP failed
+
+      // ── Insert <br> at KP break positions ────────────────────────────────────
+      // Mirrors insertHtmlLineBreaks DOM approach: walk text nodes, split at
+      // word boundaries, insert <br> before words that start a new line.
+      const originalInner = el.innerHTML;
+      const breakWordIndices = kp.lineStarts.slice(1); // skip line 0
+
+      const wordMap = [];
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let tNode;
+      while ((tNode = walker.nextNode())) {
+        const re = /\S+/g;
+        let m;
+        while ((m = re.exec(tNode.textContent))) {
+          wordMap.push({ node: tNode, startOffset: m.index, wordIndex: wordMap.length });
+        }
+      }
+
+      // Process breaks in reverse to preserve offsets
+      for (let b = breakWordIndices.length - 1; b >= 0; b--) {
+        const wordIdx = breakWordIndices[b];
+        if (wordIdx >= wordMap.length) continue;
+        const { node, startOffset } = wordMap[wordIdx];
+        const before    = node.textContent.substring(0, startOffset).replace(/\s+$/, '');
+        const splitAt   = before.length;
+        if (splitAt > 0 && splitAt < node.textContent.length) {
+          const after = node.splitText(splitAt);
+          after.textContent = after.textContent.replace(/^\s+/, '');
+          after.parentNode.insertBefore(document.createElement('br'), after);
+        } else if (splitAt === 0) {
+          node.textContent = node.textContent.replace(/^\s+/, '');
+          node.parentNode.insertBefore(document.createElement('br'), node);
+        }
+      }
+
+      // ── Wrap each line in a word-spacing span ────────────────────────────────
+      // Split inner HTML on <br>, add word-spacing spans for non-last lines.
+      const innerWithBr = el.innerHTML;
+      const lineChunks  = innerWithBr.split(/<br\s*\/?>/i);
+
+      if (lineChunks.length !== kp.lineStarts.length) {
+        // Mismatch — something went wrong, revert safely
+        el.innerHTML = originalInner;
+        continue;
+      }
+
+      const parts = lineChunks.map((chunk, i) => {
+        if (i === lineChunks.length - 1) return chunk; // last line — natural ending
+        const ws = kp.wordSpacings[i];
+        const spanStyle = Math.abs(ws) >= 0.01
+          ? ` style="word-spacing:${ws.toFixed(3)}px"`
+          : '';
+        return `<span${spanStyle}>${chunk}</span><br>`;
+      });
+
+      el.innerHTML = parts.join('');
+      modified = true;
+    }
+
+    return modified ? div.innerHTML : pageHtml;
+
+  } catch (e) {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[applyKpRendering] Error, returning original:', e?.message);
+    }
+    return pageHtml;
   }
 };
 

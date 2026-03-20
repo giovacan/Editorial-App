@@ -1,4 +1,4 @@
-import { measureHtmlHeight, insertHtmlLineBreaks } from './textLayoutEngine';
+import { measureHtmlHeight, insertHtmlLineBreaks, getLineBreakPositions, buildFontString } from './textLayoutEngine';
 import { JUSTIFY_SLACK_RATIO } from './paginateChapters';
 
 export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, hasIndent = false, indentValue = 1.5, preserveFirstIndent = false, quoteConfig = null) => {
@@ -66,7 +66,7 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
     if (isBlockquote) {
       return getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSize, effectiveBaseLineHeight, effectiveTextAlign);
     }
-    return `margin:0;padding:0;text-align:${textAlign};text-indent:${indent};text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;`;
+    return `margin:0;padding:0;text-align:${textAlign};text-indent:${indent};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`;
   };
 
   const getDefaultStyle = () => getChunkStyle(isFirstChunk);
@@ -209,12 +209,30 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
       ? getChunkStyle(isFirstChunk)
       : (isBlockquote
         ? getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSize, effectiveBaseLineHeight, effectiveTextAlign)
-        : `margin:0;padding:0;text-align:${textAlign};text-indent:${indent};text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;`);
-    // When paragraph continues to next page: justify the last visible line
-    // so the reader sees the text flows to the next page (visual continuity).
-    // Only the FINAL chunk of a paragraph keeps text-align-last:left.
+        : `margin:0;padding:0;text-align:${textAlign};text-indent:${indent};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`);
+
+    // When paragraph continues to next page: justify the last visible line ONLY if
+    // it has enough words to look good under justify. Sparse last lines (1–2 words)
+    // stretch to opposite extremes — keep them left-aligned in that case.
     if (newRemainingHtml) {
-      finalStyle = finalStyle.replace(/text-align-last:[^;]+;?/gi, '') + 'text-align-last:justify;';
+      const plainChunk = chunkHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      const fontStr = buildFontString(canvasCtx.baseFontSizePx, canvasCtx.fontFamily);
+      const effectiveLineWidth = canvasCtx.contentWidth - (canvasCtx.widthSlack || 0);
+      const lineStarts = getLineBreakPositions(plainChunk, effectiveLineWidth, fontStr);
+      const chunkWords = plainChunk.split(/\s+/).filter(w => w.length > 0);
+      const lastStart = lineStarts.length > 0 ? lineStarts[lineStarts.length - 1] : 0;
+      const lastLineText = chunkWords.slice(lastStart).join(' ');
+      // Use visual width ≥ 50% instead of word count ≥ 3 — word count is not reliable
+      // for Spanish: "y de la" (3 words) occupies only ~18% of line width.
+      // Always override explicitly (originalStyles from prior split may carry justify).
+      const tmpCanvas = document.createElement('canvas');
+      const tmpCtx = tmpCanvas.getContext('2d');
+      tmpCtx.font = fontStr;
+      const widthRatio = effectiveLineWidth > 0
+        ? tmpCtx.measureText(lastLineText).width / effectiveLineWidth
+        : 0;
+      const newAlignLast = widthRatio >= 0.5 ? 'justify' : 'left';
+      finalStyle = finalStyle.replace(/text-align-last:[^;]+;?/gi, '') + `text-align-last:${newAlignLast};`;
     }
 
     if (isBlockquote) {
@@ -237,13 +255,13 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
       } else if (isBlockquote) {
         continuationStyle = getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSize, effectiveBaseLineHeight, effectiveTextAlign);
       } else {
-        continuationStyle = `margin:0;padding:0;text-align:${textAlign};text-indent:0;text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;`;
+        continuationStyle = `margin:0;padding:0;text-align:${textAlign};text-indent:0;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`;
       }
 
       if (isBlockquote) {
-        remainingHtml = `<blockquote class="quote ${quoteTemplate}" style="${continuationStyle}">${remainingHtml}</blockquote>`;
+        remainingHtml = `<blockquote class="quote ${quoteTemplate}" style="${continuationStyle}" data-continuation="true">${remainingHtml}</blockquote>`;
       } else {
-        remainingHtml = `<p style="${continuationStyle}">${remainingHtml}</p>`;
+        remainingHtml = `<p style="${continuationStyle}" data-continuation="true">${remainingHtml}</p>`;
       }
     }
   }
@@ -252,7 +270,7 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
 };
 
 export const getQuoteStyle = (qConfig, template, baseFontSize, baseLineHeight, textAlign) => {
-  const baseStyle = `font-style:${qConfig.italic ? 'italic' : 'normal'};font-size:${baseFontSize * qConfig.sizeMultiplier}pt;text-align:${textAlign};text-justify:inter-word;hyphens:none;`;
+  const baseStyle = `font-style:${qConfig.italic ? 'italic' : 'normal'};font-size:${baseFontSize * qConfig.sizeMultiplier}pt;text-align:${textAlign};text-justify:inter-word;hyphens:auto;text-align-last:left;`;
 
   switch (template) {
     case 'classic':
@@ -284,7 +302,7 @@ export const buildParagraphHtml = (el, config, baseFontSize, baseLineHeight, tex
       return `<p style="${getQuoteStyle(qConfig, template, baseFontSize, baseLineHeight, textAlign)}text-indent:${isFirstParagraph ? '0' : indent + 'em'};text-align-last:left;overflow-wrap:break-word;">${el.innerHTML}</p>`;
     } else {
       const spacingBetween = config.paragraph?.spacingBetween || 0;
-      return `<p style="margin:${spacingBetween > 0 ? spacingBetween + 'em' : '0'} 0;padding:0;text-align:${textAlign};text-indent:${isFirstParagraph ? '0' : indent + 'em'};text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word">${el.innerHTML}</p>`;
+      return `<p style="margin:${spacingBetween > 0 ? spacingBetween + 'em' : '0'} 0;padding:0;text-align:${textAlign};text-indent:${isFirstParagraph ? '0' : indent + 'em'};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word">${el.innerHTML}</p>`;
     }
   } else if (tag.match(/^H[1-6]$/i)) {
     const level = tag.slice(1).toLowerCase();
@@ -299,13 +317,13 @@ export const buildParagraphHtml = (el, config, baseFontSize, baseLineHeight, tex
     const template = Array.from(el.classList).find(c => ['classic', 'bar', 'italic', 'indent', 'minimal'].includes(c)) || 'classic';
     return `<blockquote class="quote ${template}" style="${getQuoteStyle(qConfig, template, baseFontSize, baseLineHeight, textAlign)}">${el.innerHTML}</blockquote>`;
   } else if (tag === 'UL' || tag === 'OL') {
-    return `<${tag.toLowerCase()} style="margin:0.5em 0;padding-left:1.5em;text-align:${textAlign};text-justify:inter-word;hyphens:none;">${el.innerHTML}</${tag.toLowerCase()}>`;
+    return `<${tag.toLowerCase()} style="margin:0.5em 0;padding-left:1.5em;text-align:${textAlign};text-justify:inter-word;hyphens:auto;text-align-last:left;">${el.innerHTML}</${tag.toLowerCase()}>`;
   } else if (tag === 'HR') {
     return '<hr style="border:none;border-top:1px solid #999;margin:1em 0;">';
   } else if (tag === 'BR') {
     return '<br>';
   }
-  return `<p style="margin:0;padding:0;text-align:${textAlign};text-indent:1.5em;text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word">${el.innerHTML}</p>`;
+  return `<p style="margin:0;padding:0;text-align:${textAlign};text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word">${el.innerHTML}</p>`;
 };
 
 export const parseChapterTitleHierarchy = (title) => {

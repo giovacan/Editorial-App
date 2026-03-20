@@ -8,23 +8,26 @@ export const useMagnifier = (previewPageRef) => {
   const isOverPreview = useRef(false);
   const isOverMagnifier = useRef(false);
   const magnifierTimeoutRef = useRef(null);
-  
+  const rafRef = useRef(null);
+
   const updateMagnifierPosition = useCallback((e) => {
     const pageEl = previewPageRef?.current;
     if (!pageEl) return;
-    
-    try {
-      const pageRect = pageEl.getBoundingClientRect();
-      const viewportX = e.clientX;
-      const viewportY = e.clientY;
-      
-      const x = Math.max(0, Math.min(100, ((viewportX - pageRect.left) / pageRect.width) * 100));
-      const y = Math.max(0, Math.min(100, ((viewportY - pageRect.top) / pageRect.height) * 100));
-      
-      setMagnifierPos({ x, y });
-    } catch (error) {
-      console.warn('Error updating magnifier position:', error);
-    }
+
+    // Throttle position updates to one per animation frame.
+    // Without this, every mousemove fires setMagnifierPos → re-renders Preview at 60fps.
+    if (rafRef.current) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      try {
+        const pageRect = pageEl.getBoundingClientRect();
+        const x = Math.max(0, Math.min(100, ((e.clientX - pageRect.left) / pageRect.width) * 100));
+        const y = Math.max(0, Math.min(100, ((e.clientY - pageRect.top) / pageRect.height) * 100));
+        setMagnifierPos({ x, y });
+      } catch (error) {
+        console.warn('Error updating magnifier position:', error);
+      }
+    });
   }, [previewPageRef]);
   
   const handleMouseEnterPreview = useCallback(() => {

@@ -124,6 +124,111 @@ export const countLinesKP = (text, contentWidth, fontString, firstLineIndent = 0
 };
 
 /**
+ * Get KP-optimal line break positions and word-spacing adjustments for rendering.
+ *
+ * Unlike countLinesKP (which only returns a count), this returns the exact word
+ * indices where each line starts AND the extra word-spacing (in px) needed to
+ * justify each non-last line to the full content width.
+ *
+ * Used by applyKpRendering() to make the browser follow KP-optimal line breaks
+ * via explicit <br> tags + CSS word-spacing per line.
+ *
+ * @param {string} text          - Whitespace-collapsed plain text
+ * @param {number} contentWidth  - Effective line width in px (after widthSlack)
+ * @param {string} fontString    - CSS font string
+ * @param {number} firstLineIndent - First-line indent in px (0 for continuations)
+ * @param {number} wordSpacingPx - Base extra word spacing from CSS (usually 0)
+ * @returns {{ lineStarts: number[], wordSpacings: number[] } | null}
+ *   lineStarts[i]   = index of the first word on line i
+ *   wordSpacings[i] = extra px per inter-word space to justify line i (last line = 0)
+ *   Returns null if KP fails or a long word prevents computation.
+ */
+export const getLineBreakPositionsKP = (text, contentWidth, fontString, firstLineIndent = 0, wordSpacingPx = 0) => {
+  if (!text || !text.trim() || contentWidth <= 0) return null;
+
+  const words = text.split(' ').filter(w => w.length > 0);
+  if (words.length === 0) return null;
+  if (words.length === 1) return { lineStarts: [0], wordSpacings: [0] };
+
+  const baseSpaceWidth = _getSpaceWidth(fontString) + wordSpacingPx;
+
+  // Measure all words, building item list with a word-index map
+  const wordItems = [];
+  const items = [];
+  const itemWordIdx = []; // items[i] → word index, -1 for non-word items
+
+  if (firstLineIndent > 0) {
+    items.push({ type: 'box', width: firstLineIndent });
+    itemWordIdx.push(-1);
+  }
+
+  for (let i = 0; i < words.length; i++) {
+    const w = _measureWordWidth(words[i], fontString);
+    if (w > contentWidth) return null; // long word — caller should use greedy
+    wordItems.push({ word: words[i], width: w });
+
+    if (i > 0) {
+      items.push({ type: 'glue', width: baseSpaceWidth, stretch: baseSpaceWidth * 0.5, shrink: Math.max(0, baseSpaceWidth * 0.33) });
+      itemWordIdx.push(-1);
+    }
+    items.push({ type: 'box', width: w });
+    itemWordIdx.push(i);
+  }
+
+  // Finishing glue + forced break (standard KP paragraph ending)
+  items.push({ type: 'glue', width: 0, stretch: MAX_COST, shrink: 0 });
+  itemWordIdx.push(-1);
+  items.push(forcedBreak());
+  itemWordIdx.push(-1);
+
+  try {
+    const breakpoints = breakLines(items, contentWidth, { maxAdjustmentRatio: null });
+    // breakpoints: [0, bp1, bp2, ..., forcedBreakPos]
+    // Each intermediate bp is an item index where the line ends (typically a glue).
+    // The word that STARTS the next line is the first word-box AFTER that item.
+
+    const lineStarts = [0]; // line 0 always starts at word 0
+    for (let b = 1; b < breakpoints.length - 1; b++) {
+      const bp = breakpoints[b];
+      for (let k = bp + 1; k < items.length; k++) {
+        if (itemWordIdx[k] >= 0) {
+          lineStarts.push(itemWordIdx[k]);
+          break;
+        }
+      }
+    }
+
+    // Compute extra word-spacing per line so the browser renders each non-last
+    // line exactly at contentWidth. Last line gets 0 (natural short ending).
+    const wordSpacings = [];
+    for (let li = 0; li < lineStarts.length; li++) {
+      const isLast = li === lineStarts.length - 1;
+      if (isLast) { wordSpacings.push(0); continue; }
+
+      const start = lineStarts[li];
+      const end   = lineStarts[li + 1];
+      const numWords  = end - start;
+      const numSpaces = numWords - 1;
+
+      if (numSpaces <= 0) { wordSpacings.push(0); continue; }
+
+      // Available text width: first line is narrower by indent
+      const lineW = li === 0 ? contentWidth - firstLineIndent : contentWidth;
+      let sumW = 0;
+      for (let wi = start; wi < end; wi++) sumW += wordItems[wi].width;
+
+      // Extra px per space beyond baseSpaceWidth
+      const extra = (lineW - sumW - numSpaces * baseSpaceWidth) / numSpaces;
+      wordSpacings.push(extra);
+    }
+
+    return { lineStarts, wordSpacings };
+  } catch (e) {
+    return null;
+  }
+};
+
+/**
  * Count lines using Knuth-Plass for paragraphs with mixed inline styles (bold/italic runs).
  * Drop-in replacement for the greedy countLinesFromRuns().
  *

@@ -80,7 +80,7 @@ function MagnifierPanel({
             lineHeight: `${lineHeightPx}px`,
             textAlign,
             textJustify: 'inter-word',
-            hyphens: 'none',
+            hyphens: 'auto',
             wordBreak: 'break-word',
             overflowWrap: 'break-word',
             background: 'white',

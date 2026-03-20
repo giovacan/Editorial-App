@@ -10,7 +10,10 @@
  * so Preview and PDF always show the same header content.
  */
 
+import { useMemo } from 'react';
 import { buildHeaderHtmlPure } from '../../hooks/useHeaderFooter';
+import { applyKpRendering } from '../../utils/textLayoutEngine';
+import { JUSTIFY_SLACK_RATIO } from '../../utils/paginateChapters';
 import './PageFrame.css';
 
 /**
@@ -42,11 +45,27 @@ export default function PageFrame({
     baseFontSize,
   } = dims;
 
-  const html      = page?.html || '';
+  const rawHtml   = page?.html || '';
   const pageNum   = page?.pageNumber;
   const isBlank   = page?.isBlank;
   const showNums  = config?.showPageNumbers !== false;
-  const showPageNum = showNums && pageNum && !isBlank;
+  // Mirror Preview.jsx: also show number on extra end pages when explicitly flagged
+  const showPageNum = (showNums && pageNum && !isBlank)
+    || (page?.isExtraEndPage && page?.shouldShowPageNumber);
+
+  // ── KP Rendering ─────────────────────────────────────────────────────────────
+  // Apply Knuth-Plass optimal line breaks + word-spacing as a rendering-only
+  // transform. The pages[] data (rawHtml) stays clean for pagination measurement.
+  const contentWidth = pageWidthPx - marginLeft - marginRight;
+  const html = useMemo(() => {
+    if (!rawHtml || isBlank || textAlign !== 'justify') return rawHtml;
+    return applyKpRendering(rawHtml, {
+      baseFontSizePx: fontSize,
+      fontFamily,
+      contentWidth,
+      widthSlack: contentWidth * JUSTIFY_SLACK_RATIO,
+    });
+  }, [rawHtml, isBlank, textAlign, fontSize, fontFamily, contentWidth]);
 
   // ── Header ──────────────────────────────────────────────────────────────────
   const headerConfig = config?.header || {};
@@ -92,7 +111,7 @@ export default function PageFrame({
     lineHeight:    `${lineHeightPx}px`,
     textAlign,
     textJustify:   'inter-word',
-    hyphens:       'none',
+    hyphens:       'auto',
     wordBreak:     'break-word',
     overflowWrap:  'break-word',
     backgroundColor: '#fff',
@@ -110,7 +129,7 @@ export default function PageFrame({
   };
 
   const pageNode = (
-    <div className="pf-page" style={pageStyle}>
+    <div className="pf-page" lang="es" style={pageStyle}>
       {/* Margin guide overlay */}
       {showMargins && !isBlank && (
         <div

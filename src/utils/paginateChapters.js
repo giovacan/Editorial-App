@@ -21,7 +21,9 @@ import {
 
 import {
   measureHtmlHeight,
-  createLayoutContext
+  createLayoutContext,
+  getLineBreakPositions,
+  buildFontString
 } from './textLayoutEngine';
 
 /**
@@ -93,19 +95,54 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig) =>
   // E5: Fix orphaned headings left at bottom of pages after fill-pass
   fixHeadingsAtBottom(allPages, canvasCtx, layoutCtx);
 
+  // Second fill-pass — fixHeadingsAtBottom may have left pages underfilled
+  // (e.g. page that had content+heading is now content-only at 60%).
+  // A second forward pass fills those gaps before cleanup runs.
+  applyFillPass(allPages, layoutCtx, canvasCtx, measureDiv, safeConfig);
+
   // E4: Cleanup nearly-empty pages after heading fixes (before distributing space)
   cleanupNearlyEmptyPages(allPages, layoutCtx, canvasCtx);
 
-  // E6: Distribute remaining vertical whitespace proportionally among elements
-  distributeVerticalSpace(allPages, layoutCtx, canvasCtx);
-
-  // Invariant: enforce chapter-start parity LAST — after all structural mutations
+  // Parity pass 1 — before smoothing so smoothing has correct page positions
   enforceChapterStartParity(allPages, safeConfig);
+
+  // E7: Smooth fill imbalance between adjacent pages.
+  // Runs BEFORE distributeVerticalSpace so moved elements don't carry
+  // distribution-adjusted margins from their source page to the destination.
+  smoothPageBalance(allPages, layoutCtx, canvasCtx);
+
+  // Parity pass 2 — restore invariant if smoothing shifted page count
+  enforceChapterStartParity(allPages, safeConfig);
+
+  // E6: Distribute remaining vertical whitespace proportionally among elements.
+  // Runs LAST (after all structural mutations) so margins are set once on the
+  // final page layout and are never moved to a different page.
+  distributeVerticalSpace(allPages, layoutCtx, canvasCtx);
 
   // Re-number again after fill-pass may have emptied some pages
   let pageNum = 1;
   for (const p of allPages) {
     if (!p.isBlank) p.pageNumber = pageNum++;
+  }
+
+  // Dev: per-page score summary — one line per page with fill%, score, violations
+  if (process.env.NODE_ENV === 'development') {
+    console.groupCollapsed(`[PAGINATION] ${allPages.length} pages — score summary`);
+    for (const p of allPages) {
+      if (p.isBlank) {
+        console.log(`  p${p.pageNumber ?? '?'} [BLANK]`);
+        continue;
+      }
+      const q = evaluatePageQualityCanvas(p.html || '', layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx);
+      const flags = [
+        p.isTitleOnlyPage  ? 'title-only' : null,
+        p.isFirstChapterPage ? 'chapter-start' : null,
+        p.isExtraEndPage   ? 'extra-end' : null,
+      ].filter(Boolean).join(' ');
+      const viols = q.violations.length ? ` ⚠ ${q.violations.join(', ')}` : '';
+      console.log(`  p${p.pageNumber ?? '?'} fill=${( q.fillPct * 100).toFixed(1)}% score=${q.score.toFixed(0)}${viols}${flags ? ' [' + flags + ']' : ''}`);
+    }
+    console.groupEnd();
   }
 
   return allPages;
@@ -165,6 +202,75 @@ const flattenChapterElements = (chapter, layoutCtx, canvasCtx, measureDiv, safeC
 };
 
 /**
+ * Score a split candidate. Lower = better.
+ * Considers: last-line word count, visual width, underfill, rest-chunk widow
+ * risk, mini next-page lookahead, paragraph continuity, and delta stability.
+ *
+ * @param {string} firstChunkHtml  - HTML fitting on current page
+ * @param {string|null} restChunkHtml  - HTML continuing to next page(s)
+ * @param {string} fullParaHtml    - Complete paragraph before any split
+ * @param {number} remainingPx     - Available space on current page
+ * @param {number} contentHeight   - Full page content height
+ * @param {object} canvasCtx       - Layout context { baseFontSizePx, baseLineHeight, contentWidth, fontFamily }
+ * @param {number} [delta=0]       - 0 / -1 / -2 lines relative to default split
+ * @returns {number} score (lower = better)
+ * @private
+ */
+const scoreCandidate = (firstChunkHtml, restChunkHtml, fullParaHtml, remainingPx, contentHeight, canvasCtx, delta = 0) => {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = firstChunkHtml;
+  const plainText = tmp.textContent.trim();
+  const fontStr = buildFontString(canvasCtx.baseFontSizePx, canvasCtx.fontFamily);
+  // Use the same effective width as measureHtmlHeight: contentWidth minus widthSlack.
+  // splitParagraphByLines wraps at (contentWidth - widthSlack); using full contentWidth
+  // here would undercount line breaks and make lastLineWords appear larger than reality.
+  const effectiveWidth = canvasCtx.contentWidth - (canvasCtx.widthSlack || 0);
+  const lineStarts = getLineBreakPositions(plainText, effectiveWidth, fontStr);
+  const words = plainText.split(/\s+/).filter(w => w.length > 0);
+
+  // 1. Word count on last line (guard against empty lineStarts)
+  const lastStart = (lineStarts && lineStarts.length > 0)
+    ? lineStarts[lineStarts.length - 1]
+    : 0;
+  const lastLineWords = Math.max(0, words.length - lastStart);
+
+  let score = 0;
+  // Spanish has many short words — 3-4 words like "y de la fe" can be < 20% of line width.
+  // Penalize by word count AND visual width for maximum coverage.
+  if (lastLineWords === 1)      score += 1400;
+  else if (lastLineWords === 2) score += 900;
+  else if (lastLineWords === 3) score += 400; // "y de la" at 18% width looks empty
+  else if (lastLineWords === 4) score += 100; // mild — still depends on word length
+
+  // 2. Visual width of last line — raised to 55% to catch short Spanish words correctly.
+  // This catches 4-word lines like "y en la fe" that slip past the word-count check.
+  if (lastLineWords > 0 && effectiveWidth > 0) {
+    const offscreen = document.createElement('canvas');
+    const ctx2d = offscreen.getContext('2d');
+    ctx2d.font = fontStr;
+    const lastLineText = words.slice(lastStart).join(' ');
+    const widthRatio = ctx2d.measureText(lastLineText).width / effectiveWidth;
+    if (widthRatio < 0.55) score += 600;
+  }
+
+  // 3. Underfill penalty — 1 line short ≈ 4% underfill ≈ 12 pts on typical page.
+  // Keep this LOW so it never outweighs a genuine last-line improvement.
+  const chunkH = measureHtmlHeight(firstChunkHtml, canvasCtx);
+  const fill = remainingPx > 0 ? chunkH / remainingPx : 1;
+  score += Math.max(0, 1 - fill) * 300;
+
+  // 4. Stability bias — strong preference for delta=0 when last line is already OK.
+  // This prevents delta=-1 from being chosen unless there's a real quality gain.
+  if (delta === 0) score -= 200;
+
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[SPLIT-CANDIDATE] delta=${delta} words=${lastLineWords} fill=${fill.toFixed(2)} score=${score}`);
+  }
+
+  return score;
+};
+
+/**
  * Split an element into exactly 2 parts.
  * Still uses splitParagraphByLines from paginationEngine which needs measureDiv
  * for HTML DOM manipulation (not for height measurement).
@@ -175,6 +281,9 @@ const splitInTwo = (
   elHtml, measureDiv, canvasCtx, remainingSpace, contentHeight,
   textAlign, hasIndent, indentValue, preserveIndent, quoteOptions
 ) => {
+  const lineHeightPx = canvasCtx.lineHeightPx
+    || Math.ceil(canvasCtx.baseFontSizePx * canvasCtx.baseLineHeight);
+
   const fullPageSplit = splitParagraphByLines(
     elHtml, measureDiv, contentHeight,
     textAlign, hasIndent, indentValue, preserveIndent, quoteOptions
@@ -182,20 +291,46 @@ const splitInTwo = (
 
   if (fullPageSplit.length >= 2) {
     const pageChunk = fullPageSplit[0];
-    const restChunk = fullPageSplit[1];
+
+    // Merge ALL chunks after index 0 into one continuation.
+    const restChunk = fullPageSplit.slice(1).reduce((acc, chunk) => mergeIntoOne(acc, chunk));
 
     const fitSplit = splitParagraphByLines(
       pageChunk, measureDiv, remainingSpace,
       textAlign, hasIndent, indentValue, preserveIndent, quoteOptions
     );
 
-    const firstChunk = fitSplit[0];
+    const baseFirst = fitSplit[0];
     if (fitSplit.length < 2) {
-      return [firstChunk, restChunk];
+      return [baseFirst, restChunk];
     }
-    const leftover = fitSplit[1];
-    const mergedRest = mergeIntoOne(leftover, restChunk);
-    return [firstChunk, mergedRest];
+
+    let bestFirst = baseFirst;
+    let bestRest  = mergeIntoOne(
+      fitSplit.slice(1).reduce((a, b) => mergeIntoOne(a, b)),
+      restChunk
+    );
+    let bestScore = scoreCandidate(baseFirst, bestRest, pageChunk, remainingSpace, contentHeight, canvasCtx, 0);
+
+    // Try delta=-1 only: limits whitespace to 1 line max (fill-pass can't compensate
+    // 2-line gaps due to minOrphanLines). Only chosen when last line has 1-2 words.
+    const adjMax = remainingSpace - lineHeightPx;
+    if (adjMax >= lineHeightPx) {
+      const cand = splitParagraphByLines(
+        pageChunk, measureDiv, adjMax,
+        textAlign, hasIndent, indentValue, preserveIndent, quoteOptions
+      );
+      if (cand && cand.length >= 1) {
+        const leftover = cand.length >= 2
+          ? cand.slice(1).reduce((a, b) => mergeIntoOne(a, b))
+          : null;
+        const candRest = leftover ? mergeIntoOne(leftover, restChunk) : restChunk;
+        const score = scoreCandidate(cand[0], candRest, pageChunk, remainingSpace, contentHeight, canvasCtx, -1);
+        if (score < bestScore) { bestFirst = cand[0]; bestRest = candRest; }
+      }
+    }
+
+    return [bestFirst, bestRest];
   }
 
   const directSplit = splitParagraphByLines(
@@ -204,7 +339,25 @@ const splitInTwo = (
   );
 
   if (directSplit.length < 2) return null;
-  return [directSplit[0], directSplit[1]];
+
+  let bestFirst = directSplit[0];
+  let bestRest  = directSplit.slice(1).reduce((acc, chunk) => mergeIntoOne(acc, chunk));
+  let bestScore = scoreCandidate(bestFirst, bestRest, elHtml, remainingSpace, contentHeight, canvasCtx, 0);
+
+  const adjMax = remainingSpace - lineHeightPx;
+  if (adjMax >= lineHeightPx) {
+    const cand = splitParagraphByLines(
+      elHtml, measureDiv, adjMax,
+      textAlign, hasIndent, indentValue, preserveIndent, quoteOptions
+    );
+    if (cand && cand.length >= 2) {
+      const candRest = cand.slice(1).reduce((a, b) => mergeIntoOne(a, b));
+      const score = scoreCandidate(cand[0], candRest, elHtml, remainingSpace, contentHeight, canvasCtx, -1);
+      if (score < bestScore) { bestFirst = cand[0]; bestRest = candRest; }
+    }
+  }
+
+  return [bestFirst, bestRest];
 };
 
 /**
@@ -407,19 +560,51 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
         const widowLines = Math.floor(measure(restChunk) / lineHeightPx);
 
         if (orphanLines >= 1 && widowLines >= 1) {
-          // Badness comparison: split vs flush
-          // split  → current page gets firstChunk,  next page starts with restChunk
-          // flush  → current page stays as-is,       next page starts with full el.html
+          // Symmetric lookahead: simulate what the full next page would look like
+          // in BOTH scenarios by greedily adding subsequent elements that fit.
+          // This gives a realistic "next page" score rather than evaluating an
+          // isolated fragment (restChunk alone would be penalised for underfill/widow
+          // even though more content will follow on the real next page).
+          const LOOKAHEAD_WEIGHT = 0.6; // lookahead is an approximation — discount slightly
+
+          // Split next-page simulation: restChunk + following elements that fit
+          let simSplitHtml   = restChunk;
+          let simSplitH      = measure(restChunk);
+          let splitEnriched  = false;
+          for (let j = elIdx + 1; j < elements.length; j++) {
+            const ne = elements[j];
+            if (ne.chapterTitle !== el.chapterTitle) break; // stay within chapter
+            const cH = simSplitH + measure(ne.html);
+            if (cH > contentHeight) break;
+            simSplitHtml  += ne.html;
+            simSplitH      = cH;
+            splitEnriched  = true;
+          }
+
+          // Flush next-page simulation: el.html + following elements that fit
+          let simFlushHtml = el.html;
+          let simFlushH    = measure(el.html);
+          for (let j = elIdx + 1; j < elements.length; j++) {
+            const ne = elements[j];
+            if (ne.chapterTitle !== el.chapterTitle) break;
+            const cH = simFlushH + measure(ne.html);
+            if (cH > contentHeight) break;
+            simFlushHtml += ne.html;
+            simFlushH     = cH;
+          }
+
+          // isFragment fallback: if no extra elements were added to the split simulation,
+          // restChunk is still isolated → keep isFragment=true scaling for its score.
           const badnessSplit =
             evaluatePageQualityCanvas(currentHtml + firstChunk, contentHeight, lineHeightPx, canvasCtx).score +
-            evaluatePageQualityCanvas(restChunk, contentHeight, lineHeightPx, canvasCtx).score;
+            evaluatePageQualityCanvas(simSplitHtml, contentHeight, lineHeightPx, canvasCtx, !splitEnriched).score * LOOKAHEAD_WEIGHT;
 
           const badnessFlush =
             evaluatePageQualityCanvas(currentHtml, contentHeight, lineHeightPx, canvasCtx).score +
-            evaluatePageQualityCanvas(el.html, contentHeight, lineHeightPx, canvasCtx).score;
+            evaluatePageQualityCanvas(simFlushHtml, contentHeight, lineHeightPx, canvasCtx).score * LOOKAHEAD_WEIGHT;
 
           if (process.env.NODE_ENV === 'development') {
-            console.log(`[GREEDY-SPLIT?] p${pages.length + 1}: split=${badnessSplit.toFixed(0)} flush=${badnessFlush.toFixed(0)} orphan=${orphanLines} widow=${widowLines}`);
+            console.log(`[GREEDY-SPLIT?] p${pages.length + 1}: split=${badnessSplit.toFixed(0)} flush=${badnessFlush.toFixed(0)} orphan=${orphanLines} widow=${widowLines} simSplitLines=${Math.floor(simSplitH / lineHeightPx)} simFlushLines=${Math.floor(simFlushH / lineHeightPx)}`);
           }
 
           // Accept split only if it produces a meaningfully better layout (Δ > 50)
@@ -477,12 +662,11 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
       const remainingSpace = contentHeight - measure(currentHtml);
       const remainingLines = Math.floor(remainingSpace / lineHeightPx);
 
-      if (remainingLines < minOrphanLines) {
-        if (process.env.NODE_ENV === 'development' && remainingLines > 0) {
-          console.log(`[FILL-SKIP] p${i + 1}: only ${remainingLines} lines free (need ${minOrphanLines})`);
-        }
+      if (remainingLines < 1) {
         break;
       }
+      // Pages with exactly 1 line free still proceed — they can receive a 1-line split
+      // to compensate delta=-1 gaps. The orphan check at the source side enforces quality.
 
       // Find next non-blank page in same chapter
       let nextIdx = i + 1;
@@ -551,12 +735,23 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
           : { score: 0, violations: [] };
         const badnessAfter = qMovedCurrent.score + qMovedSource.score;
 
-        // Minimum delta threshold — require at least 50 point improvement.
-        // Prevents micro-optimisations that create layout instability.
-        const BADNESS_MIN_DELTA = 50;
+        // Allow up to 50 points of degradation — accepts Δ0 (neutral gap-moves)
+        // and very small degradations that spread whitespace across pages rather
+        // than concentrating it. Large degradations (Δ-100+) are still rejected.
+        const BADNESS_MIN_DELTA = -50;
         if (badnessAfter > badnessBefore - BADNESS_MIN_DELTA) {
           if (process.env.NODE_ENV === 'development') {
             console.log(`[FILL-BADNESS] p${i + 1}: move rejected — badness ${badnessBefore.toFixed(0)} → ${badnessAfter.toFixed(0)} (Δ${(badnessBefore - badnessAfter).toFixed(0)} < ${BADNESS_MIN_DELTA})`);
+          }
+          break;
+        }
+        // Hard constraint: never create heading_at_bottom on DESTINATION page.
+        // The badness gate alone is insufficient — when the source is a heading-only
+        // page its badness is ~1474 (severe underfill + heading_at_bottom), so any
+        // destination (even one gaining heading_at_bottom +800) looks like an improvement.
+        if (qMovedCurrent.violations.includes('heading_at_bottom')) {
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`[FILL-SKIP] p${i + 1}: move would create heading_at_bottom on destination — blocked`);
           }
           break;
         }
@@ -569,10 +764,11 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
         }
 
         // Accept move — try to re-merge split chunks if the moved element
-        // is a continuation (text-indent:0) of the last element on current page
+        // is a continuation of the last element on current page.
+        // Use data-continuation attribute (set by splitParagraphByLines) — not regex.
         let mergedHtml = currentHtml + firstElHtml;
 
-        const isContinuation = /^<p[^>]*text-indent:\s*0/.test(firstElHtml)
+        const isContinuation = (firstEl.dataset?.continuation === 'true')
           && (tag === 'P' || tag === 'BLOCKQUOTE');
         if (isContinuation) {
           const curDiv = document.createElement('div');
@@ -584,6 +780,12 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
             lastEl.remove();
             mergedHtml = curDiv.innerHTML + reunified;
           }
+        }
+
+        if (process.env.NODE_ENV === 'development') {
+          const elTag = firstEl.tagName || '?';
+          const elText = (firstEl.textContent || '').substring(0, 40);
+          console.log(`[FILL-MOVE] p${i + 1}←p${nextIdx + 1}: <${elTag}> "${elText}" | badness ${badnessBefore.toFixed(0)}→${badnessAfter.toFixed(0)} (Δ${(badnessBefore - badnessAfter).toFixed(0)}) | fill ${(qMovedCurrent.fillPct * 100).toFixed(0)}% src ${sourceHtml ? (qMovedSource.fillPct * 100).toFixed(0) + '%' : 'deleted'}`);
         }
 
         pages[i] = { ...pages[i], html: mergedHtml };
@@ -598,8 +800,8 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
       // Element doesn't fit whole — try splitting
       if (!splitLongParagraphs || isHeader || tag === 'UL' || tag === 'OL') break;
 
-      // Detect if element is a continuation (text-indent:0) or fresh paragraph
-      const isContChunk = /text-indent:\s*0[^.]/.test(firstElHtml);
+      // Detect if element is a continuation — use data-continuation attribute (not regex)
+      const isContChunk = firstEl.dataset?.continuation === 'true';
       const splitResult = splitInTwo(
         firstElHtml, measureDiv, canvasCtx, remainingSpace, contentHeight,
         textAlign, true,
@@ -619,7 +821,11 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
       // Only check orphan (chunk going to current page). Don't check widow on
       // the rest chunk alone — it gets prepended to the source page which has
       // more content. The total source page check below is sufficient.
-      if (chunkLines < minOrphanLines) break;
+      //
+      // Exception: allow 1-line moves when the page has exactly 1 line of space.
+      // This compensates delta=-1 gaps created by scoreCandidate quality optimization
+      // without violating the orphan rule in all other cases.
+      if (chunkLines < minOrphanLines && !(chunkLines === 1 && remainingLines <= 1)) break;
 
       firstEl.remove();
       const remainingEls = tmp.innerHTML.trim();
@@ -627,19 +833,31 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
 
       // Check total source page lines (rest + remaining elements)
       const newSourceLines = Math.floor(measure(newSourceHtml) / lineHeightPx);
-      if (newSourceLines < minWidowLines) break;
+      if (newSourceLines < 1) break; // hard: never empty the source page
+
+      // Soft widow penalty instead of hard break — let the badness gate decide.
+      // A short widow on the source page is undesirable (+600) but not a hard veto:
+      // if the destination page is very underfilled, the split may still be worth it.
+      const widowSoftPenalty = newSourceLines < minWidowLines ? 600 : 0;
 
       // Badness gate for split — accept only if total quality improves
       const qSplitCurrent = evaluatePageQualityCanvas(currentHtml + chunk, contentHeight, lineHeightPx, canvasCtx);
       const qSplitSource  = evaluatePageQualityCanvas(newSourceHtml, contentHeight, lineHeightPx, canvasCtx);
-      const splitBadnessAfter = qSplitCurrent.score + qSplitSource.score;
+      const splitBadnessAfter = qSplitCurrent.score + qSplitSource.score + widowSoftPenalty;
 
-      if (splitBadnessAfter > badnessBefore - 50) {
+      // For 1-line gaps (created by delta=-1 splits), accept even Δ0 — the goal is
+      // to fill the gap, not to improve total badness. Use a generous threshold.
+      // For larger gaps, allow up to 50-point degradation (spreads whitespace rather
+      // than concentrating it; rejects large degradations like Δ-1000 orphan cases).
+      const splitThreshold = remainingLines <= 1 ? badnessBefore + 300 : badnessBefore + 50;
+      if (splitBadnessAfter > splitThreshold) {
         if (process.env.NODE_ENV === 'development') {
-          console.log(`[FILL-BADNESS-SPLIT] p${i + 1}: split rejected — badness ${badnessBefore.toFixed(0)} → ${splitBadnessAfter.toFixed(0)} (Δ${(badnessBefore - splitBadnessAfter).toFixed(0)})`);
+          console.log(`[FILL-BADNESS-SPLIT] p${i + 1}: split rejected — badness ${badnessBefore.toFixed(0)} → ${splitBadnessAfter.toFixed(0)} (Δ${(badnessBefore - splitBadnessAfter).toFixed(0)}) threshold=${splitThreshold.toFixed(0)}`);
         }
         break;
       }
+      // Hard constraint: never create heading_at_bottom on destination (split path)
+      if (qSplitCurrent.violations.includes('heading_at_bottom')) break;
       // Hard constraint: never strand heading at bottom of source
       if (qSplitSource.violations.includes('heading_at_bottom')) break;
 
@@ -759,11 +977,14 @@ const fixHeadingsAtBottom = (pages, canvasCtx, layoutCtx) => {
     // Move heading to top of next page — only if it fits without overflow
     const headingHtml = last.outerHTML;
     const mergedHtml = headingHtml + (next.html || '');
-    const mergedHeight = measureHtmlHeight(mergedHtml, canvasCtx);
-    if (mergedHeight > layoutCtx.contentHeight) {
-      // Heading doesn't fit on next page → mark current page as titleOnlyPage
-      // (heading stays, but page is flagged so preview renders it correctly)
-      pages[i] = { ...page, isTitleOnlyPage: true };
+    if (!canAcceptHtml(mergedHtml, layoutCtx.contentHeight, canvasCtx)) {
+      // Heading doesn't fit on next page — leave heading in place.
+      // Do NOT mark as isTitleOnlyPage: that flag is only for chapter title pages,
+      // and misusing it would cause distributeVerticalSpace and smoothPageBalance
+      // to skip this page entirely, leaving large whitespace gaps uncorrected.
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[HEADING-FIX] Heading on p${i + 1} can't move (next page full) — leaving in place`);
+      }
       continue;
     }
 
@@ -803,9 +1024,9 @@ const cleanupNearlyEmptyPages = (pages, layoutCtx, canvasCtx) => {
     if (pageHeight >= minContentThreshold || pageHeight <= 0) continue;
 
     // Try merging into previous page
-    const mergedHeight = measure(prevPage.html + page.html);
-    if (mergedHeight <= contentHeight) {
-      pages[i - 1] = { ...prevPage, html: prevPage.html + page.html };
+    const mergedHtml = prevPage.html + page.html;
+    if (canAcceptHtml(mergedHtml, contentHeight, canvasCtx)) {
+      pages[i - 1] = { ...prevPage, html: mergedHtml };
       page.html = '';
       page.isBlank = true;
     }
@@ -840,6 +1061,105 @@ const enforceChapterStartParity = (pages, safeConfig) => {
       };
       pages.splice(i, 0, blankPage);
       i++; // skip the blank just inserted
+    }
+  }
+};
+
+// fillPct difference threshold that triggers smoothing (25%)
+const SMOOTH_THRESHOLD = 0.25;
+// Minimum badness improvement required to accept a smoothing move
+const SMOOTH_BADNESS_MIN_DELTA = 50;
+
+/**
+ * E7: Smooth page fill imbalance across adjacent same-chapter pages.
+ * For pairs where fillPct differs > SMOOTH_THRESHOLD, attempts to move one
+ * element from the fuller page to the emptier page. Accepts only if total
+ * badness improves by at least SMOOTH_BADNESS_MIN_DELTA.
+ *
+ * Runs LAST — after both enforceChapterStartParity calls.
+ *
+ * @private
+ */
+const smoothPageBalance = (pages, layoutCtx, canvasCtx) => {
+  const { contentHeight, lineHeightPx, minOrphanLines } = layoutCtx;
+  // A source page must have at least this many unused lines before it can donate.
+  // Prevents stealing from nearly-full pages (e.g. 99%) just to fill a sparse
+  // neighbor, which creates inconsistent fill across odd pages in the same book.
+  const MIN_DONOR_SLACK_LINES = (minOrphanLines ?? 2) + 1;
+
+  for (let i = 0; i < pages.length - 1; i++) {
+    const page = pages[i];
+    // Skip chapter title pages and intentionally-sparse pages — their fill pct
+    // is editorial (not an imbalance), same guard as distributeVerticalSpace.
+    if (!page || page.isBlank || page.isTitleOnlyPage || page.isFirstChapterPage || !page.html) continue;
+
+    // Find next non-blank page
+    let nextIdx = i + 1;
+    while (nextIdx < pages.length && pages[nextIdx]?.isBlank) nextIdx++;
+    if (nextIdx >= pages.length) continue;
+    const next = pages[nextIdx];
+    if (!next || !next.html || next.isTitleOnlyPage || next.isFirstChapterPage) continue;
+    if (page.chapterTitle !== next.chapterTitle) continue;
+
+    const q1 = evaluatePageQualityCanvas(page.html, contentHeight, lineHeightPx, canvasCtx);
+    const q2 = evaluatePageQualityCanvas(next.html, contentHeight, lineHeightPx, canvasCtx);
+
+    // Guard: the DONOR (fuller page) must have enough slack to give.
+    // Without this, a 99%-full odd page can be reduced to 85% just to
+    // balance a 70% even page — the badness gate approves it but the
+    // result is inconsistent fill across odd pages throughout the book.
+    const donorPct = q1.fillPct > q2.fillPct ? q1.fillPct : q2.fillPct;
+    const donorSlackLines = Math.floor((1 - donorPct) * contentHeight / lineHeightPx);
+    if (donorSlackLines < MIN_DONOR_SLACK_LINES) continue;
+
+    // Only smooth if imbalance exceeds threshold
+    if (Math.abs(q1.fillPct - q2.fillPct) <= SMOOTH_THRESHOLD) continue;
+
+    const badnessBefore = q1.score + q2.score;
+
+    // Determine direction: move from fuller page to emptier page
+    const fromIdx = q1.fillPct > q2.fillPct ? i      : nextIdx;
+    const toIdx   = q1.fillPct > q2.fillPct ? nextIdx : i;
+    const fromPage = pages[fromIdx];
+    const toPage   = pages[toIdx];
+
+    const tmp = document.createElement('div');
+    tmp.innerHTML = fromPage.html;
+
+    // Forward move (toIdx > fromIdx): take LAST element of fromPage, PREPEND to toPage.
+    // Backward move (toIdx < fromIdx): take FIRST element of fromPage, APPEND to toPage.
+    // This preserves reading order: content flows from the bottom of one page to the top
+    // of the next (or from the top of one page to the bottom of the previous).
+    const elToMove = toIdx > fromIdx ? tmp.lastElementChild : tmp.firstElementChild;
+    if (!elToMove) continue;
+
+    const elHtml = elToMove.outerHTML;
+    elToMove.remove();
+    const fromRest = tmp.innerHTML.trim();
+    if (!fromRest) continue; // Would empty fromPage — skip
+
+    const toNewHtml = toIdx > fromIdx
+      ? elHtml + (toPage.html || '')   // forward: element goes to TOP of next page
+      : (toPage.html || '') + elHtml;  // backward: element goes to BOTTOM of prev page
+
+    if (!canAcceptHtml(toNewHtml, contentHeight, canvasCtx)) continue;
+
+    const qFrom = evaluatePageQualityCanvas(fromRest, contentHeight, lineHeightPx, canvasCtx);
+    const qTo   = evaluatePageQualityCanvas(toNewHtml, contentHeight, lineHeightPx, canvasCtx);
+
+    // Hard constraints — the badness gate alone is insufficient when pages are
+    // severely underfilled (huge badness delta can override a +800 heading penalty).
+    if (qFrom.violations.includes('heading_at_bottom')) continue;
+    if (qTo.violations.includes('heading_at_bottom')) continue;
+
+    const badnessAfter = qFrom.score + qTo.score;
+
+    if (badnessAfter < badnessBefore - SMOOTH_BADNESS_MIN_DELTA) {
+      pages[fromIdx] = { ...fromPage, html: fromRest };
+      pages[toIdx]   = { ...toPage,  html: toNewHtml };
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[SMOOTH] p${fromIdx + 1}→p${toIdx + 1}: fillPct ${(q1.fillPct * 100).toFixed(0)}%↔${(q2.fillPct * 100).toFixed(0)}% Δbadness ${(badnessBefore - badnessAfter).toFixed(0)}`);
+      }
     }
   }
 };
@@ -894,8 +1214,14 @@ const checkSplitBalance = (prevHtml, restHtml, lineHeightPx, canvasCtx) => {
  * @param {object} canvasCtx
  * @returns {{ score: number, fillPct: number, violations: string[] }}
  */
-const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvasCtx) => {
+const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvasCtx, isFragment = false) => {
   if (!pageHtml) return { score: Infinity, fillPct: 0, violations: [] };
+
+  // fs = fragment scale: when isFragment=true the html is a split remainder that will
+  // receive more content — fill-related penalties are false positives in that context.
+  // heading_at_bottom, fragment, split_shallow stay at full weight (they reflect the
+  // quality of the split itself, not the final fill state).
+  const fs = isFragment ? 0.3 : 1.0;
 
   const measure = (html) => measureHtmlHeight(html, canvasCtx);
   const pageHeight = measure(pageHtml);
@@ -906,10 +1232,17 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
   // Whitespace penalty — line-based tiers (TeX-style)
   // 80/line for 1-2 lines: enough "inertia" to avoid micro-optimisations.
   // Steps up at 3+ and 5+ lines to force the fill-pass to act on serious underfill.
+  // Scaled by fs when evaluating a fragment (incomplete page).
   const unusedLines = Math.floor(Math.max(0, remainingSpace) / lineHeightPx);
-  if (unusedLines > 4)      score += 500; // severe underfill (5+ lines)
-  else if (unusedLines > 2) score += 200; // moderate underfill (3-4 lines)
-  else                      score += unusedLines * 80; // 1-2 lines: 80/160 — add inertia
+  if (unusedLines > 4)      score += 500 * fs; // severe underfill (5+ lines)
+  else if (unusedLines > 2) score += 200 * fs; // moderate underfill (3-4 lines)
+  else                      score += unusedLines * 80 * fs; // 1-2 lines: 80/160
+
+  // fillPct deviation penalty — pages deviating from 92% fill target score higher.
+  // Discourages both underfill (< 92%) and overfill (> 92%).
+  // Scaled by fs when evaluating a fragment (fill will change as content is added).
+  const fillPct = pageHeight / contentHeight;
+  score += Math.abs(fillPct - 0.92) * 200 * fs;
 
   // Parse structure
   const div = document.createElement('div');
@@ -920,8 +1253,13 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
     const lastEl = children[children.length - 1];
     const lastTag = lastEl.tagName || '';
 
-    // Heading at bottom penalty — nearly as bad as widow/orphan
-    if (/^H[1-6]$/i.test(lastTag)) {
+    // Heading at bottom penalty — nearly as bad as widow/orphan.
+    // Also catches bold-paragraph subheaders (same pattern as greedyPaginate and fixHeadingsAtBottom).
+    const isBoldParaAtBottom = lastTag === 'P' && (
+      /^<p[^>]*>\s*<(?:strong|b)\b/i.test(lastEl.outerHTML) ||
+      /font-weight:\s*(?:bold|[7-9]00)/i.test(lastEl.getAttribute('style') || '')
+    );
+    if (/^H[1-6]$/i.test(lastTag) || isBoldParaAtBottom) {
       score += 800;
       violations.push('heading_at_bottom');
     }
@@ -933,19 +1271,20 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
       const el = children[ci];
       if (el.tagName?.toUpperCase() !== 'P') continue;
 
-      const elStyle = el.getAttribute('style') || '';
-      const isContinuation = /text-indent:\s*0[^.]/.test(elStyle);
+      const isContinuation = el.dataset.continuation === 'true';
       const elLines = Math.floor(measure(el.outerHTML) / lineHeightPx);
 
       // Orphan: continuation chunk with only 1 line (any position on page)
+      // Scaled by fs — on a fragment, this is not a real orphan yet.
       if (isContinuation && elLines <= 1) {
-        score += 1000;
+        score += 1000 * fs;
         violations.push('orphan');
       }
 
       // Widow: last paragraph on page with only 1 line
+      // Scaled by fs — on a fragment, this is not a real widow yet.
       if (ci === children.length - 1 && elLines <= 1) {
-        score += 1000;
+        score += 1000 * fs;
         violations.push('widow');
       }
 
@@ -967,8 +1306,17 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
 
   return {
     score,
-    fillPct: pageHeight > 0 ? (pageHeight / contentHeight) * 100 : 0,
+    fillPct,   // 0.0–1.0 ratio (fillPct computed above for deviation penalty)
     violations
   };
 };
+
+/**
+ * Guard: returns true only if html fits within contentHeight.
+ * Used by all page-mutation functions to prevent silent overflow.
+ *
+ * @private
+ */
+const canAcceptHtml = (html, contentHeight, canvasCtx) =>
+  measureHtmlHeight(html, canvasCtx) <= contentHeight;
 

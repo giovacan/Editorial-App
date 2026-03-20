@@ -202,7 +202,7 @@ export const exportPdf = async (bookData, config, paginatedPages, dims, onProgre
     'word-break:break-word',
     'overflow-wrap:break-word',
     'overflow:hidden',
-    'hyphens:none',
+    'hyphens:auto',
     'position:relative',
   ].join(';');
 

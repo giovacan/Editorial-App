@@ -73,22 +73,31 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
     : KDP_STANDARDS.getDynamicGutter(safeConfig.pageFormat, safeBookData.bookType, totalPages);
 
   const applyDynamicMargins = (safeConfig.marginStrategy || 'auto') === 'auto';
+  const effectiveGutter     = storeDims?.gutterValue ?? gutterValue;
 
-  // Compute dims for the current page pair (use right-page dims as reference for scale)
-  const isEvenLeft  = format === 'pdf' ? true  : false; // left page = even in spread
-  const isEvenRight = format === 'pdf' ? false : false;
+  const fontSize   = (safeConfig.fontSize || bookConfig.fontSize) * (PX_PER_INCH / 72) * PREVIEW_SCALE;
+  const lineHeightPx = storeDims?.lineHeightPx ?? Math.ceil(fontSize * (safeConfig.lineHeight || bookConfig.lineHeight));
+  const fontFamily = safeConfig.fontFamily || bookConfig.fontFamily;
+  const textAlign  = safeConfig.paragraph?.align || 'justify';
+  const baseFontSize = (safeConfig.fontSize || bookConfig.fontSize) * PREVIEW_SCALE;
 
-  const dimsLeft  = calculateContentDimensions(pageFormat, bookConfig, PREVIEW_SCALE, storeDims?.gutterValue ?? gutterValue, isEvenLeft,  totalPages, applyDynamicMargins);
-  const dimsRight = calculateContentDimensions(pageFormat, bookConfig, PREVIEW_SCALE, storeDims?.gutterValue ?? gutterValue, isEvenRight, totalPages, applyDynamicMargins);
+  // Compute dims per page — mirrors Preview.jsx logic exactly:
+  //   - isTitleOnlyPage → gutter = 0 (symmetric margins, same as Preview)
+  //   - isEven derived from actual pageNumber (not hardcoded by spread slot)
+  const computeDimsForPage = useCallback((page) => {
+    const isTitleOnly  = page?.isTitleOnlyPage === true;
+    const isEven       = page ? (page.pageNumber % 2 === 0) : false;
+    const gutterForPage = isTitleOnly ? 0 : effectiveGutter;
+    const d = calculateContentDimensions(pageFormat, bookConfig, PREVIEW_SCALE, gutterForPage, isEven, totalPages, applyDynamicMargins);
+    const effectiveContentHeight = storeDims?.contentHeight ?? d.contentHeight;
+    return { ...d, fontSize, fontFamily, lineHeightPx, textAlign, effectiveContentHeight, baseFontSize };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveGutter, totalPages, fontSize, lineHeightPx, fontFamily, textAlign, baseFontSize, applyDynamicMargins]);
 
-  const pageWidthPx  = dimsRight.pageWidthPx;
-  const pageHeightPx = dimsRight.pageHeightPx;
-
-  const fontSize      = (safeConfig.fontSize || bookConfig.fontSize) * (PX_PER_INCH / 72) * PREVIEW_SCALE;
-  const lineHeightPx  = storeDims?.lineHeightPx ?? Math.ceil(fontSize * (safeConfig.lineHeight || bookConfig.lineHeight));
-  const effectiveContentHeight = storeDims?.contentHeight ?? dimsRight.contentHeight;
-  const fontFamily    = safeConfig.fontFamily || bookConfig.fontFamily;
-  const textAlign     = safeConfig.paragraph?.align || 'justify';
+  // Reference dims (odd/right page, no title) used for scale calculation
+  const refDims      = calculateContentDimensions(pageFormat, bookConfig, PREVIEW_SCALE, effectiveGutter, false, totalPages, applyDynamicMargins);
+  const pageWidthPx  = refDims.pageWidthPx;
+  const pageHeightPx = refDims.pageHeightPx;
 
   // ── CSS scale: fit pages into available viewport ───────────────────────────
   const availW = viewport.w - H_PAD;
@@ -130,13 +139,9 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
     rightPage = paginatedPages[spreadIndex] || null;
   }
 
-  // baseFontSize = config.fontSize * previewScale ("pseudo-pt at previewScale")
-  // Used by buildHeaderHtmlPure inside PageFrame to size the header text.
-  const baseFontSize = (safeConfig.fontSize || bookConfig.fontSize) * PREVIEW_SCALE;
-
-  // Shared render props — include baseFontSize for PageFrame's buildHeaderHtmlPure
-  const leftDims  = { ...dimsLeft,  fontSize, fontFamily, lineHeightPx, textAlign, effectiveContentHeight, baseFontSize };
-  const rightDims = { ...dimsRight, fontSize, fontFamily, lineHeightPx, textAlign, effectiveContentHeight, baseFontSize };
+  // Per-page dims — gutter and isEven computed from actual page data
+  const leftDims  = computeDimsForPage(leftPage);
+  const rightDims = computeDimsForPage(rightPage);
 
   // ── Export handlers ────────────────────────────────────────────────────────
   const handleDownload = async () => {
@@ -148,15 +153,15 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
         const pdfDims = {
           pageWidthPx,
           pageHeightPx,
-          marginTop:            dimsRight.marginTop,
-          marginRight:          dimsRight.marginRight,
-          marginBottom:         dimsRight.marginBottom,
-          marginLeft:           dimsRight.marginLeft,
+          marginTop:            refDims.marginTop,
+          marginRight:          refDims.marginRight,
+          marginBottom:         refDims.marginBottom,
+          marginLeft:           refDims.marginLeft,
           fontSize,
           fontFamily,
           lineHeightPx,
           baseFontSize,
-          effectiveContentHeight,
+          effectiveContentHeight: storeDims?.contentHeight ?? refDims.contentHeight,
           previewScale:         PREVIEW_SCALE,
         };
         await exportPdfNative(

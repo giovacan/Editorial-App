@@ -1,4 +1,4 @@
-import { useRef, memo, useEffect, useState } from 'react';
+import { useRef, memo, useEffect, useState, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import useEditorStore from '../../store/useEditorStore';
@@ -7,6 +7,8 @@ import { useMagnifier } from '../../hooks/useMagnifier';
 import { useHeaderFooter, buildHeaderHtml } from '../../hooks/useHeaderFooter';
 import { calculateContentDimensions } from '../../utils/textMeasurer';
 import { DEFAULT_CONFIG } from './utils/previewConfig';
+import { applyKpRendering } from '../../utils/textLayoutEngine';
+import { JUSTIFY_SLACK_RATIO } from '../../utils/paginateChapters';
 import { addDebugTags } from './utils/debugTags';
 import PreviewControls from './PreviewControls';
 import MagnifierPanel from './MagnifierPanel';
@@ -70,11 +72,6 @@ function Preview() {
     paragraphs.forEach(p => { p.style.wordSpacing = ''; });
   };
 
-  useEffect(() => {
-    adjustWordSpacing(previewContentRef.current);
-    adjustWordSpacing(magnifierContentRef.current);
-  });
-
   const safeBookData = bookData || { bookType: 'novela', chapters: [], title: '' };
   const safeConfig = config || DEFAULT_CONFIG;
   const debugConfig = safeConfig.previewDebug || {
@@ -130,6 +127,14 @@ function Preview() {
     ? addDebugTags(currentPageData.html, debugConfig, safeConfig.paragraph)
     : currentPageData.html;
 
+  // Run only when page content changes — NOT on every mouse-move render.
+  // Running on every render would reset word-spacing then re-read scrollHeight
+  // 60× per second while the mouse moves, causing visible layout jumps.
+  useEffect(() => {
+    adjustWordSpacing(previewContentRef.current);
+    adjustWordSpacing(magnifierContentRef.current);
+  }, [currentPage, debugHtml]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const isCurrentPageEven = currentPageData.pageNumber % 2 === 0;
   const isTitleOnlyPage = currentPageData.isTitleOnlyPage === true;
   const effectiveGutter = layoutDims?.gutterValue ?? gutterValue;
@@ -148,6 +153,19 @@ function Preview() {
   const lineHeightPx = layoutDims?.lineHeightPx ?? Math.ceil(fontSize * lineHeightRatio);
   const textAlign = safeConfig.paragraph?.align || 'justify';
   const showNums = safeConfig.showPageNumbers !== false;
+
+  // ── KP Rendering ─────────────────────────────────────────────────────────────
+  const renderedHtml = useMemo(() => {
+    if (!debugHtml || currentPageData?.isBlank || textAlign !== 'justify') return debugHtml;
+    const cw = pageWidthPx - marginLeft - marginRight;
+    return applyKpRendering(debugHtml, {
+      baseFontSizePx: fontSize,
+      fontFamily,
+      contentWidth: cw,
+      widthSlack: cw * JUSTIFY_SLACK_RATIO,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debugHtml, currentPageData?.isBlank, textAlign, pageWidthPx, marginLeft, marginRight, fontSize, fontFamily]);
 
   const { showMagnifier, setShowMagnifier, magnifierZoom, setMagnifierZoom, magnifierPanelRef,
     magnifierPos, updateMagnifierPosition, handleMouseEnterPreview, handleMouseLeavePreview,
@@ -197,7 +215,7 @@ function Preview() {
   const sharedPageProps = {
     pageWidthPx, pageHeightPx, marginTop, marginRight, marginBottom, marginLeft,
     fontSize, fontFamily, lineHeightPx, textAlign, effectiveContentHeight,
-    debugHtml, pageNumHtml, showHeaders, currentPageData, skipHeader,
+    debugHtml: renderedHtml, pageNumHtml, showHeaders, currentPageData, skipHeader,
     hasHeaderContent, headerHtml
   };
 
@@ -232,7 +250,7 @@ function Preview() {
             width: `${pageWidthPx}px`, height: `${pageHeightPx}px`,
             padding: `${marginTop}px ${marginRight}px ${marginBottom}px ${marginLeft}px`,
             fontSize: `${fontSize}px`, fontFamily, lineHeight: `${lineHeightPx}px`,
-            textAlign, textJustify: 'inter-word', hyphens: 'none',
+            textAlign, textJustify: 'inter-word', hyphens: 'auto',
             wordBreak: 'break-word', overflowWrap: 'break-word'
           }}
           onMouseMove={updateMagnifierPosition}
@@ -256,7 +274,7 @@ function Preview() {
             }}
             className="preview-content"
             style={{ height: `${effectiveContentHeight}px` }}
-            dangerouslySetInnerHTML={{ __html: debugHtml || '' }}
+            dangerouslySetInnerHTML={{ __html: renderedHtml || '' }}
           />
           {pageNumHtml}
         </div>
