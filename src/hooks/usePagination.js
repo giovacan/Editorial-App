@@ -2,6 +2,9 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import murmurhash from 'imurmurhash';
 import { KDP_STANDARDS } from '../utils/kdpStandards';
 import useEditorStore from '../store/useEditorStore';
+import { extractTOC, ENABLE_TOC, generateRecommendedTOCConfig } from '../utils/extractTOC';
+import { mapTOCToPages } from '../utils/mapTOCToPages';
+import { generateFrontMatter, combineFrontMatterWithContent } from '../utils/generateFrontMatter';
 import {
   splitParagraphByLines,
   buildParagraphHtml,
@@ -104,7 +107,11 @@ export const usePagination = (bookData, config, measureRef) => {
   const [pages, setPages] = useState([]);
   const [calculatedPageCount, setCalculatedPageCount] = useState(0);
   const [layoutDims, setLayoutDims] = useState(null);
-  
+
+  // Subscribe to TOC config changes to regenerate frontmatter without re-paginating
+  const tocConfig      = useEditorStore(s => s.tocConfig);
+  const frontMatterConfig = useEditorStore(s => s.frontMatterConfig);
+
   const safeBookData = bookData || { bookType: 'novela', chapters: [], title: '' };
   const safeConfig = config || DEFAULT_CONFIG;
 
@@ -364,12 +371,26 @@ export const usePagination = (bookData, config, measureRef) => {
 
       let generatedPages;
       try {
-        generatedPages = paginateChapters(
+        const paginationResult = paginateChapters(
           safeBookData.chapters,
           layoutCtx,
           measureDiv,
           safeConfig
         );
+        generatedPages = paginationResult.pages;
+        if (paginationResult.log) {
+          useEditorStore.getState().setPaginationLog(paginationResult.log);
+          if (process.env.NODE_ENV === 'development') {
+            fetch('/api/pagination-log', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                log: paginationResult.log,
+                summaryText: paginationResult.summaryText
+              })
+            }).catch(() => {})
+          }
+        }
       } catch (e) {
         console.error('[PAGINATE] ERROR en paginateChapters:', e, e?.stack);
         useEditorStore.getState().endPagination();
@@ -408,6 +429,83 @@ export const usePagination = (bookData, config, measureRef) => {
         });
         setPages(validatedPages);
         useEditorStore.getState().setPaginatedPages(validatedPages);
+        
+        if (ENABLE_TOC) {
+          const tocEntries = extractTOC(safeBookData.chapters);
+          const tocResolved = mapTOCToPages(tocEntries, validatedPages);
+          useEditorStore.getState().setTOCData(tocResolved);
+          
+          const { tocAuto, frontMatterConfig } = useEditorStore.getState();
+          let { tocConfig } = useEditorStore.getState();
+          if (tocAuto && !tocConfig) {
+            tocConfig = generateRecommendedTOCConfig(tocEntries);
+            useEditorStore.getState().setTOCConfig(tocConfig);
+            if (process.env.NODE_ENV === 'development') {
+              console.log('[TOC] Auto-generated config:', tocConfig);
+            }
+          }
+
+          if (tocConfig) {
+            // Pass 1: dry run to know how many FM pages will be prepended
+            const { pages: fmDry } = generateFrontMatter(
+              safeBookData.title || 'Título del Libro',
+              safeBookData.author || '',
+              tocResolved,
+              tocConfig,
+              frontMatterConfig,
+              contentHeight,
+              lineHeightPx,
+              contentWidth,
+              baseFontSizePx,
+              targetFontFamily
+            );
+            // Pass 2: offset TOC entry page numbers by FM count so they reflect
+            // the sequential position in the full document (FM + content).
+            const fmOffset = fmDry.length;
+            const tocResolvedOffset = tocResolved.map(e => ({ ...e, page: (e.page || 1) + fmOffset }));
+            const { pages: fmPages, h3AutoFontSize, tocLog } = generateFrontMatter(
+              safeBookData.title || 'Título del Libro',
+              safeBookData.author || '',
+              tocResolvedOffset,
+              tocConfig,
+              frontMatterConfig,
+              contentHeight,
+              lineHeightPx,
+              contentWidth,
+              baseFontSizePx,
+              targetFontFamily
+            );
+            useEditorStore.getState().setFrontMatterPages(fmPages);
+            useEditorStore.getState().setTocBuildLog(tocLog);
+            // Update tocData with book-sequential page numbers (offset by FM count)
+            useEditorStore.getState().setTOCData(tocResolvedOffset);
+            // Patch pagination log page numbers so debug panel matches preview page numbers
+            if (fmOffset > 0) {
+              const rawLog = useEditorStore.getState().paginationLog;
+              if (rawLog) {
+                useEditorStore.getState().setPaginationLog({
+                  ...rawLog,
+                  config: { ...(rawLog.config || {}), fmOffset },
+                  entries: rawLog.entries.map(e => ({ ...e, page: e.page + fmOffset })),
+                  summary: rawLog.summary.map(s => ({ ...s, page: s.page + fmOffset }))
+                });
+              }
+            }
+            // Sync auto-computed H3 font size back to editor (separate from user levelOverrides)
+            const autoH3Value = h3AutoFontSize || undefined;
+            if (tocConfig.autoH3FontSize !== autoH3Value) {
+              useEditorStore.getState().setTOCConfig({ ...tocConfig, autoH3FontSize: autoH3Value });
+            }
+            if (process.env.NODE_ENV === 'development') {
+              console.log('[FrontMatter] Generated:', fmPages.length, 'pages');
+            }
+          }
+          
+          if (process.env.NODE_ENV === 'development') {
+            console.log('[TOC] Extracted:', tocResolved.length, 'entries');
+          }
+        }
+        
         useEditorStore.getState().setLayoutDims({
           contentHeight,
           contentWidth,
@@ -463,7 +561,51 @@ export const usePagination = (bookData, config, measureRef) => {
       }
     }
   }, [pages, safeBookData.chapters, safeConfig, confirmedChapterTitles]);
-  
+
+  // Regenerate frontmatter whenever TOC/frontmatter config changes (without re-paginating)
+  useEffect(() => {
+    if (!ENABLE_TOC || !layoutDims) return;
+    const { tocData, config: storeConfig } = useEditorStore.getState();
+    const entries = tocData || [];
+
+    const fmFontFamily = safeConfig.fontFamily || storeConfig?.fontFamily;
+    // Pass 1: dry run to count how many FM pages will be prepended
+    const { pages: fmDry } = generateFrontMatter(
+      safeBookData.title || 'Título del Libro',
+      safeBookData.author || '',
+      entries,
+      tocConfig,
+      frontMatterConfig,
+      layoutDims.contentHeight,
+      layoutDims.lineHeightPx,
+      layoutDims.contentWidth,
+      layoutDims.baseFontSizePx,
+      fmFontFamily
+    );
+    // Pass 2: offset TOC entry page numbers by FM count
+    const fmOffset = fmDry.length;
+    const entriesOffset = entries.map(e => ({ ...e, page: (e.page || 1) + fmOffset }));
+    const { pages: fmPages, h3AutoFontSize, tocLog } = generateFrontMatter(
+      safeBookData.title || 'Título del Libro',
+      safeBookData.author || '',
+      entriesOffset,
+      tocConfig,
+      frontMatterConfig,
+      layoutDims.contentHeight,
+      layoutDims.lineHeightPx,
+      layoutDims.contentWidth,
+      layoutDims.baseFontSizePx,
+      fmFontFamily
+    );
+    useEditorStore.getState().setFrontMatterPages(fmPages);
+    useEditorStore.getState().setTocBuildLog(tocLog);
+    // Sync auto-computed H3 font size back to editor (separate from user levelOverrides)
+    const autoH3Value = h3AutoFontSize || undefined;
+    if (tocConfig?.autoH3FontSize !== autoH3Value) {
+      useEditorStore.getState().setTOCConfig({ ...(tocConfig || {}), autoH3FontSize: autoH3Value });
+    }
+  }, [tocConfig, frontMatterConfig, layoutDims, safeBookData.title, safeBookData.author]);
+
   return {
     pages,
     layoutDims,

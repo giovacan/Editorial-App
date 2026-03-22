@@ -1,4 +1,4 @@
-import { useRef, memo, useEffect, useState, useMemo } from 'react';
+import { useRef, memo, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import useEditorStore from '../../store/useEditorStore';
@@ -13,6 +13,7 @@ import { addDebugTags } from './utils/debugTags';
 import PreviewControls from './PreviewControls';
 import MagnifierPanel from './MagnifierPanel';
 import PreviewDebugPanel from './PreviewDebugPanel';
+import TOCPanel from './TOCPanel';
 import ValidationErrorDialog from '../ValidationErrorDialog/ValidationErrorDialog';
 import PaginationProgressBar from '../PaginationProgressBar/PaginationProgressBar';
 import './Preview.css';
@@ -29,6 +30,7 @@ function getGutterInInches(value, unit) {
 
 function Preview() {
   const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const showTOCPanel = useEditorStore(s => s.showTOCPanel);
 
   const bookData = useEditorStore(useShallow((s) => s.bookData));
   const config = useEditorStore(useShallow((s) => s.config));
@@ -41,20 +43,23 @@ function Preview() {
   const magnifierContentRef = useRef(null);
   const previewScrollRef = useRef(null);
 
-  // Create hidden measurement div outside overflow containers
-  useEffect(() => {
+  // Create hidden measurement div outside overflow containers.
+  // useLayoutEffect (not useEffect) ensures this runs BEFORE usePagination's useEffect,
+  // so measureRef.current is populated when pagination first runs on mount.
+  useLayoutEffect(() => {
     if (!measureRef.current) {
       const div = document.createElement('div');
       div.style.cssText = 'position:fixed;left:-99999px;top:0;visibility:hidden;pointer-events:none;';
       div.setAttribute('lang', 'es');
       document.body.appendChild(div);
       measureRef.current = div;
-      return () => {
-        if (measureRef.current?.parentNode) {
-          measureRef.current.parentNode.removeChild(measureRef.current);
-        }
-      };
     }
+    return () => {
+      if (measureRef.current?.parentNode) {
+        measureRef.current.parentNode.removeChild(measureRef.current);
+      }
+      measureRef.current = null;
+    };
   }, []);
 
   // Tighten word-spacing on overflow by < 1 line
@@ -102,38 +107,51 @@ function Preview() {
   const { pages = [], layoutDims, validationState, showErrorDialog, currentError, handleErrorAction, closeErrorDialog } =
     usePagination(bookData, config, measureRef);
 
+  const frontMatterPages = useEditorStore((s) => s.frontMatterPages) || [];
+  
+  const allPages = useMemo(() => {
+    if (frontMatterPages.length > 0) {
+      const offset = frontMatterPages.length;
+      const offsetPages = pages.map(p => ({ ...p, pageNumber: (p.pageNumber || 0) + offset }));
+      return [...frontMatterPages, ...offsetPages];
+    }
+    return pages;
+  }, [frontMatterPages, pages]);
+
   useEffect(() => {
-    console.log('[PREVIEW] Pages actualizadas:', pages.length, '| Layout config:', config?.chapterTitle?.layout);
-    if (pages[0]?.html) console.log('[PREVIEW] Primera página HTML:', pages[0].html.slice(0, 150));
-  }, [pages, config?.chapterTitle?.layout]);
+    console.log('[PREVIEW] Pages actualizadas:', allPages.length, '| Layout config:', config?.chapterTitle?.layout);
+    if (allPages[0]?.html) console.log('[PREVIEW] Primera página HTML:', allPages[0].html.slice(0, 150));
+  }, [allPages, config?.chapterTitle?.layout]);
 
   const paginationProgressObj = useEditorStore((s) => s.paginationProgress);
   const isPaginationRunning = paginationProgressObj?.isActive ?? false;
   const paginationPercent = paginationProgressObj?.percent ?? 0;
-  const totalPageCount = pages.length;
+  const totalPageCount = allPages.length;
 
   const gutterValue = safeConfig.gutterStrategy === 'custom'
     ? getGutterInInches(safeConfig.gutterManual, safeConfig.gutterUnit || 'in')
     : KDP_STANDARDS.getDynamicGutter(safeConfig.pageFormat, safeBookData.bookType, totalPageCount);
 
   const { currentPage, goToPage, goToNextPage, goToPrevPage, goToFirstPage, goToLastPage, totalPages } =
-    usePageNavigation(pages.length);
+    usePageNavigation(allPages.length);
 
-  const currentPageData = (pages?.length > 0 && pages[currentPage])
-    ? pages[currentPage]
+  const currentPageData = (allPages?.length > 0 && allPages[currentPage])
+    ? allPages[currentPage]
     : { html: '', pageNumber: 1, isBlank: false, chapterTitle: '', currentSubheader: '' };
 
-  const debugHtml = debugConfig.enabled
+  const isFrontMatterPage = !!(currentPageData.isTOCPage || currentPageData.isTitlePage || currentPageData.isFrontMatter);
+
+  const debugHtml = (!isFrontMatterPage && debugConfig.enabled)
     ? addDebugTags(currentPageData.html, debugConfig, safeConfig.paragraph)
     : currentPageData.html;
 
   // Run only when page content changes — NOT on every mouse-move render.
-  // Running on every render would reset word-spacing then re-read scrollHeight
-  // 60× per second while the mouse moves, causing visible layout jumps.
+  // Skip word-spacing adjustment on frontmatter pages (flex layout breaks with it).
   useEffect(() => {
+    if (isFrontMatterPage) return;
     adjustWordSpacing(previewContentRef.current);
     adjustWordSpacing(magnifierContentRef.current);
-  }, [currentPage, debugHtml]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentPage, debugHtml, isFrontMatterPage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isCurrentPageEven = currentPageData.pageNumber % 2 === 0;
   const isTitleOnlyPage = currentPageData.isTitleOnlyPage === true;
@@ -155,8 +173,10 @@ function Preview() {
   const showNums = safeConfig.showPageNumbers !== false;
 
   // ── KP Rendering ─────────────────────────────────────────────────────────────
+  // Frontmatter pages (title, TOC) skip KP rendering — their HTML uses flex
+  // layout that would be corrupted by the word-spacing pass.
   const renderedHtml = useMemo(() => {
-    if (!debugHtml || currentPageData?.isBlank || textAlign !== 'justify') return debugHtml;
+    if (!debugHtml || currentPageData?.isBlank || isFrontMatterPage || textAlign !== 'justify') return debugHtml;
     const cw = pageWidthPx - marginLeft - marginRight;
     return applyKpRendering(debugHtml, {
       baseFontSizePx: fontSize,
@@ -165,7 +185,7 @@ function Preview() {
       widthSlack: cw * JUSTIFY_SLACK_RATIO,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debugHtml, currentPageData?.isBlank, textAlign, pageWidthPx, marginLeft, marginRight, fontSize, fontFamily]);
+  }, [debugHtml, currentPageData?.isBlank, isFrontMatterPage, textAlign, pageWidthPx, marginLeft, marginRight, fontSize, fontFamily]);
 
   const { showMagnifier, setShowMagnifier, magnifierZoom, setMagnifierZoom, magnifierPanelRef,
     magnifierPos, updateMagnifierPosition, handleMouseEnterPreview, handleMouseLeavePreview,
@@ -179,8 +199,11 @@ function Preview() {
   const skipHeader = headerConfig.skipFirstChapterPage && currentPageData.isFirstChapterPage;
   const hasHeaderContent = headerLeft || headerCenter || headerRight;
 
-  const showPageNumber = (showNums && !currentPageData.isBlank) ||
-    (currentPageData.isExtraEndPage && currentPageData.shouldShowPageNumber);
+  // Frontmatter pages don't show running headers or page numbers
+  const showPageNumber = !isFrontMatterPage && (
+    (showNums && !currentPageData.isBlank) ||
+    (currentPageData.isExtraEndPage && currentPageData.shouldShowPageNumber)
+  );
 
   const pageNumberPos = safeConfig.pageNumberPos || 'bottom';
   const pageNumberAlign = safeConfig.pageNumberAlign || 'center';
@@ -216,7 +239,7 @@ function Preview() {
     pageWidthPx, pageHeightPx, marginTop, marginRight, marginBottom, marginLeft,
     fontSize, fontFamily, lineHeightPx, textAlign, effectiveContentHeight,
     debugHtml: renderedHtml, pageNumHtml, showHeaders, currentPageData, skipHeader,
-    hasHeaderContent, headerHtml
+    hasHeaderContent, headerHtml, isFrontMatterPage
   };
 
   return (
@@ -239,6 +262,10 @@ function Preview() {
         <PreviewDebugPanel config={config} onChange={setConfig} onClose={() => setShowDebugPanel(false)} />
       )}
 
+      {showTOCPanel && (
+        <TOCPanel />
+      )}
+
       <PaginationProgressBar progress={paginationPercent} isVisible={isPaginationRunning} compact={false} />
 
       <div className="preview-scroll" ref={previewScrollRef}>
@@ -250,14 +277,17 @@ function Preview() {
             width: `${pageWidthPx}px`, height: `${pageHeightPx}px`,
             padding: `${marginTop}px ${marginRight}px ${marginBottom}px ${marginLeft}px`,
             fontSize: `${fontSize}px`, fontFamily, lineHeight: `${lineHeightPx}px`,
-            textAlign, textJustify: 'inter-word', hyphens: 'auto',
+            // Frontmatter pages (title, TOC) use left-aligned layout — no justify, no hyphens
+            textAlign: isFrontMatterPage ? 'left' : textAlign,
+            textJustify: isFrontMatterPage ? undefined : 'inter-word',
+            hyphens: isFrontMatterPage ? 'none' : 'auto',
             wordBreak: 'break-word', overflowWrap: 'break-word'
           }}
           onMouseMove={updateMagnifierPosition}
           onMouseEnter={handleMouseEnterPreview}
           onMouseLeave={handleMouseLeavePreview}
         >
-          {showHeaders && !currentPageData.isBlank && !skipHeader && hasHeaderContent && (
+          {!isFrontMatterPage && showHeaders && !currentPageData.isBlank && !skipHeader && hasHeaderContent && (
             <div className="preview-header" dangerouslySetInnerHTML={{ __html: headerHtml }} style={{ marginBottom: '0.5em' }} />
           )}
           <div
@@ -266,8 +296,13 @@ function Preview() {
               if (el && process.env.NODE_ENV === 'development') {
                 requestAnimationFrame(() => {
                   const overflow = el.scrollHeight - el.clientHeight;
+                  const pageType = currentPageData?.isTOCPage ? 'TOC'
+                    : currentPageData?.isTitlePage ? 'TITLE'
+                    : currentPageData?.isFrontMatter ? 'FM' : 'CONTENT';
                   if (overflow > 2) {
-                    console.warn(`[OVERFLOW] Page ${currentPage + 1}: overflow=${overflow.toFixed(1)}px (${(overflow / lineHeightPx).toFixed(1)} lines)`);
+                    console.warn(`[OVERFLOW][${pageType}] Page ${currentPage + 1}: scrollH=${el.scrollHeight}px clientH=${el.clientHeight}px overflow=${overflow.toFixed(1)}px (${(overflow / lineHeightPx).toFixed(1)} lines)`);
+                  } else if (pageType === 'TOC') {
+                    console.log(`[TOC-RENDER] Page ${currentPage + 1}: scrollH=${el.scrollHeight}px clientH=${el.clientHeight}px ok (remain=${(el.clientHeight - el.scrollHeight).toFixed(1)}px)`);
                   }
                 });
               }

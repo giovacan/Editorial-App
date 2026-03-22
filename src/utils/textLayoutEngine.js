@@ -1175,6 +1175,13 @@ export const applyKpRendering = (pageHtml, layoutCtx) => {
       const runs = extractTextRuns(el, { bold: false, italic: false, fontSize: null });
       if (runs && hasStyledRuns(runs)) continue;
 
+      // Skip when entire content is uniformly bold or italic (single <strong>/<em> wrapper).
+      // Inserting <br> inside the wrapping element creates malformed HTML fragments
+      // (e.g. "<strong>line1" + "line2</strong>") — the browser auto-repairs by closing
+      // the tag before the break, causing the second line to lose its bold/italic styling.
+      // These are typically subheader paragraphs; browser line-breaking is acceptable.
+      if (runs && runs.length === 1 && (runs[0].bold || runs[0].italic)) continue;
+
       // Resolve element font
       const styles = extractStyles(el.style);
       const elFontSizePx = styles.fontSize

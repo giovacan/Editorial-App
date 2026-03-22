@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import useEditorStore from '../../store/useEditorStore';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
@@ -21,17 +21,20 @@ function getGutterInInches(value, unit) {
 }
 
 export default function ExportPreviewModal({ initialFormat, onClose }) {
-  const paginatedPages = useEditorStore((s) => s.paginatedPages);
-  const storeDims      = useEditorStore((s) => s.layoutDims);
-  const config         = useEditorStore(useShallow((s) => s.config));
-  const bookData       = useEditorStore(useShallow((s) => s.bookData));
+  const paginatedPages   = useEditorStore((s) => s.paginatedPages);
+  const frontMatterPages = useEditorStore((s) => s.frontMatterPages ?? []);
+  const storeDims        = useEditorStore((s) => s.layoutDims);
+  const config           = useEditorStore(useShallow((s) => s.config));
+  const bookData         = useEditorStore(useShallow((s) => s.bookData));
 
   const [format, setFormat]           = useState(initialFormat || 'pdf');
   const [showMargins, setShowMargins] = useState(false);
-  const [spreadIndex, setSpreadIndex] = useState(0); // index of LEFT page in PDF spread
+  const [spreadIndex, setSpreadIndex] = useState(0);
   const [viewport, setViewport]       = useState({ w: window.innerWidth, h: window.innerHeight });
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState({ current: 0, total: 0 });
+  const [zoom, setZoom]               = useState(1.0);
+  const [pageInput, setPageInput]     = useState('');
 
   // Track viewport for scale recalculation
   useEffect(() => {
@@ -66,7 +69,17 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
 
   // ── Compute page dimensions at PREVIEW_SCALE (same scale used by pagination) ─
   const PREVIEW_SCALE = storeDims?.previewScale ?? 0.42;
-  const totalPages    = paginatedPages.length;
+
+  // Full book = FM pages (portada, TDC) + content pages (numbers offset by FM count)
+  const allPages = useMemo(() => {
+    if (frontMatterPages.length > 0) {
+      const offset = frontMatterPages.length;
+      const offsetPages = paginatedPages.map(p => ({ ...p, pageNumber: (p.pageNumber || 0) + offset }));
+      return [...frontMatterPages, ...offsetPages];
+    }
+    return paginatedPages;
+  }, [frontMatterPages, paginatedPages]);
+  const totalPages = allPages.length;
 
   const gutterValue = safeConfig.gutterStrategy === 'custom'
     ? getGutterInInches(safeConfig.gutterManual, safeConfig.gutterUnit || 'in')
@@ -85,7 +98,8 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
   //   - isTitleOnlyPage → gutter = 0 (symmetric margins, same as Preview)
   //   - isEven derived from actual pageNumber (not hardcoded by spread slot)
   const computeDimsForPage = useCallback((page) => {
-    const isTitleOnly  = page?.isTitleOnlyPage === true;
+    // FM pages (portada, TDC) are symmetric — no gutter shift
+    const isTitleOnly  = page?.isTitleOnlyPage === true || page?.isTitlePage === true || page?.isTOCPage === true;
     const isEven       = page ? (page.pageNumber % 2 === 0) : false;
     const gutterForPage = isTitleOnly ? 0 : effectiveGutter;
     const d = calculateContentDimensions(pageFormat, bookConfig, PREVIEW_SCALE, gutterForPage, isEven, totalPages, applyDynamicMargins);
@@ -123,6 +137,27 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
   const prevSpread   = () => setSpreadIndex((i) => clampSpread(i - 1));
   const nextSpread   = () => setSpreadIndex((i) => clampSpread(i + 1));
 
+  // ── Zoom ───────────────────────────────────────────────────────────────────
+  const zoomIn    = () => setZoom(z => Math.min(+(z + 0.15).toFixed(2), 2.5));
+  const zoomOut   = () => setZoom(z => Math.max(+(z - 0.15).toFixed(2), 0.3));
+  const zoomReset = () => setZoom(1.0);
+  const effectiveCssScale = cssScale * zoom;
+
+  // ── Page jump ──────────────────────────────────────────────────────────────
+  // "Page N" refers to 1-based position in allPages (full book including FM).
+  const currentPagePos = format === 'pdf'
+    ? Math.min(spreadIndex * 2 + 1, allPages.length)
+    : spreadIndex + 1;
+
+  const goToPage = useCallback((val) => {
+    const n = parseInt(val, 10);
+    if (isNaN(n) || n < 1 || n > allPages.length) return;
+    const idx = n - 1; // 0-based index in allPages
+    setSpreadIndex(clampSpread(
+      format === 'pdf' ? Math.floor((idx + 1) / 2) : idx
+    ));
+  }, [allPages.length, format, clampSpread]);
+
   useEffect(() => { setSpreadIndex(0); }, [format]);
 
   // ── Pages to show ──────────────────────────────────────────────────────────
@@ -130,13 +165,13 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
   let rightPage = null;
 
   if (format === 'pdf') {
-    // In a book, page 1 is on the right, page 0 (blank/cover) on the left
-    const leftIdx  = spreadIndex * 2 - 1;   // -1 for spread 0 (blank cover)
+    // Page 1 (index 0) always lands on the right (odd page). Spread 0 → blank | page 1.
+    const leftIdx  = spreadIndex * 2 - 1;
     const rightIdx = spreadIndex * 2;
-    leftPage  = leftIdx  >= 0 ? paginatedPages[leftIdx]  : null;
-    rightPage = rightIdx >= 0 ? paginatedPages[rightIdx] : null;
+    leftPage  = leftIdx  >= 0 ? allPages[leftIdx]  : null;
+    rightPage = rightIdx >= 0 ? allPages[rightIdx] : null;
   } else {
-    rightPage = paginatedPages[spreadIndex] || null;
+    rightPage = allPages[spreadIndex] || null;
   }
 
   // Per-page dims — gutter and isEven computed from actual page data
@@ -147,7 +182,7 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
   const handleDownload = async () => {
     if (isExporting) return;
     setIsExporting(true);
-    setExportProgress({ current: 0, total: paginatedPages.length });
+    setExportProgress({ current: 0, total: allPages.length });
     try {
       if (format === 'pdf') {
         const pdfDims = {
@@ -167,7 +202,7 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
         await exportPdfNative(
           safeBookData,
           safeConfig,
-          paginatedPages,
+          allPages,
           pdfDims,
           (current, total) => setExportProgress({ current, total }),
         );
@@ -198,7 +233,7 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
   }
 
   // ── Empty state ────────────────────────────────────────────────────────────
-  const isEmpty = paginatedPages.length === 0;
+  const isEmpty = allPages.length === 0;
 
   return (
     <div className="epv-overlay" role="dialog" aria-modal="true" aria-label="Vista previa de exportación">
@@ -224,6 +259,15 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
         </div>
 
         <div className="epv-toolbar-right">
+          {/* Zoom controls */}
+          <div className="epv-zoom-controls">
+            <button className="epv-zoom-btn" onClick={zoomOut} title="Alejar">−</button>
+            <button className="epv-zoom-level" onClick={zoomReset} title="Restablecer zoom">
+              {Math.round(zoom * 100)}%
+            </button>
+            <button className="epv-zoom-btn" onClick={zoomIn} title="Acercar">+</button>
+          </div>
+
           <button
             className={`epv-toggle-btn ${showMargins ? 'active' : ''}`}
             onClick={() => setShowMargins((v) => !v)}
@@ -268,7 +312,7 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
             <PageFrame
               page={leftPage}
               dims={leftDims}
-              cssScale={cssScale}
+              cssScale={effectiveCssScale}
               showMargins={showMargins}
               config={safeConfig}
               bookTitle={safeBookData.title}
@@ -279,7 +323,7 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
             <PageFrame
               page={rightPage}
               dims={rightDims}
-              cssScale={cssScale}
+              cssScale={effectiveCssScale}
               showMargins={showMargins}
               config={safeConfig}
               bookTitle={safeBookData.title}
@@ -290,7 +334,7 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
             <PageFrame
               page={rightPage}
               dims={rightDims}
-              cssScale={cssScale}
+              cssScale={effectiveCssScale}
               showMargins={showMargins}
               config={safeConfig}
               bookTitle={safeBookData.title}
@@ -301,22 +345,32 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
 
       {/* ── Bottom navigation ────────────────────────────────────────────── */}
       <div className="epv-navbar">
-        <button
-          className="epv-nav-btn"
-          onClick={prevSpread}
-          disabled={spreadIndex === 0}
-          title="Anterior"
-        >
-          ← Anterior
+        <button className="epv-nav-btn" onClick={prevSpread} disabled={spreadIndex === 0} title="Anterior (←)">
+          ←
         </button>
-        <span className="epv-spread-info">{isEmpty ? '—' : spreadInfo}</span>
-        <button
-          className="epv-nav-btn"
-          onClick={nextSpread}
-          disabled={spreadIndex >= totalSpreads - 1}
-          title="Siguiente"
-        >
-          Siguiente →
+
+        <div className="epv-page-jump">
+          <input
+            type="number"
+            className="epv-page-input"
+            min="1"
+            max={allPages.length}
+            value={pageInput}
+            placeholder={String(currentPagePos)}
+            onChange={(e) => setPageInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { goToPage(pageInput); setPageInput(''); }
+              if (e.key === 'ArrowUp')   { e.preventDefault(); goToPage(currentPagePos + 1); }
+              if (e.key === 'ArrowDown') { e.preventDefault(); goToPage(currentPagePos - 1); }
+            }}
+            onBlur={() => { if (pageInput) { goToPage(pageInput); setPageInput(''); } }}
+            title="Escribe un número y presiona Enter"
+          />
+          <span className="epv-page-total">/ {isEmpty ? '—' : allPages.length}</span>
+        </div>
+
+        <button className="epv-nav-btn" onClick={nextSpread} disabled={spreadIndex >= totalSpreads - 1} title="Siguiente (→)">
+          →
         </button>
       </div>
     </div>

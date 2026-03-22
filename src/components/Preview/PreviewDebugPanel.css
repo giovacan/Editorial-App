@@ -163,3 +163,19 @@
 .debug-panel-content::-webkit-scrollbar-thumb:hover {
   background: #444;
 }
+
+/* Pagination Log buttons */
+.debug-copy-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid #555;
+  border-radius: 3px;
+  background: #2a2a3e;
+  color: #ddd;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.debug-copy-btn:hover {
+  background: #3a3a5e;
+  border-color: #777;
+}

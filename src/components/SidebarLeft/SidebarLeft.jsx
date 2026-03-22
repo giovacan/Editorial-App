@@ -27,8 +27,10 @@ import './SidebarLeft.css';
 function SidebarLeft() {
   const [activeTab, setActiveTab] = useState('structure');
 
-  const chapters = useEditorStore((s) => s.bookData?.chapters);
-  const bookType = useEditorStore((s) => s.bookData?.bookType);
+  const chapters  = useEditorStore((s) => s.bookData?.chapters);
+  const bookType  = useEditorStore((s) => s.bookData?.bookType);
+  const bookTitle = useEditorStore((s) => s.bookData?.title);
+  const bookAuthor = useEditorStore((s) => s.bookData?.author);
   const config = useEditorStore(useShallow((s) => s.config));
   const activeChapterId = useEditorStore((s) => s.editing.activeChapterId);
   const addChapter = useEditorStore((s) => s.addChapter);
@@ -41,7 +43,7 @@ function SidebarLeft() {
   const deleteChapter = useEditorStore((s) => s.deleteChapter);
   const moveChapter = useEditorStore((s) => s.moveChapter);
 
-  const safeBookData = { title: '', author: '', chapters: chapters || [], bookType: bookType || 'novela' };
+  const safeBookData = { title: bookTitle || '', author: bookAuthor || '', chapters: chapters || [], bookType: bookType || 'novela' };
 
   const safeConfig = useMemo(() => config || {
     pageFormat: 'a5',
@@ -175,13 +177,13 @@ function SidebarLeft() {
     updateChapter(chapterId, { title: newTitle });
   }, [updateChapter]);
 
-  const handleDocumentTitleChange = (e) => {
+  const handleDocumentTitleChange = useCallback((e) => {
     setBookData({ title: e.target.value });
-  };
+  }, [setBookData]);
 
-  const handleDocumentAuthorChange = (e) => {
+  const handleDocumentAuthorChange = useCallback((e) => {
     setBookData({ author: e.target.value });
-  };
+  }, [setBookData]);
 
   // Create stable config reference for accordion memoization
   const stableConfigHash = useMemo(() => JSON.stringify({
