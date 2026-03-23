@@ -19,6 +19,7 @@ const COMMUNITY_BOOKS = [
     pages: 245,
     language: 'es',
     publishedDate: '2024-01-15',
+    lastEditedDate: '2025-03-15',
     badges: ['bestseller', 'staff-pick'],
     isFeatured: true,
     excerpt: 'Capítulo 1: El inicio de todo\n\nTodo gran viaje comienza con un solo paso, y toda gran historia comienza con una sola palabra...',
@@ -43,6 +44,7 @@ const COMMUNITY_BOOKS = [
     pages: 312,
     language: 'es',
     publishedDate: '2024-03-20',
+    lastEditedDate: '2025-03-20',
     badges: ['new', 'top-rated'],
     isFeatured: false,
     excerpt: 'La tormenta azotaba la cabaña con furia...',
@@ -67,6 +69,7 @@ const COMMUNITY_BOOKS = [
     pages: 96,
     language: 'es',
     publishedDate: '2024-02-10',
+    lastEditedDate: '2025-03-10',
     badges: ['award-winning'],
     isFeatured: false,
     excerpt: 'En el silence de la madrugada,\ncuando el mundo aún sueña,\nlas palabrasflorean...',
@@ -91,6 +94,7 @@ const COMMUNITY_BOOKS = [
     pages: 420,
     language: 'es',
     publishedDate: '2023-11-05',
+    lastEditedDate: '2025-03-05',
     badges: ['bestseller'],
     isFeatured: true,
     excerpt: 'Introducción a la cocina\n\nCocinar es un arte que cualquiera puede dominar con práctica y los ingredientes adecuados...',
@@ -115,6 +119,7 @@ const COMMUNITY_BOOKS = [
     pages: 180,
     language: 'es',
     publishedDate: '2024-01-01',
+    lastEditedDate: '2025-02-01',
     badges: ['staff-pick', 'new'],
     isFeatured: false,
     excerpt: ' Había una vez, en un bosque muy lejano...',
@@ -139,6 +144,7 @@ const COMMUNITY_BOOKS = [
     pages: 380,
     language: 'es',
     publishedDate: '2024-04-15',
+    lastEditedDate: '2025-03-18',
     badges: ['new'],
     isFeatured: false,
     excerpt: 'El professor García activó el prototipo y el laboratorio desapareció...',
@@ -163,6 +169,7 @@ const COMMUNITY_BOOKS = [
     pages: 290,
     language: 'es',
     publishedDate: '2023-09-20',
+    lastEditedDate: '2025-03-01',
     badges: ['bestseller', 'top-rated'],
     isFeatured: true,
     excerpt: 'El primer paso hacia la libertad financiera es entender a dónde va tu dinero...',
@@ -187,6 +194,7 @@ const COMMUNITY_BOOKS = [
     pages: 340,
     language: 'es',
     publishedDate: '2024-05-01',
+    lastEditedDate: '2025-03-22',
     badges: ['new'],
     isFeatured: false,
     excerpt: 'María abrió la puerta oxidada yStep into a world of forbidden love...',
@@ -211,6 +219,7 @@ const COMMUNITY_BOOKS = [
     pages: 400,
     language: 'es',
     publishedDate: '2024-01-10',
+    lastEditedDate: '2025-02-10',
     badges: ['staff-pick'],
     isFeatured: false,
     excerpt: 'Día 1: El momento presente es todo lo que tienes...',
@@ -235,6 +244,7 @@ const COMMUNITY_BOOKS = [
     pages: 420,
     language: 'es',
     publishedDate: '2024-02-28',
+    lastEditedDate: '2025-03-08',
     badges: ['bestseller', 'new'],
     isFeatured: true,
     excerpt: 'Año 2150. La humanidad había creado inteligencia artificial...',
@@ -259,6 +269,7 @@ const COMMUNITY_BOOKS = [
     pages: 260,
     language: 'es',
     publishedDate: '2023-12-15',
+    lastEditedDate: '2025-01-15',
     badges: ['top-rated', 'bestseller'],
     isFeatured: false,
     excerpt: 'Italia: La pasta perfecta\n\nEl secreto está en la calidad de los ingredientes...',
@@ -283,6 +294,7 @@ const COMMUNITY_BOOKS = [
     pages: 280,
     language: 'es',
     publishedDate: '2024-03-10',
+    lastEditedDate: '2025-03-12',
     badges: [],
     isFeatured: false,
     excerpt: 'El caso arrived en un sobre manila...',
@@ -307,6 +319,7 @@ const COMMUNITY_BOOKS = [
     pages: 200,
     language: 'es',
     publishedDate: '2024-04-01',
+    lastEditedDate: '2025-02-20',
     badges: ['new', 'staff-pick'],
     isFeatured: false,
     excerpt: 'El yoga es un viaje, no un destino...',
@@ -331,6 +344,7 @@ const COMMUNITY_BOOKS = [
     pages: 450,
     language: 'es',
     publishedDate: '2024-05-15',
+    lastEditedDate: '2025-03-05',
     badges: ['new'],
     isFeatured: false,
     excerpt: 'En el principio, solo había oscuridad...',
@@ -355,6 +369,7 @@ const COMMUNITY_BOOKS = [
     pages: 520,
     language: 'es',
     publishedDate: '2023-08-10',
+    lastEditedDate: '2025-03-18',
     badges: ['bestseller', 'top-rated', 'staff-pick'],
     isFeatured: true,
     excerpt: 'Bienvenido al mundo de la programación...',
@@ -379,6 +394,7 @@ const COMMUNITY_BOOKS = [
     pages: 580,
     language: 'es',
     publishedDate: '2024-02-01',
+    lastEditedDate: '2025-03-02',
     badges: ['bestseller'],
     isFeatured: true,
     excerpt: 'El sol se ocultaba tras las montañas...',
@@ -406,6 +422,10 @@ export const getTopRated = () => {
 
 export const getNewBooks = () => {
   return [...COMMUNITY_BOOKS].sort((a, b) => new Date(b.publishedDate) - new Date(a.publishedDate)).slice(0, 8);
+};
+
+export const getRecentlyEdited = () => {
+  return [...COMMUNITY_BOOKS].sort((a, b) => new Date(b.lastEditedDate || b.publishedDate) - new Date(a.lastEditedDate || a.publishedDate)).slice(0, 8);
 };
 
 export const getBooksByAuthor = (authorName) => {

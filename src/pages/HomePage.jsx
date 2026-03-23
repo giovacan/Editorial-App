@@ -7,7 +7,8 @@ import {
   getFeaturedBooks, 
   getBestsellers, 
   getNewBooks,
-  getTopRated 
+  getTopRated,
+  getRecentlyEdited 
 } from '../data/communityBooks';
 import { 
   BookCard, 
@@ -44,6 +45,7 @@ export function HomePage() {
   const bestsellers = useMemo(() => getBestsellers(), []);
   const newBooks = useMemo(() => getNewBooks(), []);
   const topRated = useMemo(() => getTopRated(), []);
+  const recentlyEdited = useMemo(() => getRecentlyEdited(), []);
 
   const categories = useMemo(() => [
     { id: 'all', label: 'Todos', count: allBooks.length },
@@ -178,6 +180,32 @@ export function HomePage() {
       />
 
       <TrustSignals />
+
+      <section style={styles.carouselSection}>
+        <div style={styles.carouselHeader}>
+          <h2 style={styles.carouselTitle}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+            Últimos Editados
+          </h2>
+          <span style={styles.seeAll}>Ver todos →</span>
+        </div>
+        <div style={styles.carousel}>
+          {recentlyEdited.slice(0, 8).map(book => (
+            <div key={book.id} style={styles.carouselItem}>
+              <BookCard
+                book={book}
+                onQuickView={handleQuickView}
+                onAddToCart={handleAddToCart}
+                onToggleFavorite={handleToggleFavorite}
+                isFavorite={favorites.includes(book.id)}
+                onClick={() => navigate(`/book/${book.id}`)}
+              />
+            </div>
+          ))}
+        </div>
+      </section>
 
       <section style={styles.mainSection}>
         <aside style={styles.sidebar}>
