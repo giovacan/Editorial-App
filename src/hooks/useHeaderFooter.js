@@ -139,6 +139,106 @@ export const useHeaderFooter = (config, currentPageData, totalPages, bookTitle) 
   };
 };
 
+/**
+ * Pure function — builds the header HTML string directly from a Page object + config.
+ * No React hooks. Safe to call in loops, workers, and non-React contexts
+ * (ExportPreviewModal, exporters.js, usePagination measurement).
+ *
+ * @param {object} page        - Page object {pageNumber, chapterTitle, currentSubheader,
+ *                               isBlank, isFirstChapterPage}
+ * @param {object} config      - safeConfig (config.header, config.showHeaders, …)
+ * @param {string} bookTitle   - bookData.title
+ * @param {number} baseFontSize - scaledFontPt = config.fontSize * previewScale
+ * @returns {string} HTML string, or '' if header should not be shown
+ */
+export const buildHeaderHtmlPure = (page, config, bookTitle, baseFontSize) => {
+  const headerConfig = config?.header || {};
+  const showHeaders  = config?.showHeaders !== false && headerConfig.enabled !== false;
+  if (!showHeaders || page?.isBlank) return '';
+  if (headerConfig.skipFirstChapterPage && page?.isFirstChapterPage) return '';
+
+  const pageNumber   = page?.pageNumber || 1;
+  const isEvenPage   = pageNumber % 2 === 0;
+  const chapterTitle = page?.chapterTitle || '';
+  const rawSubheader = page?.currentSubheader || '';
+
+  const subtopicMaxLength = headerConfig.subtopicMaxLength || 60;
+  const truncatedSubheader = rawSubheader.length > subtopicMaxLength
+    ? rawSubheader.substring(0, subtopicMaxLength - 3) + '...'
+    : rawSubheader;
+
+  const subtopicBehavior = headerConfig.subtopicBehavior || 'none';
+  const effectiveSubtopicBehavior =
+    (headerConfig.trackPseudoHeaders && subtopicBehavior === 'none') ? 'replace' : subtopicBehavior;
+  const subtopicSeparator = headerConfig.subtopicSeparator || ' | ';
+
+  const getContent = (contentType) => {
+    const base = (() => {
+      switch (contentType) {
+        case 'title':     return bookTitle || 'Sin título';
+        case 'chapter':   return chapterTitle || 'Capítulo';
+        case 'subheader': return truncatedSubheader;
+        case 'page':      return String(pageNumber);
+        default:          return '';
+      }
+    })();
+    if (truncatedSubheader && effectiveSubtopicBehavior !== 'none' && contentType !== 'page') {
+      switch (effectiveSubtopicBehavior) {
+        case 'replace':   return truncatedSubheader;
+        case 'combine':   return base ? `${base}${subtopicSeparator}${truncatedSubheader}` : truncatedSubheader;
+        case 'odd-only':  return !isEvenPage ? truncatedSubheader : base;
+        case 'even-only': return isEvenPage  ? truncatedSubheader : base;
+        default:          return base;
+      }
+    }
+    return base;
+  };
+
+  const displayMode = headerConfig.displayMode || 'alternate';
+  let shouldShowHeader = false;
+  let pageConfig;
+
+  switch (displayMode) {
+    case 'both':
+      shouldShowHeader = true;
+      pageConfig = headerConfig.evenPage || { leftContent: 'title',  centerContent: 'none', rightContent: 'none' };
+      break;
+    case 'even-only':
+      shouldShowHeader = isEvenPage;
+      pageConfig = headerConfig.evenPage || { leftContent: 'title',  centerContent: 'none', rightContent: 'none' };
+      break;
+    case 'odd-only':
+      shouldShowHeader = !isEvenPage;
+      pageConfig = headerConfig.oddPage  || { leftContent: 'none',   centerContent: 'none', rightContent: 'chapter' };
+      break;
+    case 'alternate':
+    default:
+      shouldShowHeader = true;
+      pageConfig = isEvenPage
+        ? (headerConfig.evenPage || { leftContent: 'title',  centerContent: 'none', rightContent: 'none' })
+        : (headerConfig.oddPage  || { leftContent: 'none',   centerContent: 'none', rightContent: 'chapter' });
+      break;
+  }
+
+  if (!shouldShowHeader) return '';
+
+  let headerLeft = '', headerCenter = '', headerRight = '';
+
+  if (headerConfig.template) {
+    headerLeft   = getContent(pageConfig?.leftContent);
+    headerCenter = getContent(pageConfig?.centerContent);
+    headerRight  = getContent(pageConfig?.rightContent);
+  } else {
+    // Legacy mode (no template)
+    headerCenter = isEvenPage ? (bookTitle || '') : '';
+    headerRight  = !isEvenPage ? (chapterTitle || '') : '';
+  }
+
+  if (!headerLeft && !headerCenter && !headerRight) return '';
+
+  return buildHeaderHtml(headerLeft, headerCenter, headerRight, headerConfig, baseFontSize);
+};
+
 export const buildHeaderHtml = (headerLeft, headerCenter, headerRight, headerConfig, baseFontSize) => {
   if (!headerLeft && !headerCenter && !headerRight) return '';
   

@@ -1,0 +1,328 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Export Preview Modal — fullscreen overlay
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.epv-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  flex-direction: column;
+  background: #1a1a2e;
+  color: #f0f0f0;
+  font-family: system-ui, sans-serif;
+}
+
+/* ── Top toolbar ──────────────────────────────────────────────────────────── */
+
+.epv-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 20px;
+  height: 64px;
+  background: #12122a;
+  border-bottom: 1px solid #2a2a4a;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.epv-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.epv-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #c8c8e8;
+  letter-spacing: 0.03em;
+}
+
+.epv-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border: 1px solid #3a3a5a;
+  border-radius: 8px;
+  color: #9898b8;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.epv-close-btn:hover { background: #2a2a4a; color: #fff; }
+
+/* ── Format tabs ──────────────────────────────────────────────────────────── */
+
+.epv-format-tabs {
+  display: flex;
+  gap: 4px;
+  background: #22223a;
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid #2a2a4a;
+}
+
+.epv-tab {
+  padding: 6px 18px;
+  border: none;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  background: transparent;
+  color: #8888aa;
+  transition: background 0.15s, color 0.15s;
+}
+.epv-tab:hover  { background: #2a2a4a; color: #ccc; }
+.epv-tab.active { background: #3b5bdb; color: #fff; font-weight: 600; }
+
+/* ── Right controls ───────────────────────────────────────────────────────── */
+
+.epv-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.epv-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  background: #22223a;
+  border: 1px solid #3a3a5a;
+  border-radius: 8px;
+  color: #9898b8;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.epv-toggle-btn:hover  { background: #2a2a4a; color: #ddd; }
+.epv-toggle-btn.active { background: #1d3461; border-color: #3b5bdb; color: #74b2ff; }
+
+.epv-download-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 18px;
+  background: linear-gradient(135deg, #3b5bdb, #2946c4);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.epv-download-btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+.epv-download-btn:disabled { opacity: 0.5; cursor: default; }
+.epv-download-btn.loading { opacity: 0.7; cursor: wait; }
+
+.epv-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: epv-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes epv-spin { to { transform: rotate(360deg); } }
+
+/* ── Canvas area ──────────────────────────────────────────────────────────── */
+
+.epv-canvas {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: auto;
+  padding: 24px 24px 0;
+}
+
+.epv-spread {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  /* margin: auto centers when content fits AND allows scrolling in all directions
+     when zoomed — avoids the align-items:center overflow-top bug */
+  margin: auto;
+}
+
+.epv-single {
+  display: flex;
+  align-items: flex-start;
+  margin: auto;
+}
+
+.epv-spine {
+  flex-shrink: 0;
+  background: linear-gradient(to right, #888 0%, #ccc 40%, #ccc 60%, #888 100%);
+  align-self: stretch;
+  opacity: 0.25;
+}
+
+/* ── Page slot & page ──────────────────────────────────────────────────────── */
+
+.epv-page-slot {
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* The actual page div: styled inline, but we set box-shadow here */
+.epv-page {
+  box-shadow: 0 6px 32px rgba(0, 0, 0, 0.55);
+}
+
+/* Margin guide overlay */
+.epv-margin-guide {
+  position: absolute;
+  border: 1px dashed rgba(220, 38, 38, 0.55);
+  pointer-events: none;
+  z-index: 20;
+}
+
+/* ── Bottom navigation ───────────────────────────────────────────────────── */
+
+.epv-navbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  height: 56px;
+  background: #12122a;
+  border-top: 1px solid #2a2a4a;
+  flex-shrink: 0;
+}
+
+.epv-nav-btn {
+  padding: 7px 20px;
+  background: #22223a;
+  border: 1px solid #3a3a5a;
+  border-radius: 8px;
+  color: #9898b8;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  min-width: 110px;
+}
+.epv-nav-btn:hover:not(:disabled) { background: #2a2a4a; color: #fff; }
+.epv-nav-btn:disabled { opacity: 0.35; cursor: default; }
+
+.epv-spread-info {
+  font-size: 13px;
+  color: #8888aa;
+  min-width: 200px;
+  text-align: center;
+}
+
+/* ── Empty / loading state ───────────────────────────────────────────────── */
+
+.epv-empty {
+  text-align: center;
+  color: #6868a0;
+  font-size: 15px;
+  line-height: 1.7;
+}
+.epv-empty strong { color: #9898c8; }
+
+/* ── Quality toggle (PDF only) ───────────────────────────────────────────── */
+
+.epv-quality-toggle {
+  display: flex;
+  background: #22223a;
+  border: 1px solid #3a3a5a;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.epv-quality-btn {
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: #7878a8;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.epv-quality-btn:hover:not(:disabled) { background: #2a2a4a; color: #ccc; }
+.epv-quality-btn.active { background: #1d3461; color: #74b2ff; font-weight: 600; }
+.epv-quality-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* ── Zoom controls ───────────────────────────────────────────────────────── */
+
+.epv-zoom-controls {
+  display: flex;
+  align-items: center;
+  background: #22223a;
+  border: 1px solid #3a3a5a;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.epv-zoom-btn {
+  padding: 6px 11px;
+  background: transparent;
+  border: none;
+  color: #9898b8;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  user-select: none;
+}
+.epv-zoom-btn:hover { background: #2a2a4a; color: #fff; }
+
+.epv-zoom-level {
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  border-left: 1px solid #3a3a5a;
+  border-right: 1px solid #3a3a5a;
+  color: #c8c8e8;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  min-width: 48px;
+  text-align: center;
+  transition: background 0.15s;
+}
+.epv-zoom-level:hover { background: #2a2a4a; }
+
+/* ── Page jump ────────────────────────────────────────────────────────────── */
+
+.epv-page-jump {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.epv-page-input {
+  width: 52px;
+  padding: 5px 8px;
+  background: #22223a;
+  border: 1px solid #3a3a5a;
+  border-radius: 7px;
+  color: #f0f0f0;
+  font-size: 13px;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.15s;
+  /* hide spin buttons */
+  -moz-appearance: textfield;
+}
+.epv-page-input::-webkit-outer-spin-button,
+.epv-page-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.epv-page-input:focus { border-color: #3b5bdb; }
+.epv-page-input::placeholder { color: #6868a0; }
+
+.epv-page-total {
+  font-size: 13px;
+  color: #8888aa;
+  white-space: nowrap;
+}

@@ -119,6 +119,20 @@ export const parseHtmlContent = (htmlContent) => {
       if (/^reseña/i.test(text)) return true;
       if (/^\d+\.\d+/.test(text)) return true;
       if (text.length > 80) return false;
+      // Headings don't end with sentence-ending punctuation — period/!/? means narrative text.
+      if (/[.!?]$/.test(text)) return false;
+      // Quoted text (curly or straight quotes, guillemets) is narrative, not a heading.
+      if (/^["«""\u2018\u201C]/.test(text)) return false;
+      // Bold used inline (at start, middle, or end of a paragraph):
+      // if the element has bold children AND also plain text nodes as siblings,
+      // the bold is emphasis within a paragraph — not a standalone subtitle.
+      const hasBoldChild = el.querySelector('strong, b') !== null;
+      if (hasBoldChild) {
+        const hasNonBoldText = Array.from(el.childNodes).some(
+          node => node.nodeType === 3 /* TEXT_NODE */ && node.textContent.trim().length > 0
+        );
+        if (hasNonBoldText) return false;
+      }
 
       try {
         const fw = el.ownerDocument.defaultView?.getComputedStyle(el)?.fontWeight;
@@ -142,15 +156,68 @@ export const parseHtmlContent = (htmlContent) => {
       .join('');
   }
 
+  // Detect a short, fully-bold <p> that Word/Mammoth split out of a larger paragraph.
+  // Handles both <p><strong>TEXT</strong></p> and <p style="font-weight:bold">TEXT</p>.
+  const isBoldInlineOpener = (el, text) => {
+    const tag = el.tagName?.toLowerCase();
+    if (tag !== 'p' && tag !== 'div') return false;
+    if (text.length > 80) return false;
+    if (!/[.!?…,;:]$/.test(text)) return false;
+
+    // Case A: <strong>/<b> children covering all content
+    const hasBoldChild = el.querySelector('strong, b') !== null;
+    if (hasBoldChild) {
+      const hasPlainText = Array.from(el.childNodes).some(
+        n => n.nodeType === 3 && n.textContent.trim().length > 0
+      );
+      if (hasPlainText) return false;
+      return Array.from(el.children)
+        .filter(c => c.textContent.trim().length > 0)
+        .every(c => c.tagName?.toLowerCase() === 'strong' || c.tagName?.toLowerCase() === 'b');
+    }
+
+    // Case B: bold via style attribute on the <p> itself (Mammoth pattern)
+    const style = el.getAttribute('style') || '';
+    if (/font-weight\s*:\s*(bold|700|800|900)/i.test(style)) return true;
+    try {
+      const fw = el.ownerDocument.defaultView?.getComputedStyle(el)?.fontWeight;
+      if (fw && (parseInt(fw) >= 700 || fw === 'bold')) return true;
+    } catch { /* ignore */ }
+
+    return false;
+  };
+
+  // Extract inner content of a bold opener, ensuring <strong> wrapping is present.
+  const getBoldContent = (el) => {
+    if (el.querySelector('strong, b')) return el.innerHTML;
+    // Style-based bold — wrap in <strong> to preserve formatting after merge
+    return `<strong>${el.innerHTML}</strong>`;
+  };
+
   const chapters = [];
   let currentChapter = null;
   let currentSection = null;
+  // Delayed-flush buffers: we hold the last regular paragraph so that if a bold
+  // opener appears next, we can merge [preceding] + [bold] + [following] into one <p>.
+  let pendingParagraph = null;  // { tag, innerHTML, outerHtml }
+  let pendingBoldOpener = null; // { boldContent }
+
+  const addToChapter = (html) => {
+    if (currentSection) currentSection.html += html;
+    else if (currentChapter) currentChapter.html += html;
+  };
+
+  const flushAll = () => {
+    if (pendingParagraph) { addToChapter(pendingParagraph.outerHtml); pendingParagraph = null; }
+    if (pendingBoldOpener) { addToChapter(`<p>${pendingBoldOpener.boldContent}</p>`); pendingBoldOpener = null; }
+  };
 
   Array.from(tempDiv.children).forEach((el, index) => {
     const text = el.textContent?.trim() || '';
     if (!text || text.length < 2) return;
 
     if (isChapterHeading(el)) {
+      flushAll();
       if (currentChapter) {
         if (currentSection) {
           currentChapter.html += `<h3>${currentSection.title}</h3>${currentSection.html}`;
@@ -161,15 +228,40 @@ export const parseHtmlContent = (htmlContent) => {
       currentChapter = { id: makeChapterId(chapters.length), type: 'chapter', title: text, html: '', wordCount: 0 };
       currentSection = null;
     } else if (isSubtitle(el)) {
+      flushAll();
       if (currentChapter) {
         if (currentSection) currentChapter.html += `<h3>${currentSection.title}</h3>${currentSection.html}`;
         currentSection = { id: `section-${Date.now()}-${index}`, type: 'section', title: text, html: '' };
       }
     } else if (currentChapter) {
-      if (currentSection) currentSection.html += el.outerHTML;
-      else currentChapter.html += el.outerHTML;
+      if (isBoldInlineOpener(el, text)) {
+        // Buffer bold opener; keep pendingParagraph (will merge all three later)
+        if (pendingBoldOpener) {
+          // Two consecutive bold openers — treat the first as a regular paragraph
+          flushAll();
+        }
+        pendingBoldOpener = { boldContent: getBoldContent(el) };
+      } else {
+        // Regular paragraph
+        if (pendingBoldOpener) {
+          // Merge: [pendingParagraph?] + boldOpener + current → one <p>
+          const tag = pendingParagraph?.tag || el.tagName.toLowerCase();
+          let merged = '';
+          if (pendingParagraph) merged += pendingParagraph.innerHTML + ' ';
+          merged += pendingBoldOpener.boldContent + ' ' + el.innerHTML;
+          addToChapter(`<${tag}>${merged}</${tag}>`);
+          pendingParagraph = null;
+          pendingBoldOpener = null;
+        } else {
+          // No bold opener pending — flush previous, buffer this one
+          if (pendingParagraph) addToChapter(pendingParagraph.outerHtml);
+          pendingParagraph = { tag: el.tagName.toLowerCase(), innerHTML: el.innerHTML, outerHtml: el.outerHTML };
+        }
+      }
     }
   });
+
+  flushAll();
 
   if (currentSection && currentChapter) {
     currentChapter.html += `<h3>${currentSection.title}</h3>${currentSection.html}`;

@@ -1,41 +1,29 @@
-import { measureHtmlHeight, insertHtmlLineBreaks, measureRawTextWidth, getLineBreakPositions, collapseWhitespace, buildFontString } from './textLayoutEngine';
+import { measureHtmlHeight, insertHtmlLineBreaks, getLineBreakPositions, buildFontString } from './textLayoutEngine';
+import { JUSTIFY_SLACK_RATIO } from './paginateChapters';
 
-export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, hasIndent = false, indentValue = 1.5, preserveFirstIndent = false, quoteConfig = null, externalCanvasCtx = null) => {
+export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, hasIndent = false, indentValue = 1.5, preserveFirstIndent = false, quoteConfig = null) => {
 
-  // These values are needed by getChunkStyle/getQuoteStyle regardless of canvasCtx source
+  // Build Canvas layout context from quoteConfig (passed from paginateChapters)
   const effectiveBaseFontSize = quoteConfig?.baseFontSize || 12;
   const effectiveBaseLineHeight = quoteConfig?.baseLineHeight || 1.6;
   const effectiveTextAlign = quoteConfig?.textAlign || textAlign;
+  const PX_PER_PT = 96 / 72;
+  const baseFontSizePx = effectiveBaseFontSize * PX_PER_PT;
 
-  // Use external Canvas context if provided (ensures identical measurement
-  // to greedyPaginate — eliminates rounding/construction discrepancies).
-  let canvasCtx;
-  if (externalCanvasCtx) {
-    canvasCtx = externalCanvasCtx;
-  } else {
-    // Build Canvas layout context from quoteConfig (legacy path)
-    const PX_PER_PT = 96 / 72;
-    const baseFontSizePx = effectiveBaseFontSize * PX_PER_PT;
-
-    const effectiveContentWidth = measureDiv ? parseFloat(measureDiv.style?.width) || 400 : 400;
-    const justifySlack = effectiveTextAlign === 'justify' ? effectiveContentWidth * 0.02 : 0;
-    canvasCtx = {
-      baseFontSizePx,
-      baseLineHeight: effectiveBaseLineHeight,
-      contentWidth: effectiveContentWidth,
-      fontFamily: measureDiv ? (measureDiv.style?.fontFamily || 'Georgia, serif') : 'Georgia, serif',
-      widthSlack: justifySlack,
-      lineHeightPx: quoteConfig?.lineHeightPx || Math.ceil(baseFontSizePx * effectiveBaseLineHeight)
-    };
-  }
+  // Build canvasCtx for deterministic measurement
+  const effectiveContentWidth = measureDiv ? parseFloat(measureDiv.style?.width) || 400 : 400;
+  const justifySlack = effectiveTextAlign === 'justify' ? effectiveContentWidth * JUSTIFY_SLACK_RATIO : 0;
+  const canvasCtx = {
+    baseFontSizePx,
+    baseLineHeight: effectiveBaseLineHeight,
+    contentWidth: effectiveContentWidth,
+    fontFamily: measureDiv ? (measureDiv.style?.fontFamily || 'Georgia, serif') : 'Georgia, serif',
+    widthSlack: justifySlack,
+    lineHeightPx: quoteConfig?.lineHeightPx || Math.ceil(baseFontSizePx * effectiveBaseLineHeight)
+  };
 
   // Deterministic measure function (Canvas, no DOM layout)
   const measure = (htmlStr) => measureHtmlHeight(htmlStr, canvasCtx);
-
-  // Pre-computed constants for last-line quality check (computed once per call)
-  const MIN_LAST_LINE_RATIO = 0.40;
-  const _fontStr = buildFontString(canvasCtx.baseFontSizePx, canvasCtx.fontFamily, false, false);
-  const _availableW = canvasCtx.contentWidth - (canvasCtx.widthSlack || 0);
 
   const lines = [];
   let remainingHtml = html;
@@ -78,7 +66,7 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
     if (isBlockquote) {
       return getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSize, effectiveBaseLineHeight, effectiveTextAlign);
     }
-    return `margin:0;padding:0;text-align:${textAlign};text-indent:${indent};text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;`;
+    return `margin:0;padding:0;text-align:${textAlign};text-indent:${indent};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`;
   };
 
   const getDefaultStyle = () => getChunkStyle(isFirstChunk);
@@ -156,48 +144,6 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
     const lastSpace = text.substring(0, fitLength).lastIndexOf(' ');
     let breakPoint = lastSpace > fitLength * 0.5 ? lastSpace : fitLength;
 
-    // ─── Tipografía: no dejar última línea del split demasiado corta ──────
-    {
-      const chunkText = text.substring(0, breakPoint);
-      const chunkCollapsed = collapseWhitespace(chunkText);
-      const chunkWords = chunkCollapsed.split(/\s+/).filter(w => w);
-
-      if (chunkWords.length > 1) {
-        // indent solo aplica en la primera línea REAL del párrafo
-        const indentPx = isFirstChunk ? (hasIndent ? indentValue * canvasCtx.baseFontSizePx : 0) : 0;
-
-        const lineStarts = getLineBreakPositions(chunkCollapsed, _availableW, _fontStr, indentPx);
-        const lastLineWordIdx = lineStarts[lineStarts.length - 1];
-
-        if (lineStarts.length > 1 && lastLineWordIdx > 0) {
-          const lastLineText = chunkWords.slice(lastLineWordIdx).join(' ');
-          const lastLineWidth = measureRawTextWidth(lastLineText, _fontStr);
-
-          // Only fix when the last line itself is visually too short.
-          // Widow case (1-line continuation) is handled by fixWidowsWithLookback post-pass.
-          if (lastLineWidth < _availableW * MIN_LAST_LINE_RATIO) {
-            // Forward scan para char offset del inicio de la última línea
-            let newBP = -1;
-            let wi = 0, ci = 0;
-            while (ci < chunkText.length) {
-              while (ci < chunkText.length && chunkText[ci] === ' ') ci++;
-              if (wi === lastLineWordIdx) { newBP = ci > 0 ? ci - 1 : -1; break; }
-              while (ci < chunkText.length && chunkText[ci] !== ' ') ci++;
-              wi++;
-            }
-            if (newBP > 0) {
-              breakPoint = newBP;
-              if (process.env.NODE_ENV === 'development') {
-                const ratio = (lastLineWidth / _availableW * 100).toFixed(0);
-                console.log(`[LAST-LINE-FIX] ratio=${ratio}% → cut 1 line`);
-              }
-            }
-          }
-        }
-      }
-    }
-    // ─────────────────────────────────────────────────────────────────────
-
     const indent = computeIndent(isFirstChunk);
 
     // ============ FIX 1: DOM-aware split that preserves inline HTML ============
@@ -263,12 +209,30 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
       ? getChunkStyle(isFirstChunk)
       : (isBlockquote
         ? getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSize, effectiveBaseLineHeight, effectiveTextAlign)
-        : `margin:0;padding:0;text-align:${textAlign};text-indent:${indent};text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;`);
-    // When paragraph continues to next page: justify the last visible line
-    // so the reader sees the text flows to the next page (visual continuity).
-    // Only the FINAL chunk of a paragraph keeps text-align-last:left.
+        : `margin:0;padding:0;text-align:${textAlign};text-indent:${indent};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`);
+
+    // When paragraph continues to next page: justify the last visible line ONLY if
+    // it has enough words to look good under justify. Sparse last lines (1–2 words)
+    // stretch to opposite extremes — keep them left-aligned in that case.
     if (newRemainingHtml) {
-      finalStyle = finalStyle.replace(/text-align-last:[^;]+;?/gi, '') + 'text-align-last:justify;';
+      const plainChunk = chunkHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      const fontStr = buildFontString(canvasCtx.baseFontSizePx, canvasCtx.fontFamily);
+      const effectiveLineWidth = canvasCtx.contentWidth - (canvasCtx.widthSlack || 0);
+      const lineStarts = getLineBreakPositions(plainChunk, effectiveLineWidth, fontStr);
+      const chunkWords = plainChunk.split(/\s+/).filter(w => w.length > 0);
+      const lastStart = lineStarts.length > 0 ? lineStarts[lineStarts.length - 1] : 0;
+      const lastLineText = chunkWords.slice(lastStart).join(' ');
+      // Use visual width ≥ 50% instead of word count ≥ 3 — word count is not reliable
+      // for Spanish: "y de la" (3 words) occupies only ~18% of line width.
+      // Always override explicitly (originalStyles from prior split may carry justify).
+      const tmpCanvas = document.createElement('canvas');
+      const tmpCtx = tmpCanvas.getContext('2d');
+      tmpCtx.font = fontStr;
+      const widthRatio = effectiveLineWidth > 0
+        ? tmpCtx.measureText(lastLineText).width / effectiveLineWidth
+        : 0;
+      const newAlignLast = widthRatio >= 0.5 ? 'justify' : 'left';
+      finalStyle = finalStyle.replace(/text-align-last:[^;]+;?/gi, '') + `text-align-last:${newAlignLast};`;
     }
 
     if (isBlockquote) {
@@ -291,13 +255,13 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
       } else if (isBlockquote) {
         continuationStyle = getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSize, effectiveBaseLineHeight, effectiveTextAlign);
       } else {
-        continuationStyle = `margin:0;padding:0;text-align:${textAlign};text-indent:0;text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;`;
+        continuationStyle = `margin:0;padding:0;text-align:${textAlign};text-indent:0;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`;
       }
 
       if (isBlockquote) {
-        remainingHtml = `<blockquote class="quote ${quoteTemplate}" style="${continuationStyle}">${remainingHtml}</blockquote>`;
+        remainingHtml = `<blockquote class="quote ${quoteTemplate}" style="${continuationStyle}" data-continuation="true">${remainingHtml}</blockquote>`;
       } else {
-        remainingHtml = `<p style="${continuationStyle}">${remainingHtml}</p>`;
+        remainingHtml = `<p style="${continuationStyle}" data-continuation="true">${remainingHtml}</p>`;
       }
     }
   }
@@ -306,7 +270,7 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
 };
 
 export const getQuoteStyle = (qConfig, template, baseFontSize, baseLineHeight, textAlign) => {
-  const baseStyle = `font-style:${qConfig.italic ? 'italic' : 'normal'};font-size:${baseFontSize * qConfig.sizeMultiplier}pt;text-align:${textAlign};text-justify:inter-word;hyphens:none;`;
+  const baseStyle = `font-style:${qConfig.italic ? 'italic' : 'normal'};font-size:${baseFontSize * qConfig.sizeMultiplier}pt;text-align:${textAlign};text-justify:inter-word;hyphens:auto;text-align-last:left;`;
 
   switch (template) {
     case 'classic':
@@ -338,7 +302,7 @@ export const buildParagraphHtml = (el, config, baseFontSize, baseLineHeight, tex
       return `<p style="${getQuoteStyle(qConfig, template, baseFontSize, baseLineHeight, textAlign)}text-indent:${isFirstParagraph ? '0' : indent + 'em'};text-align-last:left;overflow-wrap:break-word;">${el.innerHTML}</p>`;
     } else {
       const spacingBetween = config.paragraph?.spacingBetween || 0;
-      return `<p style="margin:${spacingBetween > 0 ? spacingBetween + 'em' : '0'} 0;padding:0;text-align:${textAlign};text-indent:${isFirstParagraph ? '0' : indent + 'em'};text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word">${el.innerHTML}</p>`;
+      return `<p style="margin:${spacingBetween > 0 ? spacingBetween + 'em' : '0'} 0;padding:0;text-align:${textAlign};text-indent:${isFirstParagraph ? '0' : indent + 'em'};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word">${el.innerHTML}</p>`;
     }
   } else if (tag.match(/^H[1-6]$/i)) {
     const level = tag.slice(1).toLowerCase();
@@ -353,13 +317,13 @@ export const buildParagraphHtml = (el, config, baseFontSize, baseLineHeight, tex
     const template = Array.from(el.classList).find(c => ['classic', 'bar', 'italic', 'indent', 'minimal'].includes(c)) || 'classic';
     return `<blockquote class="quote ${template}" style="${getQuoteStyle(qConfig, template, baseFontSize, baseLineHeight, textAlign)}">${el.innerHTML}</blockquote>`;
   } else if (tag === 'UL' || tag === 'OL') {
-    return `<${tag.toLowerCase()} style="margin:0.5em 0;padding-left:1.5em;text-align:${textAlign};text-justify:inter-word;hyphens:none;">${el.innerHTML}</${tag.toLowerCase()}>`;
+    return `<${tag.toLowerCase()} style="margin:0.5em 0;padding-left:1.5em;text-align:${textAlign};text-justify:inter-word;hyphens:auto;text-align-last:left;">${el.innerHTML}</${tag.toLowerCase()}>`;
   } else if (tag === 'HR') {
     return '<hr style="border:none;border-top:1px solid #999;margin:1em 0;">';
   } else if (tag === 'BR') {
     return '<br>';
   }
-  return `<p style="margin:0;padding:0;text-align:${textAlign};text-indent:1.5em;text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word">${el.innerHTML}</p>`;
+  return `<p style="margin:0;padding:0;text-align:${textAlign};text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word">${el.innerHTML}</p>`;
 };
 
 export const parseChapterTitleHierarchy = (title) => {
@@ -493,36 +457,29 @@ export const shouldStartOnRightPage = (chapter, _chapterIndex, config) => {
 };
 
 export const detectQuotes = (html) => {
-  // DEBUG: Log quote detection parameters
-  console.log('🔍 detectQuotes called with:', {
-    htmlLength: html.length,
-    htmlPreview: html.substring(0, 100) + '...'
-  });
-  
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🔍 detectQuotes called with:', {
+      htmlLength: html.length,
+      htmlPreview: html.substring(0, 100) + '...'
+    });
+  }
+
   const detectedQuotes = [];
   const tempDiv = document.createElement('div');
   tempDiv.innerHTML = html;
-  
+
   const patterns = {
     guionLargo: /^[\s]*—/,
     comillasItalianas: /^[\s]*[«『]/,
     comillasInglesas: /^[\s]*[""]/,
     comillasBajas: /^[\s]*[„]/,
   };
-  
+
   const findQuotes = (element, parentIndex = 0) => {
-    // DEBUG: Log quote detection progress
-    console.log('🔍 findQuotes processing element:', {
-      nodeType: element.nodeType,
-      tagName: element.tagName,
-      textContent: element.textContent?.substring(0, 50) + '...',
-      parentIndex
-    });
-    
     if (element.nodeType === Node.TEXT_NODE) {
       const text = element.textContent;
       if (!text.trim()) return;
-      
+
       for (const [patternName, pattern] of Object.entries(patterns)) {
         if (pattern.test(text)) {
           const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
@@ -534,13 +491,14 @@ export const detectQuotes = (html) => {
             startIndex: parentIndex,
             confidence: 0.9
           });
-          // DEBUG: Log detected quote
-          console.log('✅ Quote detected:', {
-            pattern: patternName,
-            text: text.trim().substring(0, 50) + '...',
-            wordCount,
-            startIndex: parentIndex
-          });
+          if (process.env.NODE_ENV === 'development') {
+            console.log('✅ Quote detected:', {
+              pattern: patternName,
+              text: text.trim().substring(0, 50) + '...',
+              wordCount,
+              startIndex: parentIndex
+            });
+          }
           break;
         }
       }
@@ -601,13 +559,14 @@ export const detectQuotes = (html) => {
 };
 
 export const applyQuoteTemplate = (text, template = 'classic', config = {}) => {
-  // DEBUG: Log applyQuoteTemplate parameters
-  console.log('🎭 applyQuoteTemplate called with:', {
-    textLength: text.length,
-    textPreview: text.substring(0, 50) + '...',
-    template,
-    config
-  });
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🎭 applyQuoteTemplate called with:', {
+      textLength: text.length,
+      textPreview: text.substring(0, 50) + '...',
+      template,
+      config
+    });
+  }
   
   const templates = {
     classic: {
@@ -637,30 +596,11 @@ export const applyQuoteTemplate = (text, template = 'classic', config = {}) => {
 };
 
 export const wrapInQuote = (html, template = 'classic') => {
-  // DEBUG: Log wrapInQuote parameters
-  console.log('🎭 wrapInQuote called with:', {
-    htmlLength: html.length,
-    htmlPreview: html.substring(0, 50) + '...',
-    template
-  });
-  
   const result = applyQuoteTemplate(html, template);
-  
-  // DEBUG: Log wrapInQuote result
-  console.log('🎭 wrapInQuote result:', {
-    resultLength: result.length,
-    resultPreview: result.substring(0, 100) + '...'
-  });
-  
   return result;
 };
 
 export const unwrapQuote = (html) => {
-  // DEBUG: Log unwrapQuote parameters
-  console.log('🎭 unwrapQuote called with:', {
-    htmlLength: html.length,
-    htmlPreview: html.substring(0, 50) + '...'
-  });
   
   const tempDiv = document.createElement('div');
   tempDiv.innerHTML = html;
@@ -674,13 +614,5 @@ export const unwrapQuote = (html) => {
     parent.removeChild(bq);
   });
   
-  const result = tempDiv.innerHTML;
-  
-  // DEBUG: Log unwrapQuote result
-  console.log('🎭 unwrapQuote result:', {
-    resultLength: result.length,
-    resultPreview: result.substring(0, 100) + '...'
-  });
-  
-  return result;
+  return tempDiv.innerHTML;
 };

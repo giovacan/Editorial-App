@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { nanoid } from 'nanoid';
-import type { EditorState, Chapter, OptimizationMode } from '../types';
+import type { EditorState, Chapter } from '../types';
 
 const STORAGE_KEY = 'editorial-app-storage';
 
@@ -196,10 +196,19 @@ const initialState = {
     percent: 0
   },
   confirmedChapterTitles: [] as string[],
-  layoutOptimization: {
-    globalMode: 'auto' as const,
-    pageOverrides: {} as Record<number, string>
-  }
+  paginatedPages: [] as any[],
+  layoutDims: null as any,
+  paginationLog: null as any,
+  tocBuildLog: null as any,
+  tocData: null as any,
+  tocConfig: null as any,
+  tocAuto: true as boolean,
+  frontMatterPages: [] as any[],
+  frontMatterConfig: {
+    includeTitlePage: true,
+    includeTOC: true
+  } as any,
+  showTOCPanel: false as boolean
 };
 
 const mergeDeep = (target: any, source: any): any => {
@@ -520,23 +529,16 @@ const useEditorStore = create<EditorState>()(
       confirmedChapterTitles: titles
     }),
 
-    setGlobalOptimizationMode: (mode: OptimizationMode) => set((state) => ({
-      layoutOptimization: { ...state.layoutOptimization, globalMode: mode }
-    })),
-
-    setPageOptimizationOverride: (pageNum: number, mode: OptimizationMode | null) => set((state) => {
-      const overrides = { ...state.layoutOptimization.pageOverrides };
-      if (mode === null) {
-        delete overrides[pageNum];
-      } else {
-        overrides[pageNum] = mode;
-      }
-      return { layoutOptimization: { ...state.layoutOptimization, pageOverrides: overrides } };
-    }),
-
-    clearPageOverrides: () => set((state) => ({
-      layoutOptimization: { ...state.layoutOptimization, pageOverrides: {} }
-    }))
+    setPaginatedPages: (pages: any[]) => set({ paginatedPages: pages }),
+    setLayoutDims: (dims: any) => set({ layoutDims: dims }),
+    setPaginationLog: (log: any) => set({ paginationLog: log }),
+    setTocBuildLog: (log: any) => set({ tocBuildLog: log }),
+    setTOCData: (data: any) => set({ tocData: data }),
+    setTOCConfig: (config: any) => set({ tocConfig: config }),
+    setTOCAuto: (auto: boolean) => set({ tocAuto: auto }),
+    setFrontMatterPages: (pages: any[]) => set({ frontMatterPages: pages }),
+    setFrontMatterConfig: (config: any) => set({ frontMatterConfig: config }),
+    setShowTOCPanel: (show: boolean) => set({ showTOCPanel: show })
   })
   )
 );

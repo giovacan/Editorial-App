@@ -39,25 +39,26 @@ function SidebarRight({ onExportPdf, onExportEpub, onExportHtml }) {
         </button>
       </div>
 
-      {activeTab === 'preview' && (
-        <section className="sidebar-section preview-section">
-          {safeChapters?.length === 0 ? (
-            <div className="preview-placeholder">
-              <p>Sube contenido para ver la vista previa</p>
-            </div>
-          ) : (
-            <>
-              {/* Barra de progreso de paginación en SidebarRight */}
-              <PaginationProgressBar 
-                progress={paginationProgress}
-                isVisible={isPaginationRunning}
-                compact={true}
-              />
-              <Preview />
-            </>
-          )}
-        </section>
-      )}
+      {/* Preview always mounted so pagination stays active; hidden on export tab */}
+      <section
+        className="sidebar-section preview-section"
+        style={{ display: activeTab === 'preview' ? undefined : 'none' }}
+      >
+        {safeChapters?.length === 0 ? (
+          <div className="preview-placeholder">
+            <p>Sube contenido para ver la vista previa</p>
+          </div>
+        ) : (
+          <>
+            <PaginationProgressBar
+              progress={paginationProgress}
+              isVisible={isPaginationRunning}
+              compact={true}
+            />
+            <Preview />
+          </>
+        )}
+      </section>
 
       {activeTab === 'export' && (
         <section className="sidebar-section">

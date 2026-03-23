@@ -19,7 +19,7 @@
  *   - No layout thrashing, no sub-pixel rounding from DOM
  */
 
-import { initKnuthPlass, countLinesKP, countLinesFromRunsKP } from './knuthPlassAdapter.js';
+import { initKnuthPlass, countLinesKP, countLinesFromRunsKP, getLineBreakPositionsKP } from './knuthPlassAdapter.js';
 
 // ─── Canvas singleton ───────────────────────────────────────────────
 
@@ -40,17 +40,20 @@ const getCtx = () => {
 
 // ─── Font loading guard ─────────────────────────────────────────────
 
-let _fontsReady = false;
+// Per-font readiness map — key is normalized font family name.
+// Prevents stale Canvas measurements when the user switches fonts mid-session.
+const _fontsReady = new Map();
 
 /**
- * Wait until all declared fonts are loaded.
- * Must be called once before pagination starts.
+ * Wait until the requested font is loaded before Canvas measurement starts.
+ * Tracks readiness per font family — switching fonts correctly invalidates caches.
  *
- * @param {string} [fontFamily] - Optional specific font to preload
+ * @param {string} [fontFamily] - Font to preload (e.g. 'Lato, sans-serif')
  * @param {number} [fontSize=12] - Font size in pt for the preload request
  */
-export const ensureFontsReady = async (fontFamily, fontSize = 12) => {
-  if (_fontsReady) return;
+export const ensureFontsReady = async (fontFamily = '', fontSize = 12) => {
+  const key = fontFamily.toLowerCase().split(',')[0].trim();
+  if (_fontsReady.get(key)) return;
 
   if (typeof document !== 'undefined' && document.fonts) {
     // Race font loading against a timeout — some system fonts (Georgia, serif)
@@ -70,8 +73,11 @@ export const ensureFontsReady = async (fontFamily, fontSize = 12) => {
       // Font loading failed or timed out — proceed with whatever is available
     }
   }
-  _fontsReady = true;
 
+  _fontsReady.set(key, true);
+
+  // CRITICAL: always clear all caches when a new font is registered.
+  // Mixed cache entries from previous fonts produce wrong line-break measurements.
   _wordWidthCache.clear();
   _spaceWidthCache.clear();
   _paragraphLayoutCache.clear();
@@ -252,6 +258,72 @@ const REPLACED_TAGS = new Set(['IMG', 'VIDEO', 'CANVAS', 'SVG', 'IFRAME']);
 
 // ─── Line breaker with runs ─────────────────────────────────────────
 
+// ─── Spanish syllabification ─────────────────────────────────────────
+// Implements core RAE syllabification rules for hyphenation.
+// Used by countLines / countLinesFromRuns to break Spanish words at
+// syllable boundaries instead of wrapping the whole word to the next line.
+// Canvas measurement and CSS hyphens:auto now agree on line counts.
+
+const _isVowel = (c) => 'aeiouáéíóúüAEIOUÁÉÍÓÚÜ'.includes(c);
+
+// Consonant pairs that always move together to the next syllable
+const _INSEP_PAIRS = new Set([
+  'ch', 'll', 'rr', 'qu', 'gu',
+  'bl', 'br', 'cl', 'cr', 'dr',
+  'fl', 'fr', 'gl', 'gr', 'pl', 'pr', 'tr',
+]);
+
+/**
+ * Returns valid hyphenation positions for a Spanish word.
+ * Each value i means: break between word[i-1] and word[i].
+ * Minimum 2 chars on each side. Results sorted ascending.
+ *
+ * @param {string} word - Raw word (mixed case, may include accents)
+ * @returns {number[]}
+ */
+const getSpanishHyphenPoints = (word) => {
+  if (word.length < 4) return [];
+  const w = word.toLowerCase();
+  const n = w.length;
+  const pts = new Set();
+  let i = 0;
+
+  while (i < n) {
+    while (i < n && _isVowel(w[i])) i++;   // skip vowel cluster
+    if (i >= n) break;
+
+    const cStart = i;
+    while (i < n && !_isVowel(w[i])) i++;  // collect consonant cluster
+    if (i >= n) break;                       // trailing consonants — no syllable follows
+
+    const cLen = i - cStart;
+    let breakAt;
+
+    if (cLen === 1) {
+      breakAt = cStart;                                          // V·CV
+    } else if (cLen === 2) {
+      const pair = w.slice(cStart, cStart + 2);
+      breakAt = _INSEP_PAIRS.has(pair) ? cStart : cStart + 1;  // V·CCV or VC·CV
+    } else {
+      const lastPair = w.slice(i - 2, i);
+      breakAt = _INSEP_PAIRS.has(lastPair) ? i - 2 : i - 1;    // VC…·(CC)V
+    }
+
+    if (breakAt >= 2 && breakAt <= n - 2) pts.add(breakAt);
+  }
+
+  return [...pts].sort((a, b) => a - b);
+};
+
+// ─── Hyphen character width cache ────────────────────────────────────
+const _hyphenWidthCache = new Map();
+const getHyphenWidth = (fontString) => {
+  if (_hyphenWidthCache.has(fontString)) return _hyphenWidthCache.get(fontString);
+  const w = measureTextWidth('-', fontString);
+  _hyphenWidthCache.set(fontString, w);
+  return w;
+};
+
 /**
  * Count lines for text with mixed inline styles (runs).
  * Each run can have different bold/italic/fontSize.
@@ -264,7 +336,7 @@ const REPLACED_TAGS = new Set(['IMG', 'VIDEO', 'CANVAS', 'SVG', 'IFRAME']);
  * @param {number} firstLineIndent - First line indent in px
  * @returns {number} Number of lines
  */
-const countLinesFromRuns = (runs, contentWidth, baseFontSizePx, fontFamily, firstLineIndent = 0, wordSpacingPx = 0) => {
+const countLinesFromRuns = (runs, contentWidth, baseFontSizePx, fontFamily, firstLineIndent = 0, wordSpacingPx = 0, noHyphenation = false) => {
   if (!runs || runs.length === 0 || contentWidth <= 0) return 0;
 
   // Flatten runs into word-level tokens with their font
@@ -325,9 +397,27 @@ const countLinesFromRuns = (runs, contentWidth, baseFontSizePx, fontFamily, firs
         lines += broken.lines;
         currentLineWidth = broken.lastLineWidth;
       } else {
-        // Normal line break
-        lines++;
-        currentLineWidth = wordWidth;
+        // Try Spanish hyphenation before wrapping the whole word (unless disabled)
+        let hyphenated = false;
+        if (!noHyphenation) {
+          const available = contentWidth - currentLineWidth;
+          const hyphenW = getHyphenWidth(token.fontStr);
+          const hpts = getSpanishHyphenPoints(token.text);
+          for (let k = hpts.length - 1; k >= 0; k--) {
+            const prefix = token.text.slice(0, hpts[k]);
+            if (measureWordWidth(prefix, token.fontStr) + hyphenW <= available) {
+              const suffix = token.text.slice(hpts[k]);
+              lines++;
+              currentLineWidth = measureWordWidth(suffix, token.fontStr);
+              hyphenated = true;
+              break;
+            }
+          }
+        }
+        if (!hyphenated) {
+          lines++;
+          currentLineWidth = wordWidth;
+        }
       }
     } else {
       currentLineWidth += wordWidth;
@@ -380,7 +470,7 @@ initKnuthPlass(measureWordWidth, getSpaceWidth, buildFontString, breakWord);
 
 // ─── Simple line counter (plain text, single font) ──────────────────
 
-const countLines = (text, contentWidth, fontString, firstLineIndent = 0, letterSpacingPx = 0, wordSpacingPx = 0) => {
+const countLines = (text, contentWidth, fontString, firstLineIndent = 0, letterSpacingPx = 0, wordSpacingPx = 0, noHyphenation = false) => {
   if (!text || !text.trim() || contentWidth <= 0) return text?.trim() ? 1 : 0;
 
   const collapsed = collapseWhitespace(text);
@@ -422,8 +512,31 @@ const countLines = (text, contentWidth, fontString, firstLineIndent = 0, letterS
         lines += broken.lines;
         currentLineWidth = broken.lastLineWidth;
       } else {
-        lines++;
-        currentLineWidth = wordWidth;
+        // Try Spanish hyphenation before wrapping the whole word (unless disabled)
+        let hyphenated = false;
+        if (!noHyphenation) {
+          const available = contentWidth - currentLineWidth - spaceWidth;
+          const hyphenW = getHyphenWidth(fontString);
+          const hpts = getSpanishHyphenPoints(words[i]);
+          for (let k = hpts.length - 1; k >= 0; k--) {
+            const prefix = words[i].slice(0, hpts[k]);
+            let prefixW = measureWordWidth(prefix, fontString) + hyphenW;
+            if (letterSpacingPx && prefix.length > 1) prefixW += letterSpacingPx * (prefix.length - 1);
+            if (prefixW <= available) {
+              const suffix = words[i].slice(hpts[k]);
+              let suffixW = measureWordWidth(suffix, fontString);
+              if (letterSpacingPx && suffix.length > 1) suffixW += letterSpacingPx * (suffix.length - 1);
+              lines++;
+              currentLineWidth = suffixW;
+              hyphenated = true;
+              break;
+            }
+          }
+        }
+        if (!hyphenated) {
+          lines++;
+          currentLineWidth = wordWidth;
+        }
       }
     } else {
       currentLineWidth = widthWithWord;
@@ -644,7 +757,7 @@ const resolveSize = (value, unit, baseFontSizePx) => {
 const calculateElementHeight = (parsed, layoutCtx) => {
   if (!parsed) return 0;
 
-  const { baseFontSizePx, baseLineHeight, contentWidth, fontFamily, widthSlack = 0 } = layoutCtx;
+  const { baseFontSizePx, baseLineHeight, contentWidth, fontFamily, widthSlack = 0, noHyphenation = false } = layoutCtx;
   const { text, styles, tag, runs } = parsed;
 
   // --- Block replaced elements (img, video, etc.) ---
@@ -717,7 +830,7 @@ const calculateElementHeight = (parsed, layoutCtx) => {
   }
   const hasCustomFont = styles.fontSize || styles.lineHeight;
   const lineHeightPx = hasCustomFont
-    ? elFontSizePx * elLineHeight
+    ? Math.ceil(elFontSizePx * elLineHeight)
     : (layoutCtx.lineHeightPx || Math.ceil(elFontSizePx * elLineHeight));
 
   // Resolve indentation
@@ -733,24 +846,14 @@ const calculateElementHeight = (parsed, layoutCtx) => {
     ? resolveSize(styles.wordSpacing, styles.wordSpacingUnit, elFontSizePx)
     : 0;
 
-  // WS-DEBUG: one-shot diagnostic when word-spacing is non-zero
-  if (process.env.NODE_ENV === 'development' && wordSpacingPx !== 0 && !calculateElementHeight._wsDbg) {
-    calculateElementHeight._wsDbg = true;
-    console.log('[WS-ENGINE]', {
-      wordSpacingPx,
-      rawWS: styles.wordSpacing,
-      rawUnit: styles.wordSpacingUnit,
-      elFontSizePx,
-      text: (text || '').slice(0, 60)
-    });
-  }
-
   // Resolve horizontal padding/margin that reduce available width
   const paddingH = (styles.paddingLeft || 0) + (styles.paddingRight || 0);
   const marginLPx = resolveSize(styles.marginLeft, styles.marginLeftUnit, elFontSizePx);
   const marginRPx = resolveSize(styles.marginRight, styles.marginRightUnit, elFontSizePx);
   const borderLeft = styles.borderLeftWidth || 0;
-  const availableWidth = contentWidth - paddingH - marginLPx - marginRPx - borderLeft - widthSlack;
+  // Heading elements: bold fonts have higher per-character measurement variance
+  const headingSlack = /^H[1-6]$/.test(tag) ? 3 : 0;
+  const availableWidth = contentWidth - paddingH - marginLPx - marginRPx - borderLeft - widthSlack - headingSlack;
 
   // Count lines — use runs if available (handles inline bold/italic/size),
   // fall back to plain text measurement
@@ -762,7 +865,7 @@ const calculateElementHeight = (parsed, layoutCtx) => {
 
   // Check paragraph cache first
   const collapsedText = collapseWhitespace(text);
-  const cacheKey = getParagraphCacheKey(collapsedText, fontString, availableWidth, indentPx, wordSpacingPx);
+  const cacheKey = getParagraphCacheKey(collapsedText, fontString, availableWidth, indentPx, wordSpacingPx) + (noHyphenation ? '|noHyph' : '');
   const cached = _paragraphLayoutCache.get(cacheKey);
   if (cached !== undefined) {
     lineCount = cached;
@@ -775,13 +878,13 @@ const calculateElementHeight = (parsed, layoutCtx) => {
       const kp = useKP
         ? countLinesFromRunsKP(runs, availableWidth, elFontSizePx, fontFamily, indentPx, wordSpacingPx)
         : null;
-      lineCount = kp !== null ? kp : countLinesFromRuns(runs, availableWidth, elFontSizePx, fontFamily, indentPx, wordSpacingPx);
+      lineCount = kp !== null ? kp : countLinesFromRuns(runs, availableWidth, elFontSizePx, fontFamily, indentPx, wordSpacingPx, noHyphenation);
     } else {
       // Uniform font — try Knuth-Plass optimal, fall back to greedy
       const kp = useKP
         ? countLinesKP(collapsedText, availableWidth, fontString, indentPx, letterSpacingPx, wordSpacingPx)
         : null;
-      lineCount = kp !== null ? kp : countLines(collapsedText, availableWidth, fontString, indentPx, letterSpacingPx, wordSpacingPx);
+      lineCount = kp !== null ? kp : countLines(collapsedText, availableWidth, fontString, indentPx, letterSpacingPx, wordSpacingPx, noHyphenation);
     }
   }
 
@@ -843,13 +946,6 @@ export const measureHtmlHeight = (html, layoutCtx) => {
 
   const elements = parseMultiElementHtml(html);
   if (elements.length === 0) return 0;
-
-  // WS-DEBUG: check if word-spacing in HTML is being parsed
-  if (process.env.NODE_ENV === 'development' && /word-spacing/i.test(html) && !measureHtmlHeight._wsDbg) {
-    measureHtmlHeight._wsDbg = true;
-    const wsValues = elements.map(e => ({ ws: e.styles.wordSpacing, unit: e.styles.wordSpacingUnit }));
-    console.log('[WS-PARSE] measureHtmlHeight sees word-spacing in HTML, parsed:', JSON.stringify(wsValues));
-  }
 
   let totalHeight = 0;
   let prevMarginBottom = 0;
@@ -1033,70 +1129,159 @@ export const insertHtmlLineBreaks = (html, layoutCtx) => {
   }
 };
 
-// ─── Last-line word count for split quality decisions ────────────────
+// ─── KP Rendering — apply optimal line breaks + word-spacing to page HTML ───
+//
+// This is the bridge between our KP measurement engine and browser rendering.
+// It transforms the clean page HTML (used for pagination) into render-ready HTML
+// where each paragraph line is explicitly broken at KP-optimal positions and
+// manually justified via CSS word-spacing.
+//
+// Key properties:
+//  - Deterministic: same pageHtml + layoutCtx → same output
+//  - Non-destructive: works on a copy, never mutates pages[] data
+//  - Safe fallback: any error returns the original HTML unchanged
+//  - Uniform-font only: styled-run paragraphs are skipped (too complex)
 
 /**
- * Count words on the last line of an HTML element using the Canvas line-break engine.
- * Used to detect short last lines that would look bad with text-align-last:justify.
+ * Apply KP-optimal line breaks and word-spacing to all paragraphs in a page.
  *
- * @param {string} html - Single element HTML (e.g. <p>...</p>)
- * @param {object} layoutCtx - Canvas layout context
- * @returns {number} Word count on the last line (0 if unable to determine)
+ * For each uniform-font <p> or <blockquote>:
+ *   - Inserts <br> at KP-computed line start positions
+ *   - Wraps each non-last line in <span style="word-spacing:Xpx"> so the browser
+ *     renders exactly the words KP assigned to that line, justified to full width
+ *   - Last line is left unstyled (natural short ending, no CSS stretch)
+ *
+ * The outer <p> keeps text-align:justify and text-align-last:left unchanged.
+ * Lines before <br> are treated as "forced last lines" by CSS (not stretched),
+ * so the word-spacing on the span provides ALL justification for those lines.
+ *
+ * @param {string} pageHtml   - Full page content HTML (from page.html)
+ * @param {object} layoutCtx  - { baseFontSizePx, fontFamily, contentWidth, widthSlack }
+ * @returns {string} Render-ready HTML with KP line breaks and word-spacing
  */
-export const getLastLineWordCount = (html, layoutCtx) => {
-  if (!html || !layoutCtx) return 0;
+export const applyKpRendering = (pageHtml, layoutCtx) => {
+  if (!pageHtml || !layoutCtx || !layoutCtx.contentWidth) return pageHtml;
 
   try {
     const div = document.createElement('div');
-    div.innerHTML = html;
-    const el = div.firstElementChild;
-    if (!el) return 0;
+    div.innerHTML = pageHtml;
+    let modified = false;
 
-    const text = el.textContent || '';
-    if (!text.trim()) return 0;
+    for (const el of Array.from(div.children)) {
+      const tag = el.tagName?.toUpperCase();
+      if (tag !== 'P' && tag !== 'BLOCKQUOTE') continue;
 
-    const styles = extractStyles(el.style);
-    const elFontSizePx = styles.fontSize
-      ? resolveSize(styles.fontSize, styles.fontSizeUnit, layoutCtx.baseFontSizePx)
-      : layoutCtx.baseFontSizePx;
-    const isBold = styles.fontWeight === 'bold' || parseInt(styles.fontWeight) >= 700;
-    const isItalic = styles.fontStyle === 'italic';
-    const fontFamily = layoutCtx.fontFamily || 'Georgia, serif';
-    const fontString = buildFontString(elFontSizePx, fontFamily, isBold, isItalic);
-    const indentPx = styles.textIndent ? styles.textIndent * elFontSizePx : 0;
+      const text = el.textContent || '';
+      if (!text.trim()) continue;
 
-    const paddingH = (styles.paddingLeft || 0) + (styles.paddingRight || 0);
-    const marginLPx = resolveSize(styles.marginLeft, styles.marginLeftUnit, elFontSizePx);
-    const marginRPx = resolveSize(styles.marginRight, styles.marginRightUnit, elFontSizePx);
-    const borderLeft = styles.borderLeftWidth || 0;
-    const widthSlack = layoutCtx.widthSlack || 0;
-    const availableWidth = layoutCtx.contentWidth - paddingH - marginLPx - marginRPx - borderLeft - widthSlack;
+      // Skip styled-run paragraphs — mixed fonts require per-word measurement
+      // which complicates span wrapping. Greedy rendering is acceptable there.
+      const runs = extractTextRuns(el, { bold: false, italic: false, fontSize: null });
+      if (runs && hasStyledRuns(runs)) continue;
 
-    const collapsed = collapseWhitespace(text);
-    const lineStarts = getLineBreakPositions(collapsed, availableWidth, fontString, indentPx);
+      // Skip when entire content is uniformly bold or italic (single <strong>/<em> wrapper).
+      // Inserting <br> inside the wrapping element creates malformed HTML fragments
+      // (e.g. "<strong>line1" + "line2</strong>") — the browser auto-repairs by closing
+      // the tag before the break, causing the second line to lose its bold/italic styling.
+      // These are typically subheader paragraphs; browser line-breaking is acceptable.
+      if (runs && runs.length === 1 && (runs[0].bold || runs[0].italic)) continue;
 
-    if (lineStarts.length === 0) return 0;
+      // Resolve element font
+      const styles = extractStyles(el.style);
+      const elFontSizePx = styles.fontSize
+        ? resolveSize(styles.fontSize, styles.fontSizeUnit, layoutCtx.baseFontSizePx)
+        : layoutCtx.baseFontSizePx;
+      const isBold   = styles.fontWeight === 'bold' || parseInt(styles.fontWeight) >= 700;
+      const isItalic = styles.fontStyle === 'italic';
+      const fontStr  = buildFontString(elFontSizePx, layoutCtx.fontFamily, isBold, isItalic);
 
-    const words = collapsed.split(/\s+/).filter(w => w);
-    const lastLineStart = lineStarts[lineStarts.length - 1];
-    return words.length - lastLineStart;
+      // Resolve first-line indent (em → px)
+      const indentPx = styles.textIndent ? styles.textIndent * elFontSizePx : 0;
+
+      // Resolve element's available width (matching calculateElementHeight logic)
+      const paddingH  = (styles.paddingLeft || 0) + (styles.paddingRight || 0);
+      const marginLPx = resolveSize(styles.marginLeft,  styles.marginLeftUnit,  elFontSizePx);
+      const marginRPx = resolveSize(styles.marginRight, styles.marginRightUnit, elFontSizePx);
+      const borderL   = styles.borderLeftWidth || 0;
+      const availW    = layoutCtx.contentWidth - paddingH - marginLPx - marginRPx - borderL
+                        - (layoutCtx.widthSlack || 0);
+      if (availW <= 0) continue;
+
+      // Base word-spacing from element CSS (usually 0)
+      const wsFromStyle = styles.wordSpacing
+        ? resolveSize(styles.wordSpacing, styles.wordSpacingUnit, elFontSizePx)
+        : 0;
+
+      const collapsed = collapseWhitespace(text);
+      const kp = getLineBreakPositionsKP(collapsed, availW, fontStr, indentPx, wsFromStyle);
+      if (!kp || kp.lineStarts.length <= 1) continue; // single line or KP failed
+
+      // ── Insert <br> at KP break positions ────────────────────────────────────
+      // Mirrors insertHtmlLineBreaks DOM approach: walk text nodes, split at
+      // word boundaries, insert <br> before words that start a new line.
+      const originalInner = el.innerHTML;
+      const breakWordIndices = kp.lineStarts.slice(1); // skip line 0
+
+      const wordMap = [];
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let tNode;
+      while ((tNode = walker.nextNode())) {
+        const re = /\S+/g;
+        let m;
+        while ((m = re.exec(tNode.textContent))) {
+          wordMap.push({ node: tNode, startOffset: m.index, wordIndex: wordMap.length });
+        }
+      }
+
+      // Process breaks in reverse to preserve offsets
+      for (let b = breakWordIndices.length - 1; b >= 0; b--) {
+        const wordIdx = breakWordIndices[b];
+        if (wordIdx >= wordMap.length) continue;
+        const { node, startOffset } = wordMap[wordIdx];
+        const before    = node.textContent.substring(0, startOffset).replace(/\s+$/, '');
+        const splitAt   = before.length;
+        if (splitAt > 0 && splitAt < node.textContent.length) {
+          const after = node.splitText(splitAt);
+          after.textContent = after.textContent.replace(/^\s+/, '');
+          after.parentNode.insertBefore(document.createElement('br'), after);
+        } else if (splitAt === 0) {
+          node.textContent = node.textContent.replace(/^\s+/, '');
+          node.parentNode.insertBefore(document.createElement('br'), node);
+        }
+      }
+
+      // ── Wrap each line in a word-spacing span ────────────────────────────────
+      // Split inner HTML on <br>, add word-spacing spans for non-last lines.
+      const innerWithBr = el.innerHTML;
+      const lineChunks  = innerWithBr.split(/<br\s*\/?>/i);
+
+      if (lineChunks.length !== kp.lineStarts.length) {
+        // Mismatch — something went wrong, revert safely
+        el.innerHTML = originalInner;
+        continue;
+      }
+
+      const parts = lineChunks.map((chunk, i) => {
+        if (i === lineChunks.length - 1) return chunk; // last line — natural ending
+        const ws = kp.wordSpacings[i];
+        const spanStyle = Math.abs(ws) >= 0.01
+          ? ` style="word-spacing:${ws.toFixed(3)}px"`
+          : '';
+        return `<span${spanStyle}>${chunk}</span><br>`;
+      });
+
+      el.innerHTML = parts.join('');
+      modified = true;
+    }
+
+    return modified ? div.innerHTML : pageHtml;
+
   } catch (e) {
-    return 0;
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[applyKpRendering] Error, returning original:', e?.message);
+    }
+    return pageHtml;
   }
-};
-
-/**
- * Measure raw text width using the module canvas singleton.
- * No justification applied — returns the natural width of the text.
- * @param {string} text - Plain text (no HTML)
- * @param {string} fontStr - CSS font string (e.g. "12px Georgia, serif")
- * @returns {number} Width in px
- */
-export const measureRawTextWidth = (text, fontStr) => {
-  if (!text) return 0;
-  const ctx = getCtx();
-  ctx.font = fontStr;
-  return ctx.measureText(text).width;
 };
 
 // ─── Exports for testing ────────────────────────────────────────────

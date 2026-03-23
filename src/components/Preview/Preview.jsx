@@ -1,4 +1,4 @@
-import { useRef, memo, useMemo, useEffect, useState, useCallback } from 'react';
+import { useRef, memo, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import useEditorStore from '../../store/useEditorStore';
@@ -7,10 +7,13 @@ import { useMagnifier } from '../../hooks/useMagnifier';
 import { useHeaderFooter, buildHeaderHtml } from '../../hooks/useHeaderFooter';
 import { calculateContentDimensions } from '../../utils/textMeasurer';
 import { DEFAULT_CONFIG } from './utils/previewConfig';
+import { applyKpRendering } from '../../utils/textLayoutEngine';
+import { JUSTIFY_SLACK_RATIO } from '../../utils/paginateChapters';
 import { addDebugTags } from './utils/debugTags';
 import PreviewControls from './PreviewControls';
 import MagnifierPanel from './MagnifierPanel';
 import PreviewDebugPanel from './PreviewDebugPanel';
+import TOCPanel from './TOCPanel';
 import ValidationErrorDialog from '../ValidationErrorDialog/ValidationErrorDialog';
 import PaginationProgressBar from '../PaginationProgressBar/PaginationProgressBar';
 import './Preview.css';
@@ -27,6 +30,7 @@ function getGutterInInches(value, unit) {
 
 function Preview() {
   const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const showTOCPanel = useEditorStore(s => s.showTOCPanel);
 
   const bookData = useEditorStore(useShallow((s) => s.bookData));
   const config = useEditorStore(useShallow((s) => s.config));
@@ -39,21 +43,39 @@ function Preview() {
   const magnifierContentRef = useRef(null);
   const previewScrollRef = useRef(null);
 
-  // Create hidden measurement div outside overflow containers
-  useEffect(() => {
+  // Create hidden measurement div outside overflow containers.
+  // useLayoutEffect (not useEffect) ensures this runs BEFORE usePagination's useEffect,
+  // so measureRef.current is populated when pagination first runs on mount.
+  useLayoutEffect(() => {
     if (!measureRef.current) {
       const div = document.createElement('div');
       div.style.cssText = 'position:fixed;left:-99999px;top:0;visibility:hidden;pointer-events:none;';
       div.setAttribute('lang', 'es');
       document.body.appendChild(div);
       measureRef.current = div;
-      return () => {
-        if (measureRef.current?.parentNode) {
-          measureRef.current.parentNode.removeChild(measureRef.current);
-        }
-      };
     }
+    return () => {
+      if (measureRef.current?.parentNode) {
+        measureRef.current.parentNode.removeChild(measureRef.current);
+      }
+      measureRef.current = null;
+    };
   }, []);
+
+  // Tighten word-spacing on overflow by < 1 line
+  const adjustWordSpacing = (el) => {
+    if (!el) return;
+    el.querySelectorAll('p, blockquote').forEach(p => { p.style.wordSpacing = ''; });
+    const overflow = el.scrollHeight - el.offsetHeight;
+    if (overflow <= 0 || overflow > 12) return;
+    const paragraphs = el.querySelectorAll('p, blockquote');
+    if (!paragraphs.length) return;
+    for (const ws of [-0.01, -0.02, -0.03, -0.04, -0.05]) {
+      paragraphs.forEach(p => { p.style.wordSpacing = `${ws}em`; });
+      if (el.scrollHeight <= el.offsetHeight) return;
+    }
+    paragraphs.forEach(p => { p.style.wordSpacing = ''; });
+  };
 
   const safeBookData = bookData || { bookType: 'novela', chapters: [], title: '' };
   const safeConfig = config || DEFAULT_CONFIG;
@@ -85,30 +107,51 @@ function Preview() {
   const { pages = [], layoutDims, validationState, showErrorDialog, currentError, handleErrorAction, closeErrorDialog } =
     usePagination(bookData, config, measureRef);
 
+  const frontMatterPages = useEditorStore((s) => s.frontMatterPages) || [];
+  
+  const allPages = useMemo(() => {
+    if (frontMatterPages.length > 0) {
+      const offset = frontMatterPages.length;
+      const offsetPages = pages.map(p => ({ ...p, pageNumber: (p.pageNumber || 0) + offset }));
+      return [...frontMatterPages, ...offsetPages];
+    }
+    return pages;
+  }, [frontMatterPages, pages]);
+
   useEffect(() => {
-    console.log('[PREVIEW] Pages actualizadas:', pages.length, '| Layout config:', config?.chapterTitle?.layout);
-    if (pages[0]?.html) console.log('[PREVIEW] Primera página HTML:', pages[0].html.slice(0, 150));
-  }, [pages, config?.chapterTitle?.layout]);
+    console.log('[PREVIEW] Pages actualizadas:', allPages.length, '| Layout config:', config?.chapterTitle?.layout);
+    if (allPages[0]?.html) console.log('[PREVIEW] Primera página HTML:', allPages[0].html.slice(0, 150));
+  }, [allPages, config?.chapterTitle?.layout]);
 
   const paginationProgressObj = useEditorStore((s) => s.paginationProgress);
   const isPaginationRunning = paginationProgressObj?.isActive ?? false;
   const paginationPercent = paginationProgressObj?.percent ?? 0;
-  const totalPageCount = pages.length;
+  const totalPageCount = allPages.length;
 
   const gutterValue = safeConfig.gutterStrategy === 'custom'
     ? getGutterInInches(safeConfig.gutterManual, safeConfig.gutterUnit || 'in')
     : KDP_STANDARDS.getDynamicGutter(safeConfig.pageFormat, safeBookData.bookType, totalPageCount);
 
   const { currentPage, goToPage, goToNextPage, goToPrevPage, goToFirstPage, goToLastPage, totalPages } =
-    usePageNavigation(pages.length);
+    usePageNavigation(allPages.length);
 
-  const currentPageData = (pages?.length > 0 && pages[currentPage])
-    ? pages[currentPage]
+  const currentPageData = (allPages?.length > 0 && allPages[currentPage])
+    ? allPages[currentPage]
     : { html: '', pageNumber: 1, isBlank: false, chapterTitle: '', currentSubheader: '' };
 
-  const debugHtml = debugConfig.enabled
+  const isFrontMatterPage = !!(currentPageData.isTOCPage || currentPageData.isTitlePage || currentPageData.isFrontMatter);
+
+  const debugHtml = (!isFrontMatterPage && debugConfig.enabled)
     ? addDebugTags(currentPageData.html, debugConfig, safeConfig.paragraph)
     : currentPageData.html;
+
+  // Run only when page content changes — NOT on every mouse-move render.
+  // Skip word-spacing adjustment on frontmatter pages (flex layout breaks with it).
+  useEffect(() => {
+    if (isFrontMatterPage) return;
+    adjustWordSpacing(previewContentRef.current);
+    adjustWordSpacing(magnifierContentRef.current);
+  }, [currentPage, debugHtml, isFrontMatterPage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isCurrentPageEven = currentPageData.pageNumber % 2 === 0;
   const isTitleOnlyPage = currentPageData.isTitleOnlyPage === true;
@@ -129,24 +172,24 @@ function Preview() {
   const textAlign = safeConfig.paragraph?.align || 'justify';
   const showNums = safeConfig.showPageNumbers !== false;
 
-  const { showMagnifierRef, magnifierWrapperRef, magnifierZoom, setMagnifierZoom, magnifierPanelRef,
-    magnifierPosRef, magnifierPageRef, onShowCallbackRef, updateMagnifierPosition, handleMouseEnterPreview,
-    handleMouseLeavePreview, handleMouseEnterMagnifier, handleMouseLeaveMagnifier } = useMagnifier(previewPageRef);
+  // ── KP Rendering ─────────────────────────────────────────────────────────────
+  // Frontmatter pages (title, TOC) skip KP rendering — their HTML uses flex
+  // layout that would be corrupted by the word-spacing pass.
+  const renderedHtml = useMemo(() => {
+    if (!debugHtml || currentPageData?.isBlank || isFrontMatterPage || textAlign !== 'justify') return debugHtml;
+    const cw = pageWidthPx - marginLeft - marginRight;
+    return applyKpRendering(debugHtml, {
+      baseFontSizePx: fontSize,
+      fontFamily,
+      contentWidth: cw,
+      widthSlack: cw * JUSTIFY_SLACK_RATIO,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debugHtml, currentPageData?.isBlank, isFrontMatterPage, textAlign, pageWidthPx, marginLeft, marginRight, fontSize, fontFamily]);
 
-  // Dev overflow check (word-spacing is now handled deterministically in paginateChapters)
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development') {
-      const el = previewContentRef.current;
-      if (el) {
-        requestAnimationFrame(() => {
-          const overflow = el.scrollHeight - el.clientHeight;
-          if (overflow > 2) {
-            console.warn(`[OVERFLOW] Page ${currentPage + 1}: overflow=${overflow.toFixed(1)}px`);
-          }
-        });
-      }
-    }
-  }, [currentPage, debugHtml]);
+  const { showMagnifier, setShowMagnifier, magnifierZoom, setMagnifierZoom, magnifierPanelRef,
+    magnifierPos, updateMagnifierPosition, handleMouseEnterPreview, handleMouseLeavePreview,
+    handleMouseEnterMagnifier, handleMouseLeaveMagnifier } = useMagnifier(previewPageRef);
 
   const { showHeaders, headerLeft, headerCenter, headerRight, headerConfig } =
     useHeaderFooter(safeConfig, currentPageData, totalPages, safeBookData.title);
@@ -156,8 +199,11 @@ function Preview() {
   const skipHeader = headerConfig.skipFirstChapterPage && currentPageData.isFirstChapterPage;
   const hasHeaderContent = headerLeft || headerCenter || headerRight;
 
-  const showPageNumber = (showNums && !currentPageData.isBlank) ||
-    (currentPageData.isExtraEndPage && currentPageData.shouldShowPageNumber);
+  // Frontmatter pages don't show running headers or page numbers
+  const showPageNumber = !isFrontMatterPage && (
+    (showNums && !currentPageData.isBlank) ||
+    (currentPageData.isExtraEndPage && currentPageData.shouldShowPageNumber)
+  );
 
   const pageNumberPos = safeConfig.pageNumberPos || 'bottom';
   const pageNumberAlign = safeConfig.pageNumberAlign || 'center';
@@ -192,18 +238,9 @@ function Preview() {
   const sharedPageProps = {
     pageWidthPx, pageHeightPx, marginTop, marginRight, marginBottom, marginLeft,
     fontSize, fontFamily, lineHeightPx, textAlign, effectiveContentHeight,
-    debugHtml, pageNumHtml, showHeaders, currentPageData, skipHeader,
-    hasHeaderContent, headerHtml
+    debugHtml: renderedHtml, pageNumHtml, showHeaders, currentPageData, skipHeader,
+    hasHeaderContent, headerHtml, isFrontMatterPage
   };
-
-  const [showOptMenu, setShowOptMenu] = useState(false);
-  const setPageOverride = useEditorStore(s => s.setPageOptimizationOverride);
-
-  const handlePageOptimize = useCallback((mode) => {
-    const pageNum = currentPageData.pageNumber;
-    setPageOverride(pageNum, mode);
-    setShowOptMenu(false);
-  }, [currentPageData.pageNumber, setPageOverride]);
 
   return (
     <div className="preview-wrapper">
@@ -225,6 +262,10 @@ function Preview() {
         <PreviewDebugPanel config={config} onChange={setConfig} onClose={() => setShowDebugPanel(false)} />
       )}
 
+      {showTOCPanel && (
+        <TOCPanel />
+      )}
+
       <PaginationProgressBar progress={paginationPercent} isVisible={isPaginationRunning} compact={false} />
 
       <div className="preview-scroll" ref={previewScrollRef}>
@@ -236,60 +277,55 @@ function Preview() {
             width: `${pageWidthPx}px`, height: `${pageHeightPx}px`,
             padding: `${marginTop}px ${marginRight}px ${marginBottom}px ${marginLeft}px`,
             fontSize: `${fontSize}px`, fontFamily, lineHeight: `${lineHeightPx}px`,
-            textAlign, textJustify: 'inter-word', hyphens: 'none',
+            // Frontmatter pages (title, TOC) use left-aligned layout — no justify, no hyphens
+            textAlign: isFrontMatterPage ? 'left' : textAlign,
+            textJustify: isFrontMatterPage ? undefined : 'inter-word',
+            hyphens: isFrontMatterPage ? 'none' : 'auto',
             wordBreak: 'break-word', overflowWrap: 'break-word'
           }}
           onMouseMove={updateMagnifierPosition}
           onMouseEnter={handleMouseEnterPreview}
           onMouseLeave={handleMouseLeavePreview}
         >
-          {!currentPageData.isBlank && (
-            <div className="page-optimize-wrapper">
-              <button
-                className="page-optimize-btn"
-                title="Optimizar esta página"
-                onClick={(e) => { e.stopPropagation(); setShowOptMenu(v => !v); }}
-              >
-                ⚡
-              </button>
-              {showOptMenu && (
-                <div className="page-optimize-menu">
-                  <button onClick={() => handlePageOptimize('consolidate')}>Consolidate</button>
-                  <button onClick={() => handlePageOptimize('fillPass')}>Fill Pass</button>
-                  <button onClick={() => handlePageOptimize('widowFix')}>Fix Widows</button>
-                  <button onClick={() => handlePageOptimize('headingFix')}>Fix Headings</button>
-                </div>
-              )}
-            </div>
-          )}
-          {showHeaders && !currentPageData.isBlank && !skipHeader && hasHeaderContent && (
+          {!isFrontMatterPage && showHeaders && !currentPageData.isBlank && !skipHeader && hasHeaderContent && (
             <div className="preview-header" dangerouslySetInnerHTML={{ __html: headerHtml }} style={{ marginBottom: '0.5em' }} />
           )}
           <div
-            ref={previewContentRef}
+            ref={(el) => {
+              previewContentRef.current = el;
+              if (el && process.env.NODE_ENV === 'development') {
+                requestAnimationFrame(() => {
+                  const overflow = el.scrollHeight - el.clientHeight;
+                  const pageType = currentPageData?.isTOCPage ? 'TOC'
+                    : currentPageData?.isTitlePage ? 'TITLE'
+                    : currentPageData?.isFrontMatter ? 'FM' : 'CONTENT';
+                  if (overflow > 2) {
+                    console.warn(`[OVERFLOW][${pageType}] Page ${currentPage + 1}: scrollH=${el.scrollHeight}px clientH=${el.clientHeight}px overflow=${overflow.toFixed(1)}px (${(overflow / lineHeightPx).toFixed(1)} lines)`);
+                  } else if (pageType === 'TOC') {
+                    console.log(`[TOC-RENDER] Page ${currentPage + 1}: scrollH=${el.scrollHeight}px clientH=${el.clientHeight}px ok (remain=${(el.clientHeight - el.scrollHeight).toFixed(1)}px)`);
+                  }
+                });
+              }
+            }}
             className="preview-content"
             style={{ height: `${effectiveContentHeight}px` }}
-            dangerouslySetInnerHTML={{ __html: debugHtml || '' }}
+            dangerouslySetInnerHTML={{ __html: renderedHtml || '' }}
           />
           {pageNumHtml}
         </div>
       </div>
 
-      {/* MagnifierPanel is ALWAYS in the DOM — visibility controlled via ref (no re-render) */}
-      <div ref={magnifierWrapperRef} style={{ display: 'none' }}>
-        {!currentPageData.isBlank && (
-          <MagnifierPanel
-            {...sharedPageProps}
-            magnifierPanelRef={magnifierPanelRef}
-            magnifierPageRef={magnifierPageRef}
-            magnifierContentRef={magnifierContentRef}
-            magnifierZoom={magnifierZoom}
-            magnifierPosRef={magnifierPosRef}
-            handleMouseEnterMagnifier={handleMouseEnterMagnifier}
-            handleMouseLeaveMagnifier={handleMouseLeaveMagnifier}
-          />
-        )}
-      </div>
+      {showMagnifier && previewPageRef.current && !currentPageData.isBlank && (
+        <MagnifierPanel
+          {...sharedPageProps}
+          magnifierPanelRef={magnifierPanelRef}
+          magnifierContentRef={magnifierContentRef}
+          magnifierZoom={magnifierZoom}
+          magnifierPos={magnifierPos}
+          handleMouseEnterMagnifier={handleMouseEnterMagnifier}
+          handleMouseLeaveMagnifier={handleMouseLeaveMagnifier}
+        />
+      )}
 
       {showErrorDialog && currentError && (
         <ValidationErrorDialog

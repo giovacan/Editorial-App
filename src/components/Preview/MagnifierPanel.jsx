@@ -22,6 +22,7 @@ function MagnifierPanel({
   skipHeader,
   hasHeaderContent,
   headerHtml,
+  isFrontMatterPage,
   handleMouseEnterMagnifier,
   handleMouseLeaveMagnifier
 }) {
@@ -81,9 +82,9 @@ function MagnifierPanel({
             fontSize: `${fontSize}px`,
             fontFamily,
             lineHeight: `${lineHeightPx}px`,
-            textAlign,
-            textJustify: 'inter-word',
-            hyphens: 'none',
+            textAlign: isFrontMatterPage ? 'left' : textAlign,
+            textJustify: isFrontMatterPage ? undefined : 'inter-word',
+            hyphens: isFrontMatterPage ? 'none' : 'auto',
             wordBreak: 'break-word',
             overflowWrap: 'break-word',
             background: 'white',
@@ -93,7 +94,7 @@ function MagnifierPanel({
             transformOrigin: '0 0'
           }}
         >
-          {showHeaders && !currentPageData.isBlank && !skipHeader && hasHeaderContent && (
+          {showHeaders && !currentPageData.isBlank && !skipHeader && hasHeaderContent && !isFrontMatterPage && (
             <div
               className="preview-header"
               dangerouslySetInnerHTML={{ __html: headerHtml }}

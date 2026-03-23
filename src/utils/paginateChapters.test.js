@@ -77,12 +77,12 @@ describe('paginateChapters', () => {
 
   describe('Basic functionality', () => {
     it('should return empty array for empty chapters', () => {
-      const result = paginateChapters([], layoutCtx, measureDiv, safeConfig);
+      const { pages: result } = paginateChapters([], layoutCtx, measureDiv, safeConfig);
       expect(result).toEqual([]);
     });
 
     it('should return empty array for null chapters', () => {
-      const result = paginateChapters(null, layoutCtx, measureDiv, safeConfig);
+      const { pages: result } = paginateChapters(null, layoutCtx, measureDiv, safeConfig);
       expect(Array.isArray(result)).toBe(true);
     });
 
@@ -96,7 +96,7 @@ describe('paginateChapters', () => {
           wordCount: 10
         }
       ];
-      const result = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
+      const { pages: result } = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
       expect(result.length).toBeGreaterThan(0);
     });
 
@@ -110,7 +110,7 @@ describe('paginateChapters', () => {
           wordCount: 20
         }
       ];
-      const result = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
+      const { pages: result } = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
       expect(result.length).toBeGreaterThan(0);
       for (let i = 0; i < result.length; i++) {
         expect(result[i].pageNumber).toBe(i + 1);
@@ -127,7 +127,7 @@ describe('paginateChapters', () => {
           wordCount: 5
         }
       ];
-      const result = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
+      const { pages: result } = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
       for (const page of result) {
         if (!page.isTitleOnlyPage || page.isFirstChapterPage) {
           expect(page.chapterTitle).toBe('Test Chapter');
@@ -154,7 +154,7 @@ describe('paginateChapters', () => {
           wordCount: 5
         }
       ];
-      const result = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
+      const { pages: result } = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
       expect(result.length).toBeGreaterThan(0);
 
       // Should have pages from both chapters
@@ -181,7 +181,7 @@ describe('paginateChapters', () => {
           wordCount: 12
         }
       ];
-      const result = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
+      const { pages: result } = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
 
       // Find the last page of Chapter 1
       let ch1LastPageIdx = -1;
@@ -224,7 +224,7 @@ describe('paginateChapters', () => {
       const modifiedConfig = { ...safeConfig };
       modifiedConfig.chapterTitle = { ...modifiedConfig.chapterTitle, startOnRightPage: true };
 
-      const result = paginateChapters(chapters, layoutCtx, measureDiv, modifiedConfig);
+      const { pages: result } = paginateChapters(chapters, layoutCtx, measureDiv, modifiedConfig);
 
       // Find any blank pages
       const blankPages = result.filter(p => p.isBlank);
@@ -246,7 +246,7 @@ describe('paginateChapters', () => {
           wordCount: 3
         }
       ];
-      const result = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
+      const { pages: result } = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
       for (const page of result) {
         expect(page.html).toBeDefined();
         expect(typeof page.html).toBe('string');
@@ -263,7 +263,7 @@ describe('paginateChapters', () => {
           wordCount: 3
         }
       ];
-      const result = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
+      const { pages: result } = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
       for (const page of result) {
         expect(typeof page.isBlank).toBe('boolean');
       }
@@ -282,7 +282,7 @@ describe('paginateChapters', () => {
           wordCount: 500
         }
       ];
-      const result = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
+      const { pages: result } = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
       expect(result.length).toBeGreaterThan(1);
     });
 
@@ -299,12 +299,12 @@ describe('paginateChapters', () => {
       ];
 
       // With split enabled
-      const resultWithSplit = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
+      const { pages: resultWithSplit } = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
       expect(resultWithSplit.length).toBeGreaterThan(1);
 
       // With split disabled
       const layoutCtxNoSplit = { ...layoutCtx, splitLongParagraphs: false };
-      const resultNoSplit = paginateChapters(chapters, layoutCtxNoSplit, measureDiv, safeConfig);
+      const { pages: resultNoSplit } = paginateChapters(chapters, layoutCtxNoSplit, measureDiv, safeConfig);
       expect(resultNoSplit.length).toBeGreaterThan(0);
     });
   });
@@ -320,7 +320,7 @@ describe('paginateChapters', () => {
           wordCount: 6
         }
       ];
-      const result = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
+      const { pages: result } = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
       expect(result.length).toBeGreaterThan(0);
       const combined = result.map(p => p.html).join('');
       expect(combined).toContain('<strong>');
@@ -336,7 +336,7 @@ describe('paginateChapters', () => {
           wordCount: 6
         }
       ];
-      const result = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
+      const { pages: result } = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
       expect(result.length).toBeGreaterThan(0);
     });
 
@@ -350,7 +350,7 @@ describe('paginateChapters', () => {
           wordCount: 6
         }
       ];
-      const result = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
+      const { pages: result } = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
       expect(result.length).toBeGreaterThan(0);
     });
 
@@ -364,7 +364,7 @@ describe('paginateChapters', () => {
           wordCount: 7
         }
       ];
-      const result = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
+      const { pages: result } = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
       expect(result.length).toBeGreaterThan(0);
     });
   });
@@ -380,7 +380,7 @@ describe('paginateChapters', () => {
           wordCount: 10
         }
       ];
-      const result = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
+      const { pages: result } = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
 
       for (const page of result) {
         if (!page.isBlank) {
@@ -401,7 +401,7 @@ describe('paginateChapters', () => {
           wordCount: 0
         }
       ];
-      const result = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
+      const { pages: result } = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
       expect(Array.isArray(result)).toBe(true);
     });
 
@@ -415,7 +415,7 @@ describe('paginateChapters', () => {
           wordCount: 0
         }
       ];
-      const result = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
+      const { pages: result } = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
       expect(Array.isArray(result)).toBe(true);
     });
 
@@ -430,7 +430,7 @@ describe('paginateChapters', () => {
           wordCount: 6
         }
       ];
-      const result = paginateChapters(chapters, smallLayoutCtx, measureDiv, safeConfig);
+      const { pages: result } = paginateChapters(chapters, smallLayoutCtx, measureDiv, safeConfig);
       expect(result.length).toBeGreaterThan(0);
     });
 
@@ -444,7 +444,7 @@ describe('paginateChapters', () => {
           wordCount: 6
         }
       ];
-      const result = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
+      const { pages: result } = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
       expect(result.length).toBeGreaterThan(0);
     });
   });
@@ -460,7 +460,7 @@ describe('paginateChapters', () => {
           wordCount: 12
         }
       ];
-      const result = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
+      const { pages: result } = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
       expect(result.length).toBeGreaterThan(0);
 
       // Some pages should have currentSubheader set
@@ -487,7 +487,7 @@ describe('paginateChapters', () => {
           wordCount: 2
         }
       ];
-      const result = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
+      const { pages: result } = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
       expect(result.length).toBeGreaterThan(0);
     });
   });
