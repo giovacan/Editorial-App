@@ -373,14 +373,12 @@ export const usePagination = (bookData, config, measureRef) => {
       if (cancelled) return;
 
       let generatedPages;
-      const optimizationMode = useEditorStore.getState().layoutOptimization?.globalMode || 'auto';
       try {
         const paginationResult = paginateChapters(
           safeBookData.chapters,
           layoutCtx,
           measureDiv,
-          safeConfig,
-          optimizationMode
+          safeConfig
         );
         generatedPages = paginationResult.pages;
         if (paginationResult.log) {

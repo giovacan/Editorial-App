@@ -3,7 +3,7 @@ function MagnifierPanel({
   magnifierPageRef,
   magnifierContentRef,
   magnifierZoom,
-  magnifierPosRef,
+  magnifierPos,
   pageWidthPx,
   pageHeightPx,
   marginTop,
@@ -27,9 +27,8 @@ function MagnifierPanel({
   handleMouseLeaveMagnifier
 }) {
   const magScale = magnifierZoom / 100;
-  const pos = magnifierPosRef.current;
-  const tx = -(pos.x / 100) * pageWidthPx * (magScale - 1);
-  const ty = -(pos.y / 100) * pageHeightPx * (magScale - 1);
+  const tx = -(magnifierPos.x / 100) * pageWidthPx * (magScale - 1);
+  const ty = -(magnifierPos.y / 100) * pageHeightPx * (magScale - 1);
 
   return (
     <div
