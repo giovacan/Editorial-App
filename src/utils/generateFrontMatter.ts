@@ -25,7 +25,8 @@ export type FrontMatterConfig = {
 export type TocLogEntry = {
   idx: number; page: number; level: number; title: string;
   rawLines: number; entryPx: number; usedBefore: number;
-  usedAfter: number; pageUsable: number; pageBreak: boolean; followPx: number;
+  usedAfter: number; pageUsable: number; pageBreak: boolean;
+  followPx: number; orphanReleased: boolean; breakReason: 'hard' | 'soft' | 'none';
 };
 
 const DEFAULT_FRONT_MATTER_CONFIG: FrontMatterConfig = {
@@ -50,6 +51,7 @@ export type LevelStyle = {
   textTransform: string;
   letterSpacing: string;
   indent: number; // px
+  fontFamily?: string;  // per-level font override (undefined = inherit from page)
 };
 
 // TOC section title size — constant across templates, always the largest text
@@ -123,6 +125,7 @@ export function getLevelStyle(
     ...(ov.fontSize   !== undefined && { fontSize:   ov.fontSize }),
     ...(ov.fontWeight !== undefined && { fontWeight: ov.fontWeight }),
     ...(ov.indent     !== undefined && { indent:     ov.indent }),
+    ...(ov.fontFamily !== undefined && { fontFamily: ov.fontFamily }),
   };
 }
 
@@ -384,13 +387,13 @@ export const generateTOCPages = (
   precomputedH3FontSize?: string | null,
   baseFontSizePx?: number,
   fontFamily?: string
-): { pages: FrontMatterPage[], tocLog: TocLogEntry[] } => {
+): { pages: FrontMatterPage[], tocLog: TocLogEntry[], tocSummaryText: string } => {
   if (!ENABLE_TOC || !tocEntries || tocEntries.length === 0 || !tocConfig?.includeLevels?.length) {
-    return { pages: [], tocLog: [] };
+    return { pages: [], tocLog: [], tocSummaryText: '' };
   }
 
   const filteredEntries = tocEntries.filter(e => tocConfig.includeLevels.includes(e.level));
-  if (filteredEntries.length === 0) return { pages: [], tocLog: [] };
+  if (filteredEntries.length === 0) return { pages: [], tocLog: [], tocSummaryText: '' };
 
   const template: TOCTemplate = tocConfig.template || 'classic';
   const separator: string = tocConfig.separator || 'none';
@@ -433,13 +436,16 @@ export const generateTOCPages = (
 
   // TOC title: line text + margin-bottom: 1.5em (1em = TOC_TITLE_SIZE * bfPx)
   const titleFontEm  = parseFloat(TOC_TITLE_SIZE) || 1.1;
-  const titleHeightPx = lineHeightPx + 1.5 * titleFontEm * bfPx;
+  const titleHeightPx = Math.ceil(lineHeightPx + 1.5 * titleFontEm * bfPx);
   // First page has the TOC title taking space; subsequent pages use full content height.
-  // 1-line bottom buffer: accounts for sub-pixel rounding (DOM measurement is now exact).
-  const firstPageUsable = contentHeight - titleHeightPx - lineHeightPx * 0.25;
-  const bodyPageUsable  = contentHeight - lineHeightPx * 0.25;
+  // Bottom buffer: absorbs accumulated sub-pixel rounding from margins and line-heights.
+  const firstPageUsable = contentHeight - titleHeightPx - lineHeightPx * 1.0;
+  const bodyPageUsable  = contentHeight - lineHeightPx * 1.0;
 
-  const titleHtml = `<div style="text-align:center; font-size:${TOC_TITLE_SIZE}; font-weight:bold; margin-bottom:1.5em; letter-spacing:${template === 'elegant' ? '0.09em' : 'normal'};">${tocConfig.title || 'Índice'}</div>`;
+  // CRITICAL: margin-bottom uses explicit px (not em) to prevent browser minimum-font-size
+  // from inflating the margin. titleHeightPx already includes this margin in the formula.
+  const titleMarginBotPx = Math.ceil(1.5 * titleFontEm * bfPx);
+  const titleHtml = `<div style="text-align:center; font-size:${TOC_TITLE_SIZE}; font-weight:bold; margin-bottom:${titleMarginBotPx}px; line-height:${lineHeightPx}px; letter-spacing:${template === 'elegant' ? '0.09em' : 'normal'};">${tocConfig.title || 'Índice'}</div>`;
 
   // ── Uniform H3 font size ─────────────────────────────────────────────────────
   // Use pre-computed value from caller if provided; otherwise compute on the spot.
@@ -484,17 +490,16 @@ export const generateTOCPages = (
   }
 
   // ── DEV visual overlays ───────────────────────────────────────────────────
-  // Set TOC_DEBUG_LINES = true to show colored limit lines in the TOC preview.
-  //   🟢 green  = contentHeight         → CSS overflow:hidden clips here
-  //   🟡 yellow = firstPageUsable/body  → base usable (0.25-line buffer)
-  //   🔴 red    = effFirst/effBody       → planning hard limit
-  //   🔵 blue   = softTarget             → soft break threshold
-  const TOC_DEBUG_LINES = false; // ← set true to visualize limits
+  // Reflects the 3 real limits used in Phase 2 + Phase 3:
+  //   🩵 teal  (page 1 only) = titleHeightPx      → where entries start after the TOC heading
+  //   🔵 blue                = softTarget abs     → Phase 3 soft break (may break here if pagesLeft>1)
+  //   🔴 red                 = effFirst/effBody   → Phase 2+3 hard limit (no entry placed beyond this)
+  //   🟢 green               = contentHeight      → CSS overflow:hidden clips here
+  const TOC_DEBUG_LINES = true; // ← set true to visualize limits
   const buildDebugOverlay = (isFirstPg: boolean, softTarget: number): string => {
     if (!IS_DEV || !TOC_DEBUG_LINES) return '';
-    const titleOff = isFirstPg ? titleHeightPx : 0;
-    const eff      = isFirstPg ? effFirst : effBody;
-    const usable   = isFirstPg ? firstPageUsable : bodyPageUsable;
+    const titleOff  = isFirstPg ? titleHeightPx : 0;
+    const eff       = isFirstPg ? effFirst : effBody;
     const line = (top: number, color: string, label: string): string =>
       `<div style="position:absolute;left:0;right:0;top:${top.toFixed(1)}px;height:0;` +
       `border-top:1.5px dashed ${color};z-index:9999;pointer-events:none;">` +
@@ -502,10 +507,10 @@ export const generateTOCPages = (
       `background:${color};color:#fff;padding:1px 3px;border-radius:2px;` +
       `font-family:monospace;white-space:nowrap;">${label}</span></div>`;
     return (
-      line(contentHeight - 1,      '#38a169', `contentH=${contentHeight}px`) +
-      line(titleOff + usable,      '#d69e2e', `usable=${usable.toFixed(0)}px`) +
-      line(titleOff + eff,         '#e53e3e', `eff=${eff.toFixed(0)}px`) +
-      line(titleOff + softTarget,  '#3182ce', `soft=${softTarget.toFixed(0)}px`)
+      (isFirstPg ? line(titleHeightPx,        '#2dd4bf', `↓entries title=${titleHeightPx.toFixed(0)}px`) : '') +
+      line(titleOff + softTarget,             '#3182ce', `soft=${softTarget.toFixed(0)}px`) +
+      line(titleOff + eff,                    '#e53e3e', `hard=${eff.toFixed(0)}px`) +
+      line(contentHeight - 1,                 '#38a169', `clip=${contentHeight}px`)
     );
   };
 
@@ -519,19 +524,40 @@ export const generateTOCPages = (
 
   const separatorHtml = getSeparatorHtml(separator); // same for all entries
 
-  // ── DOM measurement container ─────────────────────────────────────────────
-  // Render each entry in a hidden div with the same CSS context as the preview
-  // page so scrollHeight gives the exact pixels CSS will render (flex baseline
-  // alignment, sub-pixel rounding, actual font metrics) — no approximation needed.
-  const tocInnerWidth = contentWidth ? contentWidth - 24 : 0; // 24 = 12px padding × 2
-  let domMeasEl: HTMLElement | null = null;
+  // ── Canvas 2D context for per-entry page-number width measurement ────────
+  // The title span in the flex layout gets exactly:
+  //   titleColW = tocInnerWidth - indent - pageNumNaturalWidth
+  // Using Canvas measureText() per entry (at 0.9 × entryFontPx for the actual
+  // page number string) gives pixel-accurate titleColW for Canvas line-breaking.
+  // This is fully deterministic — same result on Chrome/Firefox/Safari for the
+  // same loaded font — and requires no DOM layout (no scrollHeight).
+  const tocInnerWidth = contentWidth ? contentWidth - 24 : 0;
+  let measCanvas2D: CanvasRenderingContext2D | null = null;
   if (typeof document !== 'undefined' && tocInnerWidth > 0 && fontFamily) {
-    domMeasEl = document.createElement('div');
-    domMeasEl.style.cssText =
-      `position:fixed;left:-99999px;top:0;visibility:hidden;pointer-events:none;` +
-      `width:${tocInnerWidth}px;font-family:${fontFamily};font-size:${bfPx}px;` +
-      `line-height:${lineHeightPx}px;word-break:normal;overflow-wrap:break-word;`;
-    document.body.appendChild(domMeasEl);
+    try {
+      const c = document.createElement('canvas');
+      measCanvas2D = c.getContext('2d');
+    } catch { measCanvas2D = null; }
+  }
+  // Fallback width used when Canvas 2D is unavailable (SSR / Node).
+  // 2.5 × bfPx approximates 3-digit page numbers at ~0.8× bfPx font size.
+  const pageNumWidthFallback = contentWidth ? Math.ceil(2.5 * bfPx) : 0;
+
+  // DOM measurement div for title line-counting — more accurate than Canvas at
+  // small preview scales: handles text-transform (uppercase), bold metric drift, etc.
+  let domMeasDiv: HTMLElement | null = null;
+  if (typeof document !== 'undefined' && tocInnerWidth > 0 && fontFamily) {
+    try {
+      domMeasDiv = document.createElement('div');
+      domMeasDiv.style.cssText = [
+        'position:fixed', 'left:-9999px', 'top:0',
+        'visibility:hidden', 'pointer-events:none',
+        'padding:0', 'margin:0', 'border:0', 'box-sizing:content-box',
+        'white-space:normal', 'overflow-wrap:break-word',
+        'word-break:normal', 'hyphens:none', '-webkit-hyphens:none',
+      ].join(';');
+      document.body.appendChild(domMeasDiv);
+    } catch { domMeasDiv = null; }
   }
 
   // ── Phase 1: Pre-compute measurements for every entry ────────────────────
@@ -540,11 +566,11 @@ export const generateTOCPages = (
   type ComputedEntry = {
     entry: TOCResolvedEntry; displayTitle: string; style: LevelStyle;
     rawLines: number; entryPx: number; displayFontSize: string; isH3: boolean;
+    titleColW: number; // column width used for Canvas measurement — MUST match CSS max-width
+    entryLhPxCeil: number; // Math.ceil(entryLhPx) — explicit px line-height for CSS
+    marginTopPx: number;   // top margin in px (used in CSS)
+    marginBotPx: number;   // bottom margin in px (used in CSS)
   };
-  // Approximate page-number column width: ~3 digits at 0.9em font size.
-  // The title span (flex:0 1 auto) wraps at container_width - indent - page_num_width,
-  // so this is the correct canvas measurement width for all levels.
-  const pageNumWidth = contentWidth ? Math.ceil(2.5 * bfPx) : 0;
 
   const computed: ComputedEntry[] = filteredEntries.map((entry, i) => {
     const displayTitle = displayTitles[i];
@@ -558,17 +584,44 @@ export const generateTOCPages = (
       displayFontSize = h3UniformFontSize;
     }
 
-    // rawLines: canvas for all entries when fontFamily is available (accurate glyph widths).
-    // H3 uses its own line-height ratio (1.3× its em), not the book's lineHeightPx.
-    // Fall back to character-count estimation when fontFamily is not yet known.
+    const entryFontPx = (parseFloat(displayFontSize) || 0.85) * bfPx;
+    const entryLhPx   = isH3 ? (1.3 * entryFontPx) : lineHeightPx;
+
+    // ── Exact page-number width via Canvas measureText ────────────────────
+    // Page number is rendered at font-size 0.9em relative to the entry font.
+    // Canvas measureText() at the same font/size gives the exact natural width.
+    // titleColW = this width is stored in ComputedEntry and MUST be used as
+    // max-width on the CSS title span so CSS and Canvas use identical column widths.
+    const measurePageNumWidth = (fontPx: number): number => {
+      if (measCanvas2D && fontFamily) {
+        measCanvas2D.font = `normal ${(0.9 * fontPx).toFixed(2)}px ${fontFamily}`;
+        return Math.ceil(measCanvas2D.measureText(String(entry.page)).width) + 4;
+      }
+      return pageNumWidthFallback;
+    };
+    let exactPageNumWidth = measurePageNumWidth(entryFontPx);
+    let titleColW = Math.max(40, tocInnerWidth - style.indent - exactPageNumWidth);
+
+    // ── rawLines: DOM line-break simulation ────────────────────────────────
+    // DOM offsetHeight is the most accurate method: it uses the actual CSS renderer,
+    // handling text-transform (uppercase titles in elegant template), bold font metric
+    // differences at tiny preview scales, and any other CSS effects that Canvas misses.
+    // Canvas measureHtmlHeight is used as fallback (SSR / no DOM).
     let rawLines = 1;
-    if (contentWidth && fontFamily) {
-      const entryFontPx = (parseFloat(displayFontSize) || 0.85) * bfPx;
-      const entryLhPx   = isH3 ? (1.3 * entryFontPx) : lineHeightPx;
-      const titleColW   = Math.max(40, contentWidth - 24 - style.indent - pageNumWidth);
+    if (domMeasDiv && contentWidth && fontFamily) {
+      domMeasDiv.style.width         = `${titleColW}px`;
+      domMeasDiv.style.fontSize      = `${entryFontPx.toFixed(3)}px`;
+      domMeasDiv.style.fontFamily    = fontFamily;
+      domMeasDiv.style.fontWeight    = style.fontWeight;
+      domMeasDiv.style.lineHeight    = `${entryLhPx.toFixed(3)}px`;
+      domMeasDiv.style.letterSpacing = style.letterSpacing;
+      domMeasDiv.style.textTransform = style.textTransform;
+      domMeasDiv.textContent         = displayTitle;
+      rawLines = Math.max(1, Math.round(domMeasDiv.offsetHeight / entryLhPx));
+    } else if (contentWidth && fontFamily) {
       const h = measureHtmlHeight(
-        `<div style="margin:0;padding:0;font-weight:${style.fontWeight};">${displayTitle}</div>`,
-        { baseFontSizePx: entryFontPx, baseLineHeight: entryLhPx / entryFontPx, lineHeightPx: entryLhPx, contentWidth: titleColW, fontFamily }
+        `<div style="margin:0;padding:0;font-weight:${style.fontWeight}${style.letterSpacing && style.letterSpacing !== 'normal' ? `;letter-spacing:${style.letterSpacing}` : ''};">${displayTitle}</div>`,
+        { baseFontSizePx: entryFontPx, baseLineHeight: entryLhPx / entryFontPx, lineHeightPx: entryLhPx, contentWidth: titleColW, fontFamily, widthSlack: style.fontWeight === 'bold' ? 8 : 3, noHyphenation: true }
       );
       rawLines = Math.max(1, Math.round(h / entryLhPx));
     } else if (contentWidth) {
@@ -576,59 +629,57 @@ export const generateTOCPages = (
     }
 
     // Non-H3 scale-down: if rawLines > 2 shrink font to cap at 2 visual lines.
+    // After scaling, recompute exactPageNumWidth + titleColW at the new font size
+    // so the re-measurement and CSS max-width stay consistent.
     if (!isH3 && entry.level >= 2 && rawLines > 2) {
       const em = parseFloat(style.fontSize) || 0.85;
       displayFontSize = `${Math.max(0.65, em * (2 / rawLines)).toFixed(2)}em`;
+      const scaledFontPx = (parseFloat(displayFontSize) || 0.65) * bfPx;
+      // Recompute page-num width at scaled font size — preserves consistency
+      exactPageNumWidth = measurePageNumWidth(scaledFontPx);
+      titleColW = Math.max(40, tocInnerWidth - style.indent - exactPageNumWidth);
+      if (domMeasDiv && contentWidth && fontFamily) {
+        domMeasDiv.style.width      = `${titleColW}px`;
+        domMeasDiv.style.fontSize   = `${scaledFontPx.toFixed(3)}px`;
+        domMeasDiv.style.lineHeight = `${lineHeightPx.toFixed(3)}px`;
+        // fontFamily / fontWeight / letterSpacing / textTransform already set above
+        rawLines = Math.max(1, Math.round(domMeasDiv.offsetHeight / lineHeightPx));
+      } else if (contentWidth && fontFamily) {
+        const scaledH = measureHtmlHeight(
+          `<div style="margin:0;padding:0;font-weight:${style.fontWeight};">${displayTitle}</div>`,
+          { baseFontSizePx: scaledFontPx, baseLineHeight: lineHeightPx / scaledFontPx, lineHeightPx, contentWidth: titleColW, fontFamily, widthSlack: style.fontWeight === 'bold' ? 8 : 3, noHyphenation: true }
+        );
+        rawLines = Math.max(1, Math.round(scaledH / lineHeightPx));
+      } else {
+        rawLines = 2;
+      }
     }
 
-    let entryPx: number;
-    if (domMeasEl) {
-      // DOM measurement: render the exact same HTML structure as Phase 4 (dummy page#)
-      // scrollHeight accounts for flex baseline alignment, margins, sub-pixel rounding.
-      const measHtml =
-        `<div style="display:flex;align-items:last baseline;` +
-        `margin-top:${style.marginTop};margin-bottom:${style.marginBottom};` +
-        `font-size:${displayFontSize};font-weight:${style.fontWeight};` +
-        `text-transform:${style.textTransform};letter-spacing:${style.letterSpacing};` +
-        `padding-left:${style.indent}px;` +
-        `line-height:${isH3 ? '1.3' : `${lineHeightPx}px`};` +
-        `"><span style="flex:0 1 auto;white-space:normal;overflow-wrap:break-word;` +
-        `word-break:normal;">${displayTitle}</span>` +
-        `${separatorHtml}` +
-        `<span style="flex-shrink:0;font-weight:normal;color:#555;font-size:0.9em;">999</span></div>`;
-      domMeasEl.innerHTML = measHtml;
-      entryPx = Math.ceil(domMeasEl.scrollHeight);
-      // Update rawLines from actual DOM height (for accurate logging)
-      const entryLhPx = isH3 ? (1.3 * (parseFloat(displayFontSize) || 0.70) * bfPx) : lineHeightPx;
-      rawLines = Math.max(1, Math.round(entryPx / entryLhPx));
-    } else if (isH3) {
-      const h3Em = parseFloat(displayFontSize) || 0.70;
-      const lhPx = 1.3 * h3Em * bfPx;
-      const mbPx = parseFloat(style.marginBottom) * h3Em * bfPx;
-      entryPx = Math.ceil(rawLines * lhPx + mbPx);
-    } else {
-      const lines = entry.level >= 2 && rawLines > 2 ? 2 : rawLines;
-      const singleLinePx = entry.level === 1 ? h1SinglePx : h2SinglePx;
-      entryPx = Math.ceil(singleLinePx + Math.max(0, lines - 1) * lineHeightPx);
-    }
-    return { entry, displayTitle, style, rawLines, entryPx, displayFontSize, isH3 };
+    // ── entryPx: deterministic formula, no DOM ────────────────────────────
+    // entryPx = marginTop + (lines × lineHeight) + marginBottom
+    // Margins in 'em' are relative to the entry's own font size.
+    const marginTopPx = Math.ceil((parseFloat(style.marginTop)    || 0) * entryFontPx);
+    const marginBotPx = Math.ceil((parseFloat(style.marginBottom) || 0) * entryFontPx);
+    const entryPx     = rawLines * Math.ceil(entryLhPx) + marginTopPx + marginBotPx;
+
+    const entryLhPxCeil = Math.ceil(entryLhPx);
+    return { entry, displayTitle, style, rawLines, entryPx, displayFontSize, isH3, titleColW, entryLhPxCeil, marginTopPx, marginBotPx };
   });
 
-  // Clean up DOM measurement container (measurements complete)
-  if (domMeasEl?.parentNode) {
-    domMeasEl.parentNode.removeChild(domMeasEl);
-  }
-  if (IS_DEV && domMeasEl) {
-    console.log(`[TOC] DOM measurement used for ${computed.length} entries (exact scrollHeight)`);
+  // Clean up DOM measurement div now that all entries are measured
+  if (domMeasDiv) {
+    try { document.body.removeChild(domMeasDiv); } catch { /* no-op */ }
+    domMeasDiv = null;
   }
 
   // ── Phase 2: Greedy pass — find minimum page count P ─────────────────────
   // No orphan guard here: guard inflates P when every entry is H1 (chapter-only
   // TOC), doubling the effective height per slot and halving soft targets.
   // The guard is applied later as a hard constraint only in Phase 3.
-  // Use the same 1-line clearance as Phase 3 so P matches what Phase 3 will produce.
-  const effFirst = firstPageUsable - lineHeightPx * 0.25;
-  const effBody  = bodyPageUsable  - lineHeightPx * 0.25;
+  // Hard-limit clearance: extra safety for flex baseline alignment, margin
+  // collapsing differences, and accumulated per-entry sub-pixel rounding.
+  const effFirst = firstPageUsable - lineHeightPx * 1.5;
+  const effBody  = bodyPageUsable  - lineHeightPx * 1.5;
   let P = 1;
   {
     let usedG = 0;
@@ -642,13 +693,16 @@ export const generateTOCPages = (
   // ── Phase 3: Balanced layout — equalize fill% across P pages ─────────────
   // Each page receives a soft target proportional to its capacity so no page
   // is significantly emptier than others.  The hard page limit is still respected.
-  const totalContent = computed.reduce((s, c) => s + c.entryPx, 0);
-  const totalUsable  = effFirst + Math.max(0, P - 1) * effBody;
   // Soft target = just below the hard limit so it fires as a last-resort safety net
   // rather than redistributing content across pages. Pages fill to the hard limit
-  // and only soft-break if used reaches 0.25 lines before the hard limit.
-  const softTarget1  = effFirst - lineHeightPx * 0.25;
-  const softTargetN  = effBody  - lineHeightPx * 0.25;
+  // and only soft-break if used reaches 0.40 lines before the hard limit.
+  const softTarget1  = effFirst - lineHeightPx * 0.60;
+  const softTargetN  = effBody  - lineHeightPx * 0.60;
+
+  // Phase 3 decision metadata — kept parallel to computed[] so Phase 4 log uses
+  // the SAME followPx and breakReason that Phase 3 actually used (not recomputed).
+  type P3Decision = { followPx: number; orphanReleased: boolean; breakReason: 'hard' | 'soft' | 'none' };
+  const p3: P3Decision[] = new Array(computed.length);
 
   const pageBreakBefore: boolean[] = new Array(computed.length).fill(false);
   {
@@ -663,45 +717,54 @@ export const generateTOCPages = (
       // H1-after-H1 means a new chapter starts — no orphan concern there.
       // Use the actual pre-computed entryPx of the next entry (not a single-line
       // estimate) so multi-line H2 entries are correctly reserved in the check.
+      // IMPORTANT: if H1+H2 together exceed hardLimit, they'd overflow even on a
+      // fresh page — release the orphan guard so H1 goes alone and H2 starts next.
       const nextIsSubEntry = i < computed.length - 1 && computed[i + 1].entry.level > 1;
-      const followPx   = c.entry.level === 1 && nextIsSubEntry
-        ? computed[i + 1].entryPx
-        : 0;
+      const rawFollowPx = c.entry.level === 1 && nextIsSubEntry ? computed[i + 1].entryPx : 0;
+      const pairFitsOnFreshPage = (c.entryPx + rawFollowPx) <= hardLimit;
+      const followPx  = pairFitsOnFreshPage ? rawFollowPx : 0;
       const hardBreak = pageUsed + c.entryPx + followPx > hardLimit && pageUsed > 0;
       const softBreak = pagesLeft > 1 && pageUsed >= softTarget && pageUsed > 0;
+      const orphanReleased = rawFollowPx > 0 && !pairFitsOnFreshPage;
       if (hardBreak || softBreak) { pageBreakBefore[i] = true; curPage++; pageUsed = 0; }
+      p3[i] = { followPx, orphanReleased, breakReason: hardBreak ? 'hard' : softBreak ? 'soft' : 'none' };
+      if (IS_DEV && orphanReleased) {
+        console.warn(
+          `[TOC] ⚠ ORPHAN RELEASED #${i} H${c.entry.level} "${c.displayTitle.substring(0,30)}" ` +
+          `pair=${c.entryPx}+${rawFollowPx}=${c.entryPx+rawFollowPx}px > hardLimit=${hardLimit.toFixed(0)}px`
+        );
+      }
       pageUsed += c.entryPx;
     }
   }
 
   // ── Phase 4: HTML generation + tocLog ────────────────────────────────────
   for (let i = 0; i < computed.length; i++) {
-    const { entry, displayTitle, style, rawLines, entryPx, displayFontSize, isH3 } = computed[i];
+    const { entry, displayTitle, style, rawLines, entryPx, displayFontSize, titleColW: entryTitleColW, entryLhPxCeil, marginTopPx, marginBotPx } = computed[i];
     const pageBreak = pageBreakBefore[i];
 
     let titleText = digitalLinks && entry.elementId
       ? `<a href="#${entry.elementId}" style="color:inherit; text-decoration:none;">${displayTitle}</a>`
       : displayTitle;
-    const entryHtml = `<div style="display:flex;align-items:last baseline;margin-top:${style.marginTop};margin-bottom:${style.marginBottom};font-size:${displayFontSize};font-weight:${style.fontWeight};text-transform:${style.textTransform};letter-spacing:${style.letterSpacing};padding-left:${style.indent}px;line-height:${isH3 ? '1.3' : `${lineHeightPx}px`};"><span style="flex:0 1 auto;white-space:normal;overflow-wrap:break-word;word-break:normal;">${titleText}</span>${separatorHtml}<span style="flex-shrink:0;font-weight:normal;color:#555;font-size:0.9em;">${entry.page}</span></div>`;
+    const entryFontFamily = style.fontFamily ? `font-family:${style.fontFamily};` : '';
+    // max-width on the title span caps the CSS column at exactly the width Canvas measured.
+    // Without this, flex:0 1 auto can give the title slightly less width than titleColW
+    // (if the page-number natural width > exactPageNumWidth), causing extra wrapping → overflow.
+    // CRITICAL: line-height and margins use EXPLICIT PX (not em/unitless) to prevent
+    // browser minimum-font-size from inflating line-height via unitless factor resolution.
+    // This ensures CSS rendering height matches the formula exactly.
+    const entryHtml = `<div style="display:flex;align-items:last baseline;margin-top:${marginTopPx}px;margin-bottom:${marginBotPx}px;font-size:${displayFontSize};font-weight:${style.fontWeight};${entryFontFamily}text-transform:${style.textTransform};letter-spacing:${style.letterSpacing};padding-left:${style.indent}px;line-height:${entryLhPxCeil}px;"><span style="flex:0 1 auto;max-width:${entryTitleColW}px;white-space:normal;overflow-wrap:break-word;word-break:normal;">${titleText}</span>${separatorHtml}<span style="flex-shrink:0;font-weight:normal;color:#555;font-size:0.9em;">${entry.page}</span></div>`;
 
-    const pageUsable = currentPage === 1 ? effFirst : effBody;
-    const followPx   = entry.level === 1 && i < computed.length - 1
-      && computed[i + 1].entry.level > 1
-      ? computed[i + 1].entryPx
-      : 0;
+    // Use Phase 3's actual decisions — not a re-computation that could diverge.
+    const { followPx, orphanReleased, breakReason } = p3[i];
 
-    tocLog.push({
-      idx: i, page: currentPage, level: entry.level,
-      title: displayTitle.substring(0, 35),
-      rawLines, entryPx,
-      usedBefore: usedHeight,
-      usedAfter: usedHeight + (pageBreak ? 0 : entryPx),
-      pageUsable,
-      pageBreak,
-      followPx
-    });
+    // Runtime overflow guard: fires if Phase 3 underestimated entryPx and placing
+    // this entry would exceed the actual hard limit. usedHeight > 0 prevents
+    // infinite loop when a single entry is taller than the entire page.
+    const actualHardLimit = currentPage === 1 ? effFirst : effBody;
+    const runtimeOverflow = !pageBreak && usedHeight > 0 && usedHeight + entryPx > actualHardLimit;
 
-    if (pageBreak) {
+    if (pageBreak || runtimeOverflow) {
       currentHtml += buildDebugOverlay(currentPage === 1, currentPage === 1 ? softTarget1 : softTargetN) + '</div>';
       pages.push({
         html: currentHtml,
@@ -715,6 +778,19 @@ export const generateTOCPages = (
       currentHtml = outerDivOpen(false);
       usedHeight = 0;
     }
+
+    // Log AFTER potential page break so page/usedBefore/usedAfter reflect
+    // where the entry actually lands (new page if break fired).
+    const pageUsable = currentPage === 1 ? effFirst : effBody;
+    tocLog.push({
+      idx: i, page: currentPage, level: entry.level,
+      title: displayTitle.substring(0, 35),
+      rawLines, entryPx,
+      usedBefore: usedHeight,
+      usedAfter: usedHeight + entryPx,
+      pageUsable,
+      pageBreak, followPx, orphanReleased, breakReason
+    });
 
     currentHtml += entryHtml;
     usedHeight += entryPx;
@@ -734,7 +810,8 @@ export const generateTOCPages = (
       for (const r of rows) {
         const remain = (r.pageUsable - r.usedAfter).toFixed(1);
         const follow = r.followPx > 0 ? ` +follow=${r.followPx}` : '';
-        const brk    = r.pageBreak ? ' ← BREAK' : '';
+        const released = r.orphanReleased ? ' !orphan' : '';
+        const brk    = r.pageBreak ? ` ← ${r.breakReason.toUpperCase()}` : '';
         console.log(
           `[TOC]  ${String(r.idx).padEnd(3)} H${r.level} ` +
           `${String(r.rawLines).padEnd(5)} ` +
@@ -742,7 +819,7 @@ export const generateTOCPages = (
           `${r.usedBefore.toFixed(1).padEnd(10)} ` +
           `${r.usedAfter.toFixed(1).padEnd(9)} ` +
           `${remain.padEnd(7)} ` +
-          `"${r.title}"${follow}${brk}`
+          `"${r.title}"${follow}${released}${brk}`
         );
       }
     }
@@ -750,13 +827,15 @@ export const generateTOCPages = (
     const totalPages = [...new Set(tocLog.map(e => e.page))].length;
     console.log(`\n[TOC] SUMMARY: ${totalPages} page(s), ${tocLog.length} entries`);
     console.log(`[TOC] Planned limits: effFirst=${effFirst.toFixed(1)}px effBody=${effBody.toFixed(1)}px contentH=${contentHeight}px (${lineHeightPx}px/line)`);
-    // Flag entries that overflow their effective page limit (should not happen, indicates measurement bug)
-    const risky = tocLog.filter(r => !r.pageBreak && r.usedAfter > r.pageUsable);
+    // Flag entries where usedAfter > pageUsable — indicates a measurement error or
+    // an oversized-single-entry that exceeds the hard limit even alone on a fresh page.
+    const risky = tocLog.filter(r => r.usedAfter > r.pageUsable);
     if (risky.length > 0) {
-      console.warn(`[TOC] ⚠ PLAN OVERFLOW: ${risky.length} entries exceed effective limit (measurement error!):`);
+      console.warn(`[TOC] ⚠ PLAN OVERFLOW: ${risky.length} entries exceed effective limit:`);
       for (const r of risky) {
         const over = (r.usedAfter - r.pageUsable).toFixed(2);
-        console.warn(`[TOC]   p${r.page} #${r.idx} H${r.level} +${over}px overflow "${r.title}"`);
+        const cause = r.orphanReleased ? 'oversized-pair' : 'measurement-error';
+        console.warn(`[TOC]   p${r.page} #${r.idx} H${r.level} +${over}px [${cause}] "${r.title}"`);
       }
     }
   }
@@ -775,7 +854,55 @@ export const generateTOCPages = (
     });
   }
 
-  return { pages, tocLog };
+  // ── Build summary text for file-based logging ────────────────────────────
+  const tocSummaryText = (() => {
+    if (tocLog.length === 0) return '';
+    const lines: string[] = [];
+    lines.push(`TOC BUILD LOG (${new Date().toISOString()})`);
+    lines.push(`Config: template=${template} separator=${separator} bfPx=${bfPx.toFixed(2)} lhPx=${lineHeightPx.toFixed(2)} contentW=${contentWidth ?? '?'} contentH=${contentHeight}`);
+    lines.push(`Limits: titleH=${titleHeightPx.toFixed(1)} firstUsable=${firstPageUsable.toFixed(1)} bodyUsable=${bodyPageUsable.toFixed(1)} effFirst=${effFirst.toFixed(1)} effBody=${effBody.toFixed(1)}`);
+    lines.push(`Buffer: bottom=${(lineHeightPx * 1.0).toFixed(1)}px clearance=${(lineHeightPx * 1.5).toFixed(1)}px total=${(lineHeightPx * 2.5).toFixed(1)}px`);
+    lines.push('');
+
+    const pageNums = [...new Set(tocLog.map(e => e.page))];
+    for (const pg of pageNums) {
+      const rows = tocLog.filter(e => e.page === pg);
+      const usable = rows[0]?.pageUsable ?? 0;
+      const finalUsed = rows[rows.length - 1]?.usedAfter ?? 0;
+      const fillPct = Math.round(finalUsed / usable * 100);
+      const overflow = finalUsed > usable ? ` !! OVERFLOW by ${(finalUsed - usable).toFixed(1)}px` : '';
+      lines.push(`── PAGE ${pg} ── usable=${usable.toFixed(1)}px used=${finalUsed.toFixed(1)}px (${fillPct}%)${overflow}`);
+      lines.push(`  #   Lv Lines Px    UsedBef  UsedAft  Remain  Title`);
+      for (const r of rows) {
+        const remain = (r.pageUsable - r.usedAfter).toFixed(1);
+        const follow = r.followPx > 0 ? ` +follow=${r.followPx}` : '';
+        const released = r.orphanReleased ? ' !orphan' : '';
+        const brk = r.pageBreak ? ` <- ${r.breakReason.toUpperCase()}` : '';
+        lines.push(
+          `  ${String(r.idx).padEnd(3)} H${r.level} ` +
+          `${String(r.rawLines).padEnd(5)} ` +
+          `${String(r.entryPx).padEnd(5)} ` +
+          `${r.usedBefore.toFixed(1).padEnd(8)} ` +
+          `${r.usedAfter.toFixed(1).padEnd(8)} ` +
+          `${remain.padEnd(7)} ` +
+          `"${r.title}"${follow}${released}${brk}`
+        );
+      }
+      lines.push('');
+    }
+
+    lines.push(`SUMMARY: ${pageNums.length} page(s), ${tocLog.length} entries, ${pages.length} FM pages total`);
+    const risky = tocLog.filter(r => r.usedAfter > r.pageUsable);
+    if (risky.length > 0) {
+      lines.push(`PLAN OVERFLOW: ${risky.length} entries exceed limit:`);
+      for (const r of risky) {
+        lines.push(`  p${r.page} #${r.idx} H${r.level} +${(r.usedAfter - r.pageUsable).toFixed(2)}px "${r.title}"`);
+      }
+    }
+    return lines.join('\n');
+  })();
+
+  return { pages, tocLog, tocSummaryText };
 };
 
 // ─── Main entry point ────────────────────────────────────────────────────────
@@ -791,10 +918,11 @@ export const generateFrontMatter = (
   contentWidth?: number,
   baseFontSizePx?: number,
   fontFamily?: string
-): { pages: FrontMatterPage[], totalPages: number, h3AutoFontSize: string | null, tocLog: TocLogEntry[] } => {
+): { pages: FrontMatterPage[], totalPages: number, h3AutoFontSize: string | null, tocLog: TocLogEntry[], tocSummaryText: string } => {
   const mergedConfig = { ...DEFAULT_FRONT_MATTER_CONFIG, ...(config || {}) };
   const pages: FrontMatterPage[] = [];
   let tocLog: TocLogEntry[] = [];
+  let tocSummaryText = '';
 
   let currentPageNum = 1;
 
@@ -849,9 +977,10 @@ export const generateFrontMatter = (
       });
       currentPageNum++;
     }
-    const { pages: tocPages, tocLog: tocBuildLog } = generateTOCPages(tocEntries, tocConfig, currentPageNum, contentHeight, lineHeightPx, contentWidth, h3AutoFontSize, baseFontSizePx, fontFamily);
+    const { pages: tocPages, tocLog: tocBuildLog, tocSummaryText: tocSummary } = generateTOCPages(tocEntries, tocConfig, currentPageNum, contentHeight, lineHeightPx, contentWidth, h3AutoFontSize, baseFontSizePx, fontFamily);
     pages.push(...tocPages);
     tocLog = tocBuildLog;
+    tocSummaryText = tocSummary;
   }
 
   // Ensure FM page count is EVEN so the first content chapter always lands
@@ -867,7 +996,7 @@ export const generateFrontMatter = (
     });
   }
 
-  return { pages, totalPages: pages.length, h3AutoFontSize, tocLog };
+  return { pages, totalPages: pages.length, h3AutoFontSize, tocLog, tocSummaryText };
 };
 
 export const combineFrontMatterWithContent = (

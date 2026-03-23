@@ -68,6 +68,30 @@ const ZOOM_STEP = 0.25;
 const ZOOM_MIN  = 0.5;
 const ZOOM_MAX  = 4.0;
 
+const FONT_OPTIONS = [
+  { value: '',                  label: 'Heredar del libro' },
+  // — Serif —
+  { value: 'Georgia',           label: 'Georgia' },
+  { value: 'Times New Roman',   label: 'Times New Roman' },
+  { value: 'Garamond',          label: 'Garamond' },
+  { value: 'Merriweather',      label: 'Merriweather' },
+  { value: 'Palatino',          label: 'Palatino' },
+  { value: 'Book Antiqua',      label: 'Book Antiqua' },
+  { value: 'Cambria',           label: 'Cambria' },
+  { value: 'Baskerville',       label: 'Baskerville' },
+  // — Sans-serif —
+  { value: 'Arial',             label: 'Arial' },
+  { value: 'Helvetica',         label: 'Helvetica' },
+  { value: 'Trebuchet MS',      label: 'Trebuchet MS' },
+  { value: 'Verdana',           label: 'Verdana' },
+  { value: 'Calibri',           label: 'Calibri' },
+  { value: 'Segoe UI',          label: 'Segoe UI' },
+  { value: 'Tahoma',            label: 'Tahoma' },
+  // — Mono —
+  { value: 'Courier New',       label: 'Courier New' },
+  { value: 'Consolas',          label: 'Consolas' },
+];
+
 const TOCPanel = memo(function TOCPanel() {
   const tocData         = useEditorStore(s => s.tocData);
   const tocConfig       = useEditorStore(s => s.tocConfig);
@@ -355,13 +379,61 @@ const TOCPanel = memo(function TOCPanel() {
                       <span className="toc-section-label">Tipografía por nivel</span>
                       <div className="toc-level-rows">
                         {includeLevels.map(level => {
+                          const ov = levelOverrides[level] || {};
+                          const currentFont = ov.fontFamily || '';
+                          return (
+                            <div key={level} className="toc-level-row">
+                              <span
+                                className="toc-level-row-badge"
+                                style={{ backgroundColor: LEVEL_COLORS[level - 1] || '#6b7280' }}
+                              >
+                                H{level}
+                              </span>
+                              <div className="toc-level-row-controls" style={{ flex: 1 }}>
+                                <select
+                                  className="toc-font-select"
+                                  value={currentFont}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (val === '') {
+                                      // remove fontFamily from override, keep rest
+                                      const cur = { ...(tocConfig?.levelOverrides?.[level] || {}) };
+                                      delete cur.fontFamily;
+                                      const allOv = { ...(tocConfig?.levelOverrides || {}), [level]: cur };
+                                      if (Object.keys(cur).length === 0) delete allOv[level];
+                                      patchTOC({ levelOverrides: allOv });
+                                    } else {
+                                      patchLevelOverride(level, { fontFamily: val });
+                                    }
+                                  }}
+                                  style={{ fontFamily: currentFont || 'inherit', flex: 1, fontSize: '0.78em' }}
+                                >
+                                  {FONT_OPTIONS.map(opt => (
+                                    <option key={opt.value} value={opt.value} style={{ fontFamily: opt.value || 'inherit' }}>
+                                      {opt.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {includeLevels.length > 0 && (
+                    <div className="toc-section">
+                      <span className="toc-section-label">Jerarquía de tamaño</span>
+                      <div className="toc-level-rows">
+                        {includeLevels.map(level => {
                           const base = getLevelStyle(currentTemplate, level);
                           const ov   = levelOverrides[level] || {};
                           const autoH3 = level === 3 ? tocConfig?.autoH3FontSize : undefined;
                           const effectiveFontSize   = ov.fontSize   || autoH3 || base.fontSize;
                           const effectiveFontWeight = ov.fontWeight || base.fontWeight;
                           const pct = Math.round(parseFloat(effectiveFontSize) * 100);
-                          const hasUserOverride = Object.keys(ov).length > 0;
+                          const hasUserOverride = ov.fontSize !== undefined || ov.fontWeight !== undefined;
                           const isAutoH3 = level === 3 && !ov.fontSize && !!autoH3;
                           return (
                             <div key={level} className="toc-level-row">
@@ -548,6 +620,9 @@ const TOCPanel = memo(function TOCPanel() {
                       fontFamily:  pageStyle.fontFamily,
                       lineHeight:  pageStyle.lineHeight,
                       textAlign:  'left',
+                      hyphens:     'none',
+                      wordBreak:   'break-word',
+                      overflowWrap: 'break-word',
                     }}
                   >
                     <div

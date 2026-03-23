@@ -17,6 +17,7 @@ export type LevelOverride = {
   fontSize?: string;   // em value, e.g. '0.95em'
   fontWeight?: string; // 'bold' | 'normal'
   indent?: number;     // px
+  fontFamily?: string; // e.g. 'Georgia', 'inherit'
 };
 
 export type TOCConfig = {

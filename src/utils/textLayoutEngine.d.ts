@@ -4,6 +4,8 @@ export declare function measureHtmlHeight(html: string, layoutCtx: {
   contentWidth: number;
   fontFamily?: string;
   lineHeightPx?: number;
+  widthSlack?: number;
+  noHyphenation?: boolean;
 }): number;
 
 export declare function createLayoutContext(config: Record<string, unknown>): unknown;

@@ -463,7 +463,7 @@ export const usePagination = (bookData, config, measureRef) => {
             // the sequential position in the full document (FM + content).
             const fmOffset = fmDry.length;
             const tocResolvedOffset = tocResolved.map(e => ({ ...e, page: (e.page || 1) + fmOffset }));
-            const { pages: fmPages, h3AutoFontSize, tocLog } = generateFrontMatter(
+            const { pages: fmPages, h3AutoFontSize, tocLog, tocSummaryText } = generateFrontMatter(
               safeBookData.title || 'Título del Libro',
               safeBookData.author || '',
               tocResolvedOffset,
@@ -477,6 +477,75 @@ export const usePagination = (bookData, config, measureRef) => {
             );
             useEditorStore.getState().setFrontMatterPages(fmPages);
             useEditorStore.getState().setTocBuildLog(tocLog);
+
+            // ── DOM verification: measure actual rendered height of TOC pages ──
+            if (process.env.NODE_ENV === 'development' && tocSummaryText) {
+              let domVerification = '';
+              try {
+                const tocPages = fmPages.filter(p => p.isTOCPage);
+                if (tocPages.length > 0 && typeof document !== 'undefined') {
+                  const verifyDiv = document.createElement('div');
+                  verifyDiv.style.cssText = [
+                    'position:fixed', 'left:-99999px', 'top:0',
+                    'visibility:hidden', 'pointer-events:none',
+                    `width:${contentWidth}px`,
+                    `font-size:${baseFontSizePx}px`,
+                    `font-family:${targetFontFamily}`,
+                    `line-height:${lineHeightPx}px`,
+                    'text-align:left', 'hyphens:none',
+                    'word-break:break-word', 'overflow-wrap:break-word',
+                  ].join(';');
+                  document.body.appendChild(verifyDiv);
+
+                  const verifyLines = [`\nDOM VERIFICATION (actual scrollHeight vs contentHeight=${contentHeight}px):`];
+                  for (let pi = 0; pi < tocPages.length; pi++) {
+                    // Strip debug overlay (position:absolute divs) before measuring
+                    // — they inflate scrollHeight without adding real content.
+                    const cleanHtml = (tocPages[pi].html || '').replace(
+                      /<div style="position:absolute;[^"]*?">[^]*?<\/div>/g, ''
+                    );
+                    verifyDiv.innerHTML = cleanHtml;
+                    const scrollH = verifyDiv.scrollHeight;
+                    const delta = scrollH - contentHeight;
+                    const status = delta > 2 ? `!! OVERFLOW by ${delta.toFixed(1)}px (${(delta / lineHeightPx).toFixed(1)} lines)` :
+                                   delta > 0 ? `~ marginal +${delta.toFixed(1)}px` : 'OK';
+                    verifyLines.push(`  TOC page ${pi + 1}: scrollH=${scrollH}px contentH=${contentHeight}px delta=${delta.toFixed(1)}px ${status}`);
+
+                    // ── Per-entry measurement (first 2 pages only) ──
+                    if (pi < 2) {
+                      const wrapper = verifyDiv.firstElementChild;
+                      if (wrapper) {
+                        const kids = wrapper.children;
+                        verifyLines.push(`    wrapper children: ${kids.length}`);
+                        for (let ci = 0; ci < kids.length; ci++) {
+                          const el = kids[ci];
+                          const cs = getComputedStyle(el);
+                          const oh = el.offsetHeight;
+                          const mt = cs.marginTop;
+                          const mb = cs.marginBottom;
+                          const lh = cs.lineHeight;
+                          const fs = cs.fontSize;
+                          const disp = cs.display;
+                          const text = (el.textContent || '').substring(0, 30).replace(/\s+/g, ' ');
+                          verifyLines.push(`    [${ci}] oh=${oh} mt=${mt} mb=${mb} lh=${lh} fs=${fs} d=${disp} "${text}"`);
+                        }
+                      }
+                    }
+                  }
+                  document.body.removeChild(verifyDiv);
+                  domVerification = verifyLines.join('\n');
+                }
+              } catch { /* no-op */ }
+
+              fetch('/api/toc-log', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  summaryText: tocSummaryText + domVerification,
+                  timestamp: new Date().toISOString()
+                })
+              }).catch(() => {});
+            }
             // Update tocData with book-sequential page numbers (offset by FM count)
             useEditorStore.getState().setTOCData(tocResolvedOffset);
             // Patch pagination log page numbers so debug panel matches preview page numbers
@@ -585,7 +654,7 @@ export const usePagination = (bookData, config, measureRef) => {
     // Pass 2: offset TOC entry page numbers by FM count
     const fmOffset = fmDry.length;
     const entriesOffset = entries.map(e => ({ ...e, page: (e.page || 1) + fmOffset }));
-    const { pages: fmPages, h3AutoFontSize, tocLog } = generateFrontMatter(
+    const { pages: fmPages, h3AutoFontSize, tocLog, tocSummaryText: tocSummary2 } = generateFrontMatter(
       safeBookData.title || 'Título del Libro',
       safeBookData.author || '',
       entriesOffset,
@@ -603,6 +672,50 @@ export const usePagination = (bookData, config, measureRef) => {
     const autoH3Value = h3AutoFontSize || undefined;
     if (tocConfig?.autoH3FontSize !== autoH3Value) {
       useEditorStore.getState().setTOCConfig({ ...(tocConfig || {}), autoH3FontSize: autoH3Value });
+    }
+
+    // ── DOM verification for TOC config change path ──
+    if (process.env.NODE_ENV === 'development' && tocSummary2) {
+      let domV = '';
+      try {
+        const tocPgs = fmPages.filter(p => p.isTOCPage);
+        if (tocPgs.length > 0 && typeof document !== 'undefined') {
+          const vd = document.createElement('div');
+          vd.style.cssText = `position:fixed;left:-99999px;top:0;visibility:hidden;pointer-events:none;width:${layoutDims.contentWidth}px;font-size:${layoutDims.baseFontSizePx}px;font-family:${fmFontFamily};line-height:${layoutDims.lineHeightPx}px;text-align:left;hyphens:none;word-break:break-word;overflow-wrap:break-word;`;
+          document.body.appendChild(vd);
+          const vLines = [`\nDOM VERIFICATION (actual scrollHeight vs contentHeight=${layoutDims.contentHeight}px):`];
+          for (let pi = 0; pi < tocPgs.length; pi++) {
+            const cleanH = (tocPgs[pi].html || '').replace(/<div style="position:absolute;[^"]*?">[^]*?<\/div>/g, '');
+            vd.innerHTML = cleanH;
+            const sH = vd.scrollHeight;
+            const d = sH - layoutDims.contentHeight;
+            const st = d > 2 ? `!! OVERFLOW by ${d.toFixed(1)}px (${(d / layoutDims.lineHeightPx).toFixed(1)} lines)` : d > 0 ? `~ marginal +${d.toFixed(1)}px` : 'OK';
+            vLines.push(`  TOC page ${pi + 1}: scrollH=${sH}px contentH=${layoutDims.contentHeight}px delta=${d.toFixed(1)}px ${st}`);
+
+            // ── Per-entry measurement (first 2 pages only) ──
+            if (pi < 2) {
+              const wrapEl = vd.firstElementChild;
+              if (wrapEl) {
+                const ch = wrapEl.children;
+                vLines.push(`    wrapper children: ${ch.length}`);
+                for (let ci = 0; ci < Math.min(ch.length, 30); ci++) {
+                  const kid = ch[ci];
+                  const ks = getComputedStyle(kid);
+                  const txt = (kid.textContent || '').substring(0, 25).replace(/\s+/g, ' ');
+                  vLines.push(`    [${ci}] oh=${kid.offsetHeight} mt=${ks.marginTop} mb=${ks.marginBottom} lh=${ks.lineHeight} fs=${ks.fontSize} "${txt}"`);
+                }
+              }
+            }
+          }
+          document.body.removeChild(vd);
+          domV = vLines.join('\n');
+        }
+      } catch { /* no-op */ }
+      fetch('/api/toc-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ summaryText: tocSummary2 + domV, timestamp: new Date().toISOString() })
+      }).catch(() => {});
     }
   }, [tocConfig, frontMatterConfig, layoutDims, safeBookData.title, safeBookData.author]);
 

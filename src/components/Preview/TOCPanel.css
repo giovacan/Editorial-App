@@ -770,6 +770,23 @@
   color: #f59e0b;
 }
 
+.toc-font-select {
+  width: 100%;
+  padding: 3px 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  color: #374151;
+  background: white;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.toc-font-select:focus {
+  border-color: #3b82f6;
+}
+
 /* ── Header info block (title + count) ───────────────────── */
 .toc-header-info {
   flex: 1;

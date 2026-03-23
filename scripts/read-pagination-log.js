@@ -2,7 +2,7 @@
 /**
  * read-pagination-log.js
  * Used by Claude Code hook (UserPromptSubmit) to auto-inject
- * the latest pagination summary into Claude's context.
+ * the latest pagination + TOC summaries into Claude's context.
  * Outputs JSON with hookSpecificOutput.additionalContext.
  */
 import { readFileSync, existsSync } from 'fs'
@@ -11,28 +11,43 @@ import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const logFile = join(__dirname, '..', 'pagination-log.json')
+const tocLogFile = join(__dirname, '..', 'toc-log.json')
 
-if (!existsSync(logFile)) process.exit(0)
+const parts = []
 
-let data
-try {
-  data = JSON.parse(readFileSync(logFile, 'utf8'))
-} catch {
-  process.exit(0)
+// ── Pagination log ──
+if (existsSync(logFile)) {
+  try {
+    const data = JSON.parse(readFileSync(logFile, 'utf8'))
+    if (data?.summaryText) {
+      const ts = data.log?.timestamp || data.timestamp
+      const ageMinutes = ts ? (Date.now() - new Date(ts).getTime()) / 60000 : 999
+      if (ageMinutes <= 60) {
+        parts.push(`<pagination-log>\n${data.summaryText}\n</pagination-log>`)
+      }
+    }
+  } catch {}
 }
 
-if (!data || !data.summaryText) process.exit(0)
+// ── TOC build log ──
+if (existsSync(tocLogFile)) {
+  try {
+    const data = JSON.parse(readFileSync(tocLogFile, 'utf8'))
+    if (data?.summaryText) {
+      const ts = data.timestamp
+      const ageMinutes = ts ? (Date.now() - new Date(ts).getTime()) / 60000 : 999
+      if (ageMinutes <= 60) {
+        parts.push(`<toc-log>\n${data.summaryText}\n</toc-log>`)
+      }
+    }
+  } catch {}
+}
 
-// Only inject if log is recent (last 60 minutes)
-const ts = data.log?.timestamp || data.timestamp
-const ageMinutes = ts ? (Date.now() - new Date(ts).getTime()) / 60000 : 999
-if (ageMinutes > 60) process.exit(0)
-
-const additionalContext = `<pagination-log>\n${data.summaryText}\n</pagination-log>`
+if (parts.length === 0) process.exit(0)
 
 console.log(JSON.stringify({
   hookSpecificOutput: {
     hookEventName: 'UserPromptSubmit',
-    additionalContext
+    additionalContext: parts.join('\n')
   }
 }))
