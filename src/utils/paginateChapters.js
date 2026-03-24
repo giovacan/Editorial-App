@@ -672,8 +672,18 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
             continue;
           }
 
-          // Accept split only if it produces a meaningfully better layout (Δ > 50)
-          if (badnessSplit < badnessFlush - 50) {
+          // Shallow split guard: when the split creates very few widow lines AND
+          // the flush simulation fills the next page much better than the split would,
+          // the split is "shallow" — it cuts a few lines off a paragraph but leaves
+          // the next page nearly empty. Use a much higher threshold to reject these.
+          const simSplitLines = Math.floor(simSplitH / lineHeightPx);
+          const simFlushLines = Math.floor(simFlushH / lineHeightPx);
+          const isShallowSplit = widowLines <= minOrphanLines + 1 &&
+            simFlushLines > 0 && simSplitLines < simFlushLines * 0.6;
+          const greedySplitThreshold = isShallowSplit ? 350 : 50;
+
+          // Accept split only if it produces a meaningfully better layout
+          if (badnessSplit < badnessFlush - greedySplitThreshold) {
             pushPage(currentHtml + firstChunk);
             currentHtml = restChunk;
             continue;
@@ -1043,7 +1053,11 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
       // Soft widow penalty instead of hard break — let the badness gate decide.
       // A short widow on the source page is undesirable (+600) but not a hard veto:
       // if the destination page is very underfilled, the split may still be worth it.
-      const widowSoftPenalty = newSourceLines < minWidowLines ? 600 : 0;
+      // When the current page is underfilled, reduce or skip the widow penalty —
+      // filling an empty page is worth tolerating a short fragment on the source.
+      const underfillRatio = remainingLines / Math.max(1, Math.round(contentHeight / lineHeightPx));
+      const widowPenaltyScale = underfillRatio >= 0.45 ? 0 : underfillRatio >= 0.35 ? 0.3 : 1;
+      const widowSoftPenalty = newSourceLines < minWidowLines ? Math.round(600 * widowPenaltyScale) : 0;
 
       // Badness gate for split — accept only if total quality improves
       const qSplitCurrent = evaluatePageQualityCanvas(currentHtml + chunk, contentHeight, lineHeightPx, canvasCtx);
@@ -1056,8 +1070,20 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
       // than concentrating it; rejects large degradations like Δ-1000 orphan cases).
       // For retry splits (gave up 1 line to avoid orphan), be more lenient: the
       // fill-pass will cascade to fix the source page in subsequent iterations.
+      // For underfilled pages raise the split threshold — leaving a page 27% full
+      // is far worse than an imperfect split that improves fill at the cost of badness.
+      // Thresholds scale with how empty the page is:
+      //   >= 45% empty (severely): +400 (accept up to 400-point degradation)
+      //   >= 35% empty (moderately): +380
+      //   1-line gap: +300 (delta=-1 compensation)
+      //   normal: +50 (only accept meaningful improvements)
+      const totalLines = Math.round(contentHeight / lineHeightPx);
+      const isSeverelyUnderfilled = remainingLines >= Math.round(totalLines * 0.45);
+      const isModeratelyUnderfilled = remainingLines >= Math.round(totalLines * 0.35);
       const splitThreshold = isRetrySplit
         ? badnessBefore + 400
+        : isSeverelyUnderfilled ? badnessBefore + 400
+        : isModeratelyUnderfilled ? badnessBefore + 380
         : remainingLines <= 1 ? badnessBefore + 300 : badnessBefore + 50;
       if (splitBadnessAfter > splitThreshold) {
         log.record('fill', 'reject', i + 1, { tag, text: (firstEl.textContent || '').substring(0, 60), reason: 'badness-split', before: { score: +badnessBefore.toFixed(0) }, after: { score: +splitBadnessAfter.toFixed(0) }, delta: +(badnessBefore - splitBadnessAfter).toFixed(0) });
