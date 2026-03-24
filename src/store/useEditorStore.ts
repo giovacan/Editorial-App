@@ -195,7 +195,9 @@ const initialState = {
     isActive: false,
     percent: 0
   },
-  confirmedChapterTitles: [] as string[]
+  confirmedChapterTitles: [] as string[],
+  paginatedPages: [] as any[],
+  layoutDims: null as any
 };
 
 const mergeDeep = (target: any, source: any): any => {
@@ -514,7 +516,10 @@ const useEditorStore = create<EditorState>()(
 
     setConfirmedChapterTitles: (titles: string[]) => set({
       confirmedChapterTitles: titles
-    })
+    }),
+
+    setPaginatedPages: (pages: any[]) => set({ paginatedPages: pages }),
+    setLayoutDims: (dims: any) => set({ layoutDims: dims })
   })
   )
 );
