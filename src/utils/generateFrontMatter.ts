@@ -105,8 +105,8 @@ const TEMPLATE_STYLES: Record<TOCTemplate, Record<number, LevelStyle>> = {
   // Para libros de fotografía, catálogos, libros de arte, ensayos visuales.
   //
   editorial: {
-    1: { fontSize: '0.82em', fontWeight: 'bold',   marginTop: '0.9em',  marginBottom: '0.35em', textTransform: 'uppercase', letterSpacing: '0.15em', indent: 0  },
-    2: { fontSize: '0.84em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.28em', textTransform: 'none',      letterSpacing: 'normal', indent: 0  },
+    1: { fontSize: '0.82em', fontWeight: 'bold',   marginTop: '0.5em',  marginBottom: '0.15em', textTransform: 'uppercase', letterSpacing: '0.15em', indent: 0  },
+    2: { fontSize: '0.84em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.20em', textTransform: 'none',      letterSpacing: 'normal', indent: 0  },
     3: { fontSize: '0.78em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.20em', textTransform: 'none',      letterSpacing: 'normal', indent: 10 },
     4: { fontSize: '0.73em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.15em', textTransform: 'none',      letterSpacing: 'normal', indent: 18 },
     5: { fontSize: '0.69em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.12em', textTransform: 'none',      letterSpacing: 'normal', indent: 24 },
@@ -818,14 +818,14 @@ export const generateTOCPages = (
       entryHtml = `<div style="display:flex;align-items:flex-end;margin-top:${mt}px;margin-bottom:${mb}px;font-size:${displayFontSize};font-weight:${style.fontWeight};${entryFontFamily}letter-spacing:${style.letterSpacing};padding-left:${style.indent}px;line-height:${entryLhPxCeil}px;"><span style="flex:1 1 0;min-width:0;height:${titleHeight}px;overflow:hidden;overflow-wrap:break-word;word-break:normal;">${titleText}${dashSep}</span><span style="flex:0 0 ${maxPageNumW}px;text-align:right;white-space:nowrap;font-weight:normal;color:#666;font-size:0.9em;padding-left:1px;line-height:${entryLhPxCeil}px;">${entry.page}</span></div>`;
 
     } else if (template === 'editorial') {
-      // EDITORIAL: H1 en versalitas muy espaciadas con número debajo-derecha en pequeño
-      // H1 ocupa su propia "zona" visual — título arriba, número abajo alineado derecha
-      // H2+ normal con dots (hereda el separador del usuario)
+      // EDITORIAL: H1 en versalitas espaciadas + número pequeño en superíndice derecha.
+      // Línea decorativa border-bottom separa visualmente cada H1.
+      // H2+ usa dots con indent, sin uppercase.
       const isH1 = entry.level === 1;
       if (isH1) {
-        // H1: bloque completo — título centrado, número flotante abajo derecha
-        const numLine = `<div style="display:flex;justify-content:flex-end;line-height:${entryLhPxCeil}px;margin-top:1px;"><span style="font-size:0.78em;font-weight:normal;color:#888;letter-spacing:normal;">${entry.page}</span></div>`;
-        entryHtml = `<div style="margin-top:${mt}px;margin-bottom:${mb}px;font-size:${displayFontSize};font-weight:${style.fontWeight};${entryFontFamily}text-transform:${style.textTransform};letter-spacing:${style.letterSpacing};line-height:${entryLhPxCeil}px;"><div style="height:${titleHeight}px;overflow:hidden;overflow-wrap:break-word;word-break:normal;text-align:left;">${titleText}</div>${numLine}</div>`;
+        // H1: flex row, uppercase tracking amplio, número como superíndice arriba-derecha
+        const pageSpan = `<span style="flex:0 0 ${maxPageNumW}px;text-align:right;white-space:nowrap;font-size:0.75em;font-weight:normal;color:#999;letter-spacing:normal;align-self:flex-start;padding-top:1px;">${entry.page}</span>`;
+        entryHtml = `<div style="display:flex;align-items:flex-start;margin-top:${mt}px;margin-bottom:${mb}px;font-size:${displayFontSize};font-weight:${style.fontWeight};${entryFontFamily}text-transform:${style.textTransform};letter-spacing:${style.letterSpacing};line-height:${entryLhPxCeil}px;border-bottom:0.5px solid #ddd;"><span style="flex:1 1 0;min-width:0;height:${titleHeight}px;overflow:hidden;overflow-wrap:break-word;word-break:normal;">${titleText}</span>${pageSpan}</div>`;
       } else {
         entryHtml = `<div style="display:flex;align-items:flex-end;margin-top:${mt}px;margin-bottom:${mb}px;font-size:${displayFontSize};font-weight:${style.fontWeight};${entryFontFamily}letter-spacing:${style.letterSpacing};padding-left:${style.indent}px;line-height:${entryLhPxCeil}px;"><span style="flex:1 1 0;min-width:0;height:${titleHeight}px;overflow:hidden;overflow-wrap:break-word;word-break:normal;">${titleText}${separatorInline}</span><span style="flex:0 0 ${maxPageNumW}px;text-align:right;white-space:nowrap;font-weight:normal;color:#555;font-size:0.9em;padding-left:1px;line-height:${entryLhPxCeil}px;transform:translateY(-1px);">${entry.page}</span></div>`;
       }
