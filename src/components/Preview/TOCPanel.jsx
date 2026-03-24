@@ -53,9 +53,12 @@ const TEMPLATES = [
 ];
 
 const SEPARATORS = [
-  { id: 'dots', label: '· · · ·', title: 'Puntos guía' },
-  { id: 'dash', label: '──────', title: 'Línea' },
-  { id: 'none', label: '   12', title: 'Sin separador' },
+  { id: 'dots',       label: '. . . .', title: 'Puntos espaciados' },
+  { id: 'dash',       label: '– – – –', title: 'Guiones espaciados' },
+  { id: 'line',       label: '———————', title: 'Línea continua' },
+  { id: 'dots-tight', label: '. . . .', title: 'Puntos densos' },
+  { id: 'asterisk',   label: '* * * *', title: 'Asteriscos' },
+  { id: 'none',       label: 'Sin sep.', title: 'Sin separador' },
 ];
 
 const TABS = [
@@ -153,6 +156,12 @@ const TOCPanel = memo(function TOCPanel() {
   const levelOverrides  = tocConfig?.levelOverrides || {};
   const totalEntries    = tocData?.length || 0;
   const addNumbering    = tocConfig?.addNumbering;
+
+  // Base print font size in pt — used to show/edit entry sizes in pt
+  const basePrintPt = useMemo(() => {
+    if (!layoutDims?.baseFontSizePx || !layoutDims?.previewScale) return null;
+    return layoutDims.baseFontSizePx * 72 / (layoutDims.previewScale * 96);
+  }, [layoutDims]);
 
   const patchLevelOverride = useCallback((level, patch) => {
     const current = tocConfig?.levelOverrides || {};
@@ -306,6 +315,37 @@ const TOCPanel = memo(function TOCPanel() {
                       onChange={(e) => patchTOC({ title: e.target.value })}
                       placeholder="Índice"
                     />
+                    <div className="toc-level-row-controls" style={{ marginTop: '6px' }}>
+                      <input
+                        className="toc-size-input"
+                        type="number"
+                        min="60"
+                        max="200"
+                        value={Math.round((parseFloat(tocConfig?.titleFontSize || '1.1')) * 100)}
+                        onChange={(e) => patchTOC({ titleFontSize: `${(Number(e.target.value) / 100).toFixed(2)}em` })}
+                        title="Tamaño del título en porcentaje"
+                      />
+                      <span className="toc-size-unit">%</span>
+                      {basePrintPt && (
+                        <>
+                          <span className="toc-size-sep">·</span>
+                          <input
+                            className="toc-size-input toc-pt-input"
+                            type="number"
+                            min="5"
+                            max="36"
+                            step="0.1"
+                            value={((parseFloat(tocConfig?.titleFontSize || '1.1')) * basePrintPt).toFixed(1)}
+                            onChange={(e) => {
+                              const pt = parseFloat(e.target.value);
+                              if (!isNaN(pt) && pt > 0) patchTOC({ titleFontSize: `${(pt / basePrintPt).toFixed(3)}em` });
+                            }}
+                            title="Tamaño del título en puntos tipográficos"
+                          />
+                          <span className="toc-size-unit">pt</span>
+                        </>
+                      )}
+                    </div>
                   </div>
 
                   <div className="toc-section">
@@ -454,6 +494,27 @@ const TOCPanel = memo(function TOCPanel() {
                                   title="Tamaño en porcentaje"
                                 />
                                 <span className="toc-size-unit">%</span>
+                                {basePrintPt && (
+                                  <>
+                                    <span className="toc-size-sep">·</span>
+                                    <input
+                                      className="toc-size-input toc-pt-input"
+                                      type="number"
+                                      min="4"
+                                      max="28"
+                                      step="0.1"
+                                      value={(parseFloat(effectiveFontSize) * basePrintPt).toFixed(1)}
+                                      onChange={(e) => {
+                                        const pt = parseFloat(e.target.value);
+                                        if (!isNaN(pt) && pt > 0) {
+                                          patchLevelOverride(level, { fontSize: `${(pt / basePrintPt).toFixed(3)}em` });
+                                        }
+                                      }}
+                                      title="Tamaño en puntos tipográficos"
+                                    />
+                                    <span className="toc-size-unit">pt</span>
+                                  </>
+                                )}
                                 {isAutoH3 && (
                                   <span className="toc-auto-badge" title="Ajustado automáticamente">auto</span>
                                 )}

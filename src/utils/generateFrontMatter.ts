@@ -129,19 +129,7 @@ export function getLevelStyle(
   };
 }
 
-function getSeparatorHtml(separator: string): string {
-  switch (separator) {
-    case 'dots':
-      return `<span style="flex-grow:1; min-width:0; overflow:hidden; white-space:nowrap; color:#aaa; font-size:0.8em; padding: 0 4px; letter-spacing: 0.15em;">
-        ${'....................................................'}
-      </span>`;
-    case 'dash':
-      return `<span style="flex-grow:1; min-width:0; border-bottom: 1px solid #ccc; margin: 0 8px; align-self: center;"></span>`;
-    case 'none':
-    default:
-      return `<span style="flex-grow:1;"></span>`;
-  }
-}
+// getSeparatorHtml removed — dots now use float+inline layout (see entryHtml in Phase 4)
 
 // ─── Hierarchical numbering ───────────────────────────────────────────────────
 
@@ -434,18 +422,19 @@ export const generateTOCPages = (
   const h2SinglePx = lineHeightPx
     + ((parseFloat(h2Style.marginTop) || 0) + (parseFloat(h2Style.marginBottom) || 0)) * h2FontPx;
 
-  // TOC title: line text + margin-bottom: 1.5em (1em = TOC_TITLE_SIZE * bfPx)
-  const titleFontEm  = parseFloat(TOC_TITLE_SIZE) || 1.1;
+  // TOC title: line text + margin-bottom: 1.5em (1em = effective title font * bfPx)
+  const titleFontEm  = parseFloat(tocConfig.titleFontSize || TOC_TITLE_SIZE) || 1.1;
   const titleHeightPx = Math.ceil(lineHeightPx + 1.5 * titleFontEm * bfPx);
   // First page has the TOC title taking space; subsequent pages use full content height.
   // Bottom buffer: absorbs accumulated sub-pixel rounding from margins and line-heights.
-  const firstPageUsable = contentHeight - titleHeightPx - lineHeightPx * 1.0;
-  const bodyPageUsable  = contentHeight - lineHeightPx * 1.0;
+  const firstPageUsable = contentHeight - titleHeightPx;
+  const bodyPageUsable  = contentHeight;
 
   // CRITICAL: margin-bottom uses explicit px (not em) to prevent browser minimum-font-size
   // from inflating the margin. titleHeightPx already includes this margin in the formula.
   const titleMarginBotPx = Math.ceil(1.5 * titleFontEm * bfPx);
-  const titleHtml = `<div style="text-align:center; font-size:${TOC_TITLE_SIZE}; font-weight:bold; margin-bottom:${titleMarginBotPx}px; line-height:${lineHeightPx}px; letter-spacing:${template === 'elegant' ? '0.09em' : 'normal'};">${tocConfig.title || 'Índice'}</div>`;
+  const titleFontSize = tocConfig.titleFontSize || TOC_TITLE_SIZE;
+  const titleHtml = `<div style="text-align:center; font-size:${titleFontSize}; font-weight:bold; margin-bottom:${titleMarginBotPx}px; line-height:${lineHeightPx}px; letter-spacing:${template === 'elegant' ? '0.09em' : 'normal'};">${tocConfig.title || 'Índice'}</div>`;
 
   // ── Uniform H3 font size ─────────────────────────────────────────────────────
   // Use pre-computed value from caller if provided; otherwise compute on the spot.
@@ -495,7 +484,7 @@ export const generateTOCPages = (
   //   🔵 blue                = softTarget abs     → Phase 3 soft break (may break here if pagesLeft>1)
   //   🔴 red                 = effFirst/effBody   → Phase 2+3 hard limit (no entry placed beyond this)
   //   🟢 green               = contentHeight      → CSS overflow:hidden clips here
-  const TOC_DEBUG_LINES = true; // ← set true to visualize limits
+  const TOC_DEBUG_LINES = false; // ← set true to visualize limits
   const buildDebugOverlay = (isFirstPg: boolean, softTarget: number): string => {
     if (!IS_DEV || !TOC_DEBUG_LINES) return '';
     const titleOff  = isFirstPg ? titleHeightPx : 0;
@@ -522,7 +511,7 @@ export const generateTOCPages = (
   let usedHeight = 0;   // pixels used so far on current page (after title)
   let currentPage = 1;
 
-  const separatorHtml = getSeparatorHtml(separator); // same for all entries
+  // separator mode is checked inline per-entry (dots use float+inline, dash/none use flex)
 
   // ── Canvas 2D context for per-entry page-number width measurement ────────
   // The title span in the flex layout gets exactly:
@@ -566,7 +555,8 @@ export const generateTOCPages = (
   type ComputedEntry = {
     entry: TOCResolvedEntry; displayTitle: string; style: LevelStyle;
     rawLines: number; entryPx: number; displayFontSize: string; isH3: boolean;
-    titleColW: number; // column width used for Canvas measurement — MUST match CSS max-width
+    titleColW: number;         // column width used for Canvas measurement — MUST match CSS flex-basis
+    exactPageNumWidth: number; // page number column width in px (for right-aligned CSS flex-basis)
     entryLhPxCeil: number; // Math.ceil(entryLhPx) — explicit px line-height for CSS
     marginTopPx: number;   // top margin in px (used in CSS)
     marginBotPx: number;   // bottom margin in px (used in CSS)
@@ -576,6 +566,7 @@ export const generateTOCPages = (
     const displayTitle = displayTitles[i];
     const style = getLevelStyle(template, entry.level, tocConfig.levelOverrides);
     const isH3 = entry.level === 3;
+    const isCompact = entry.level >= 3; // H3 and H4 use compact line-height
 
     // displayFontSize must be known BEFORE canvas measurement so H3 uses its
     // scaled font size (h3UniformFontSize) rather than the template default.
@@ -585,7 +576,7 @@ export const generateTOCPages = (
     }
 
     const entryFontPx = (parseFloat(displayFontSize) || 0.85) * bfPx;
-    const entryLhPx   = isH3 ? (1.3 * entryFontPx) : lineHeightPx;
+    const entryLhPx   = isCompact ? (1.3 * entryFontPx) : lineHeightPx;
 
     // ── Exact page-number width via Canvas measureText ────────────────────
     // Page number is rendered at font-size 0.9em relative to the entry font.
@@ -600,6 +591,8 @@ export const generateTOCPages = (
       return pageNumWidthFallback;
     };
     let exactPageNumWidth = measurePageNumWidth(entryFontPx);
+    // titleColW = full available width minus indent and page number column.
+    // The separator uses flex:1 0 0 and grows into whatever remains — no deduction needed.
     let titleColW = Math.max(40, tocInnerWidth - style.indent - exactPageNumWidth);
 
     // ── rawLines: DOM line-break simulation ────────────────────────────────
@@ -631,7 +624,7 @@ export const generateTOCPages = (
     // Non-H3 scale-down: if rawLines > 2 shrink font to cap at 2 visual lines.
     // After scaling, recompute exactPageNumWidth + titleColW at the new font size
     // so the re-measurement and CSS max-width stay consistent.
-    if (!isH3 && entry.level >= 2 && rawLines > 2) {
+    if (entry.level === 2 && rawLines > 2) {
       const em = parseFloat(style.fontSize) || 0.85;
       displayFontSize = `${Math.max(0.65, em * (2 / rawLines)).toFixed(2)}em`;
       const scaledFontPx = (parseFloat(displayFontSize) || 0.65) * bfPx;
@@ -663,7 +656,7 @@ export const generateTOCPages = (
     const entryPx     = rawLines * Math.ceil(entryLhPx) + marginTopPx + marginBotPx;
 
     const entryLhPxCeil = Math.ceil(entryLhPx);
-    return { entry, displayTitle, style, rawLines, entryPx, displayFontSize, isH3, titleColW, entryLhPxCeil, marginTopPx, marginBotPx };
+    return { entry, displayTitle, style, rawLines, entryPx, displayFontSize, isH3, titleColW, entryLhPxCeil, marginTopPx, marginBotPx, exactPageNumWidth };
   });
 
   // Clean up DOM measurement div now that all entries are measured
@@ -672,14 +665,17 @@ export const generateTOCPages = (
     domMeasDiv = null;
   }
 
+  // Uniform page-number column width: use the widest entry so all numbers right-align.
+  const maxPageNumW = Math.max(...computed.map(c => c.exactPageNumWidth));
+
   // ── Phase 2: Greedy pass — find minimum page count P ─────────────────────
   // No orphan guard here: guard inflates P when every entry is H1 (chapter-only
   // TOC), doubling the effective height per slot and halving soft targets.
   // The guard is applied later as a hard constraint only in Phase 3.
-  // Hard-limit clearance: extra safety for flex baseline alignment, margin
-  // collapsing differences, and accumulated per-entry sub-pixel rounding.
-  const effFirst = firstPageUsable - lineHeightPx * 1.5;
-  const effBody  = bodyPageUsable  - lineHeightPx * 1.5;
+  // Hard-limit clearance: 0.40 lines below clip (CSS overflow:hidden = contentHeight).
+  // Soft target is another 0.40 lines below hard — three evenly-spaced thresholds.
+  const effFirst = firstPageUsable - lineHeightPx * 0.40;
+  const effBody  = bodyPageUsable  - lineHeightPx * 0.40;
   let P = 1;
   {
     let usedG = 0;
@@ -696,8 +692,8 @@ export const generateTOCPages = (
   // Soft target = just below the hard limit so it fires as a last-resort safety net
   // rather than redistributing content across pages. Pages fill to the hard limit
   // and only soft-break if used reaches 0.40 lines before the hard limit.
-  const softTarget1  = effFirst - lineHeightPx * 0.60;
-  const softTargetN  = effBody  - lineHeightPx * 0.60;
+  const softTarget1  = effFirst - lineHeightPx * 0.40;
+  const softTargetN  = effBody  - lineHeightPx * 0.40;
 
   // Phase 3 decision metadata — kept parallel to computed[] so Phase 4 log uses
   // the SAME followPx and breakReason that Phase 3 actually used (not recomputed).
@@ -738,22 +734,67 @@ export const generateTOCPages = (
     }
   }
 
+  // ── Phase 3.5: Distribute free vertical space on underfilled pages ────────
+  // When a page is < 88% full, spread extra space as additional top margin on
+  // H1 entries so the TOC "breathes". Only affects CSS — entryPx/usedHeight
+  // stay unchanged so Phase 3 page assignments remain valid (no overflow risk).
+  const extraMarginTop: number[] = new Array(computed.length).fill(0);
+  {
+    // Replay Phase 3 page assignments using pageBreakBefore[]
+    const pageGroups: number[][] = [[]];
+    let pg = 0;
+    for (let i = 0; i < computed.length; i++) {
+      if (pageBreakBefore[i]) { pg++; pageGroups.push([]); }
+      pageGroups[pg].push(i);
+    }
+    for (let p = 0; p < pageGroups.length; p++) {
+      const group = pageGroups[p];
+      const usable = p === 0 ? effFirst : effBody;
+      const usedH = group.reduce((s, i) => s + computed[i].entryPx, 0);
+      const freeH = usable - usedH;
+      if (freeH < 8 || usedH / usable >= 0.88) continue;
+      const h1Idxs = group.filter(i => computed[i].entry.level === 1);
+      if (h1Idxs.length === 0) continue;
+      // Cap at 20px per entry to avoid overly large gaps
+      const addPerH1 = Math.min(20, Math.floor(freeH / h1Idxs.length));
+      for (const idx of h1Idxs) extraMarginTop[idx] = addPerH1;
+    }
+  }
+
   // ── Phase 4: HTML generation + tocLog ────────────────────────────────────
   for (let i = 0; i < computed.length; i++) {
-    const { entry, displayTitle, style, rawLines, entryPx, displayFontSize, titleColW: entryTitleColW, entryLhPxCeil, marginTopPx, marginBotPx } = computed[i];
+    const { entry, displayTitle, style, rawLines, entryPx, displayFontSize, entryLhPxCeil, marginTopPx, marginBotPx, titleColW } = computed[i];
     const pageBreak = pageBreakBefore[i];
 
     let titleText = digitalLinks && entry.elementId
       ? `<a href="#${entry.elementId}" style="color:inherit; text-decoration:none;">${displayTitle}</a>`
       : displayTitle;
     const entryFontFamily = style.fontFamily ? `font-family:${style.fontFamily};` : '';
-    // max-width on the title span caps the CSS column at exactly the width Canvas measured.
-    // Without this, flex:0 1 auto can give the title slightly less width than titleColW
-    // (if the page-number natural width > exactPageNumWidth), causing extra wrapping → overflow.
+    // Inline leader dots: title text and dots are both inline content inside a
+    // height-constrained span. The dots (normal wrapping text, NOT nowrap) flow
+    // after the last word, filling the rest of that line. Extra dots that wrap to
+    // additional lines are clipped by height:rawLines*lineHeight + overflow:hidden.
+    // flex:1 on the title span fills the row up to the page number, giving
+    // width ≈ titleColW — matching Canvas line-break measurement.
     // CRITICAL: line-height and margins use EXPLICIT PX (not em/unitless) to prevent
     // browser minimum-font-size from inflating line-height via unitless factor resolution.
-    // This ensures CSS rendering height matches the formula exactly.
-    const entryHtml = `<div style="display:flex;align-items:last baseline;margin-top:${marginTopPx}px;margin-bottom:${marginBotPx}px;font-size:${displayFontSize};font-weight:${style.fontWeight};${entryFontFamily}text-transform:${style.textTransform};letter-spacing:${style.letterSpacing};padding-left:${style.indent}px;line-height:${entryLhPxCeil}px;"><span style="flex:0 1 auto;max-width:${entryTitleColW}px;white-space:normal;overflow-wrap:break-word;word-break:normal;">${titleText}</span>${separatorHtml}<span style="flex-shrink:0;font-weight:normal;color:#555;font-size:0.9em;">${entry.page}</span></div>`;
+    const titleHeight = rawLines * entryLhPxCeil;
+    // All separators use inline text inside the title span (2-flex-item layout).
+    // 'line' uses underscores with spaces — same wrapping pattern as dots/dash.
+    // Underscores render at the baseline in ALL fonts, forming a near-continuous line.
+    const separatorInline =
+      separator === 'dots'
+        ? ` <span style="color:#bbb;letter-spacing:0.08em;font-weight:normal;">. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .</span>`
+        : separator === 'dash'
+        ? ` <span style="color:#bbb;letter-spacing:0.05em;font-weight:normal;">– – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – –</span>`
+        : separator === 'line'
+        ? ` <span style="color:#ccc;letter-spacing:-0.12em;font-weight:normal;">___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___</span>`
+        : separator === 'dots-tight'
+        ? ` <span style="color:#999;letter-spacing:0.03em;font-weight:normal;">. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .</span>`
+        : separator === 'asterisk'
+        ? ` <span style="color:#bbb;letter-spacing:0.12em;font-weight:normal;">* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *</span>`
+        : '';
+    const entryHtml = `<div style="display:flex;align-items:flex-end;margin-top:${marginTopPx + extraMarginTop[i]}px;margin-bottom:${marginBotPx}px;font-size:${displayFontSize};font-weight:${style.fontWeight};${entryFontFamily}text-transform:${style.textTransform};letter-spacing:${style.letterSpacing};padding-left:${style.indent}px;line-height:${entryLhPxCeil}px;"><span style="flex:1 1 0;min-width:0;height:${titleHeight}px;overflow:hidden;overflow-wrap:break-word;word-break:normal;">${titleText}${separatorInline}</span><span style="flex:0 0 ${maxPageNumW}px;text-align:right;white-space:nowrap;font-weight:normal;color:#555;font-size:0.9em;padding-left:1px;line-height:${entryLhPxCeil}px;transform:translateY(-1px);">${entry.page}</span></div>`;
 
     // Use Phase 3's actual decisions — not a re-computation that could diverge.
     const { followPx, orphanReleased, breakReason } = p3[i];

@@ -435,12 +435,13 @@
 
 /* Separator buttons */
 .toc-sep-buttons {
-  display: flex;
-  gap: 0.5rem;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.375rem;
 }
 
 .toc-sep-btn {
-  padding: 0.375rem 0.75rem;
+  padding: 0.3rem 0.5rem;
   border: 1.5px solid #e5e7eb;
   border-radius: 6px;
   background: #fafbfc;
@@ -716,6 +717,16 @@
   font-size: 0.75rem;
   color: #9ca3af;
   margin-right: 4px;
+}
+
+.toc-pt-input {
+  width: 44px;
+}
+
+.toc-size-sep {
+  font-size: 0.75rem;
+  color: #d1d5db;
+  margin: 0 1px;
 }
 
 .toc-auto-badge {
