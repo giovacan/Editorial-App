@@ -986,8 +986,11 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
 
       // Detect if element is a continuation — use data-continuation attribute (not regex)
       const isContChunk = firstEl.dataset?.continuation === 'true';
+      // Apply a half-line safety buffer for fill-pass splits: Canvas measurement can
+      // under-estimate by 1-3px, so leave a small gap to prevent DOM overflow clipping.
+      const fillPassSafeSpace = remainingSpace - lineHeightPx * 0.5;
       const splitResult = splitInTwo(
-        firstElHtml, measureDiv, canvasCtx, remainingSpace, contentHeight,
+        firstElHtml, measureDiv, canvasCtx, fillPassSafeSpace, contentHeight,
         textAlign, true,
         safeConfig.paragraph?.firstLineIndent || 1.5,
         isContChunk, quoteOptions
