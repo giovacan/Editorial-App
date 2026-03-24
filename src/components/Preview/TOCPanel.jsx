@@ -73,13 +73,18 @@ const TEMPLATES = [
   {
     id: 'editorial',
     name: 'Editorial',
-    desc: 'H1 en bloque propio con número al pie — H2/H3 con dots',
+    desc: 'H1 uppercase con número superíndice + línea divisoria — H2/H3 con dots',
     renderPreview: (active) => (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '0.78em' }}>
-        <div style={{ color: active ? '#1e40af' : '#374151', opacity: active ? 1 : 0.9 }}>
-          <div style={{ fontWeight: 'bold', letterSpacing: '0.12em', textTransform: 'uppercase', fontSize: '0.82em', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>CAPÍTULO I</div>
-          <div style={{ textAlign: 'right', fontSize: '0.72em', color: active ? '#3b82f6' : '#999', marginTop: '1px' }}>1</div>
-        </div>
+        {[
+          { label: 'CAPÍTULO I', pg: '1' },
+          { label: 'CAPÍTULO II', pg: '5' },
+        ].map((row, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'flex-start', borderBottom: `0.5px solid ${active ? '#93c5fd' : '#e5e7eb'}`, paddingBottom: '1px', marginBottom: '1px', color: active ? '#1e40af' : '#374151', opacity: active ? 1 : 0.9 }}>
+            <span style={{ flex: 1, fontWeight: 'bold', letterSpacing: '0.10em', textTransform: 'uppercase', fontSize: '0.84em', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{row.label}</span>
+            <span style={{ fontSize: '0.72em', color: active ? '#60a5fa' : '#aaa', whiteSpace: 'nowrap', paddingTop: '1px' }}>{row.pg}</span>
+          </div>
+        ))}
         {[
           { label: 'Sección 1.1', pg: '3', indent: 0 },
           { label: 'Apartado', pg: '5', indent: 10 },
