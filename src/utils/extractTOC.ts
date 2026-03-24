@@ -10,7 +10,7 @@ export type TOCEntry = {
 };
 
 export type TOCSeparator = 'dots' | 'dash' | 'line' | 'dots-tight' | 'asterisk' | 'none';
-export type TOCTemplate = 'classic' | 'balanced' | 'elegant' | 'compact';
+export type TOCTemplate = 'classic' | 'modern' | 'minimal' | 'editorial';
 
 // Per-level typography overrides — applied on top of the selected template
 export type LevelOverride = {
@@ -33,6 +33,8 @@ export type TOCConfig = {
   titleTransform?: 'none' | 'sentence' | 'title' | 'upper'; // text capitalization applied at render
   stripLeadingNumber?: boolean; // strip "Capítulo 1 –", "I.", "1." prefixes from entry titles
   addNumbering?: 'none' | 'decimal' | 'roman'; // auto-generate hierarchical numbering at render
+  showFolio?: boolean; // show page number on TOC/FM pages (default true)
+  folioCase?: 'lower' | 'upper'; // roman numeral case: 'lower' = i,ii,iii (default) | 'upper' = I,II,III
 };
 
 // ─── Title normalization helpers ─────────────────────────────────────────────
@@ -127,15 +129,15 @@ export const generateRecommendedTOCConfig = (entries: TOCEntry[]): TOCConfig => 
   const finalCount = entries.filter(e => includeLevels.includes(e.level)).length;
 
   // Choose template to match content density:
-  //   ≤ 12 entries  → elegant   (spacious, dramatic — fits on 1 page with room to breathe)
-  //   13–28 entries → classic   (traditional hierarchy — 1–2 pages)
-  //   29–50 entries → balanced  (equal weight H1/H2, less vertical gap — 2–3 pages)
-  //   51+ entries   → compact   (minimal spacing — keeps a long TOC to 3 pages max)
+  //   ≤ 12 entries  → editorial (spacious, dramatic — fits on 1 page)
+  //   13–28 entries → classic   (traditional serif hierarchy — 1–2 pages)
+  //   29–50 entries → modern    (structured, equal weight — 2–3 pages)
+  //   51+ entries   → minimal   (minimal spacing — keeps a long TOC to 3 pages max)
   let template: TOCTemplate;
-  if (finalCount <= 12)      template = 'elegant';
+  if (finalCount <= 12)      template = 'editorial';
   else if (finalCount <= 28) template = 'classic';
-  else if (finalCount <= 50) template = 'balanced';
-  else                       template = 'compact';
+  else if (finalCount <= 50) template = 'modern';
+  else                       template = 'minimal';
 
   return {
     includeLevels,

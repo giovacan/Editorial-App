@@ -40,4 +40,5 @@ pnpm-debug.log*
 *.sw?
 
 pagination-log.json
-toc-log.json
+toc-log.json 
+

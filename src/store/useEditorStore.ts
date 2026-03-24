@@ -70,6 +70,7 @@ const initialState = {
     pageNumberPos: 'bottom' as const,
     pageNumberAlign: 'center' as const,
     pageNumberMargin: 12,
+    frontMatterNumbering: 'roman' as 'roman' | 'arabic' | 'none',
     showHeaders: false,
     headerContent: 'both' as const,
     headerPosition: 'top' as const,

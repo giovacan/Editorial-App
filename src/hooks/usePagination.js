@@ -17,6 +17,15 @@ import { calculateContentDimensions, calculateDynamicMargins } from '../utils/te
 import { calculateLineHeightPx, ensureFontsReady } from '../utils/textLayoutEngine';
 import { useParagraphValidation } from './useParagraphValidation';
 
+function toRoman(n) {
+  const vals = [1000,900,500,400,100,90,50,40,10,9,5,4,1];
+  const syms = ['m','cm','d','cd','c','xc','l','xl','x','ix','v','iv','i'];
+  let result = '';
+  for (let i = 0; i < vals.length; i++) {
+    while (n >= vals[i]) { result += syms[i]; n -= vals[i]; }
+  }
+  return result;
+}
 
 const DEFAULT_CONFIG = {
   pageFormat: 'a5',
@@ -478,7 +487,20 @@ export const usePagination = (bookData, config, measureRef) => {
               baseFontSizePx,
               targetFontFamily
             );
-            useEditorStore.getState().setFrontMatterPages(fmPages);
+            // Assign displayPageNumber to FM pages (roman numerals, cover has none)
+            const fmNumbering = useEditorStore.getState().config?.frontMatterNumbering ?? 'roman';
+            const fmFolioCase = useEditorStore.getState().tocConfig?.folioCase ?? 'lower';
+            let romanCounter = 0;
+            const fmPagesNumbered = fmPages.map(p => {
+              if (p.isTitlePage || p.isBlank) return { ...p, displayPageNumber: '' };
+              romanCounter++;
+              const roman = fmFolioCase === 'upper' ? toRoman(romanCounter).toUpperCase() : toRoman(romanCounter);
+              const display = fmNumbering === 'roman' ? roman
+                : fmNumbering === 'arabic' ? String(romanCounter)
+                : '';
+              return { ...p, displayPageNumber: display };
+            });
+            useEditorStore.getState().setFrontMatterPages(fmPagesNumbered);
             useEditorStore.getState().setTocBuildLog(tocLog);
 
             // ── DOM verification: measure actual rendered height of TOC pages ──
@@ -540,11 +562,14 @@ export const usePagination = (bookData, config, measureRef) => {
                 }
               } catch { /* no-op */ }
 
+              const fmDebug = '\n\nFM PAGES displayPageNumber:\n' + fmPagesNumbered.map((p, i) =>
+                `  [${i}] isTitlePage=${!!p.isTitlePage} isTOCPage=${!!p.isTOCPage} displayPageNumber="${p.displayPageNumber}"`
+              ).join('\n');
               fetch('/api/toc-log', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  summaryText: tocSummaryText + domVerification,
+                  summaryText: tocSummaryText + domVerification + fmDebug,
                   timestamp: new Date().toISOString()
                 })
               }).catch(() => {});
@@ -613,6 +638,25 @@ export const usePagination = (bookData, config, measureRef) => {
     globalOptMode
   ]);
   
+  // Re-number FM pages when frontMatterNumbering or folioCase changes without re-paginating
+  const frontMatterNumbering = safeConfig.frontMatterNumbering ?? 'roman';
+  const folioCase = useEditorStore(s => s.tocConfig?.folioCase ?? 'lower');
+  useEffect(() => {
+    const fmPages = useEditorStore.getState().frontMatterPages;
+    if (!fmPages || fmPages.length === 0) return;
+    let romanCounter = 0;
+    const renumbered = fmPages.map(p => {
+      if (p.isTitlePage || p.isBlank) return { ...p, displayPageNumber: '' };
+      romanCounter++;
+      const roman = folioCase === 'upper' ? toRoman(romanCounter).toUpperCase() : toRoman(romanCounter);
+      const display = frontMatterNumbering === 'roman' ? roman
+        : frontMatterNumbering === 'arabic' ? String(romanCounter)
+        : '';
+      return { ...p, displayPageNumber: display };
+    });
+    useEditorStore.getState().setFrontMatterPages(renumbered);
+  }, [frontMatterNumbering, folioCase]);
+
   const confirmedChapterTitles = useEditorStore(s => s.confirmedChapterTitles ?? []);
 
   const {
@@ -670,7 +714,20 @@ export const usePagination = (bookData, config, measureRef) => {
       layoutDims.baseFontSizePx,
       fmFontFamily
     );
-    useEditorStore.getState().setFrontMatterPages(fmPages);
+    // Assign displayPageNumber to FM pages (roman numerals, cover has none)
+    const fmNumbering2 = useEditorStore.getState().config?.frontMatterNumbering ?? 'roman';
+    const fmFolioCase2 = useEditorStore.getState().tocConfig?.folioCase ?? 'lower';
+    let romanCounter2 = 0;
+    const fmPagesNumbered2 = fmPages.map(p => {
+      if (p.isTitlePage || p.isBlank) return { ...p, displayPageNumber: '' };
+      romanCounter2++;
+      const roman2 = fmFolioCase2 === 'upper' ? toRoman(romanCounter2).toUpperCase() : toRoman(romanCounter2);
+      const display = fmNumbering2 === 'roman' ? roman2
+        : fmNumbering2 === 'arabic' ? String(romanCounter2)
+        : '';
+      return { ...p, displayPageNumber: display };
+    });
+    useEditorStore.getState().setFrontMatterPages(fmPagesNumbered2);
     useEditorStore.getState().setTocBuildLog(tocLog);
     // Sync auto-computed H3 font size back to editor (separate from user levelOverrides)
     const autoH3Value = h3AutoFontSize || undefined;
@@ -715,10 +772,13 @@ export const usePagination = (bookData, config, measureRef) => {
           domV = vLines.join('\n');
         }
       } catch { /* no-op */ }
+      const fmDebug2 = '\n\nFM PAGES displayPageNumber:\n' + fmPagesNumbered2.map((p, i) =>
+        `  [${i}] isTitlePage=${!!p.isTitlePage} isTOCPage=${!!p.isTOCPage} displayPageNumber="${p.displayPageNumber}"`
+      ).join('\n');
       fetch('/api/toc-log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ summaryText: tocSummary2 + domV, timestamp: new Date().toISOString() })
+        body: JSON.stringify({ summaryText: tocSummary2 + domV + fmDebug2, timestamp: new Date().toISOString() })
       }).catch(() => {});
     }
   }, [tocConfig, frontMatterConfig, layoutDims, safeBookData.title, safeBookData.author]);

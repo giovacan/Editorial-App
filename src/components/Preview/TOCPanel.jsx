@@ -9,46 +9,89 @@ const PX_PER_MM = 3.7795;
 
 const LEVEL_COLORS = ['#1e40af', '#2563eb', '#3b82f6', '#60a5fa', '#7c3aed', '#6b7280'];
 
+// Each template uses a custom render function for the preview card
 const TEMPLATES = [
   {
     id: 'classic',
     name: 'Clásico',
-    desc: 'H1 grande · H2 mediano · H3 pequeño',
-    preview: [
-      { label: 'Capítulo I', size: '1.05em', weight: 'bold', indent: 0 },
-      { label: 'Sección 1.1', size: '0.9em', weight: 'normal', indent: 12 },
-      { label: 'Apartado 1.1.1', size: '0.82em', weight: 'normal', indent: 22 },
-    ]
+    desc: 'Jerarquía tradicional — H1 bold con dots y número a la derecha',
+    renderPreview: (active) => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '0.78em' }}>
+        {[
+          { label: 'Capítulo I', pg: '1', bold: true, indent: 0 },
+          { label: 'Sección 1.1', pg: '3', bold: false, indent: 8 },
+          { label: 'Apartado', pg: '5', bold: false, indent: 16 },
+        ].map((row, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'baseline', paddingLeft: row.indent, color: active ? '#1e40af' : '#374151', opacity: active ? 1 : (i === 0 ? 0.9 : 0.55) }}>
+            <span style={{ fontWeight: row.bold ? 'bold' : 'normal', flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{row.label}</span>
+            <span style={{ color: '#ccc', margin: '0 2px', fontSize: '0.8em' }}>. . .</span>
+            <span style={{ fontWeight: 'normal', color: active ? '#3b82f6' : '#888', fontSize: '0.85em' }}>{row.pg}</span>
+          </div>
+        ))}
+      </div>
+    )
   },
   {
-    id: 'balanced',
-    name: 'Equilibrado',
-    desc: 'Todos los niveles con el mismo peso visual',
-    preview: [
-      { label: 'Capítulo I', size: '0.95em', weight: 'bold', indent: 0 },
-      { label: 'Sección 1.1', size: '0.95em', weight: 'bold', indent: 12 },
-      { label: 'Apartado 1.1.1', size: '0.9em', weight: 'normal', indent: 22 },
-    ]
+    id: 'modern',
+    name: 'Moderno',
+    desc: 'H1 con barra lateral izquierda en versalitas, sin dots — estilo contemporáneo',
+    renderPreview: (active) => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.78em' }}>
+        {[
+          { label: 'CAPÍTULO I', pg: '1', isH1: true },
+          { label: 'Sección 1.1', pg: '3', isH1: false },
+          { label: 'Apartado', pg: '5', isH1: false, indent: 12 },
+        ].map((row, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'baseline', paddingLeft: row.indent || 0, borderLeft: row.isH1 ? `2px solid ${active ? '#1e40af' : '#555'}` : 'none', paddingLeft: row.isH1 ? 6 : (row.indent || 0), color: active ? '#1e40af' : '#374151', opacity: active ? 1 : (i === 0 ? 0.9 : 0.55) }}>
+            <span style={{ fontWeight: row.isH1 ? 'bold' : 'normal', letterSpacing: row.isH1 ? '0.08em' : 'normal', fontSize: row.isH1 ? '0.88em' : '0.92em', flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', textTransform: row.isH1 ? 'uppercase' : 'none' }}>{row.label}</span>
+            <span style={{ fontWeight: row.isH1 ? 'bold' : 'normal', color: row.isH1 ? (active ? '#1e40af' : '#333') : (active ? '#3b82f6' : '#888'), fontSize: '0.85em' }}>{row.pg}</span>
+          </div>
+        ))}
+      </div>
+    )
   },
   {
-    id: 'elegant',
-    name: 'Elegante',
-    desc: 'H1 en versalitas · sin sangría en H2',
-    preview: [
-      { label: 'CAPÍTULO I', size: '0.88em', weight: 'bold', indent: 0, transform: 'uppercase' },
-      { label: 'Sección 1.1', size: '0.9em', weight: 'normal', indent: 0 },
-      { label: 'Apartado', size: '0.84em', weight: 'normal', indent: 14 },
-    ]
+    id: 'minimal',
+    name: 'Minimalista',
+    desc: 'Mismo tamaño, jerarquía solo por sangría — guión em, sin dots',
+    renderPreview: (active) => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '0.78em' }}>
+        {[
+          { label: 'Capítulo I', pg: '1', indent: 0, weight: '500' },
+          { label: 'Sección 1.1', pg: '3', indent: 14, weight: 'normal' },
+          { label: 'Apartado 1.1.1', pg: '5', indent: 26, weight: 'normal' },
+        ].map((row, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'baseline', paddingLeft: row.indent, color: active ? '#1e40af' : '#374151', opacity: active ? 1 : (i === 0 ? 0.9 : 0.55) }}>
+            <span style={{ fontWeight: row.weight, flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{row.label}</span>
+            <span style={{ color: '#ccc', margin: '0 3px' }}> —</span>
+            <span style={{ color: active ? '#3b82f6' : '#888', fontSize: '0.85em' }}>{row.pg}</span>
+          </div>
+        ))}
+      </div>
+    )
   },
   {
-    id: 'compact',
-    name: 'Compacto',
-    desc: 'Tamaño reducido, espaciado mínimo',
-    preview: [
-      { label: 'Capítulo I', size: '0.88em', weight: 'bold', indent: 0 },
-      { label: 'Sección 1.1', size: '0.84em', weight: 'normal', indent: 12 },
-      { label: 'Apartado', size: '0.8em', weight: 'normal', indent: 20 },
-    ]
+    id: 'editorial',
+    name: 'Editorial',
+    desc: 'H1 en bloque propio con número al pie — H2/H3 con dots',
+    renderPreview: (active) => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '0.78em' }}>
+        <div style={{ color: active ? '#1e40af' : '#374151', opacity: active ? 1 : 0.9 }}>
+          <div style={{ fontWeight: 'bold', letterSpacing: '0.12em', textTransform: 'uppercase', fontSize: '0.82em', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>CAPÍTULO I</div>
+          <div style={{ textAlign: 'right', fontSize: '0.72em', color: active ? '#3b82f6' : '#999', marginTop: '1px' }}>1</div>
+        </div>
+        {[
+          { label: 'Sección 1.1', pg: '3', indent: 0 },
+          { label: 'Apartado', pg: '5', indent: 10 },
+        ].map((row, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'baseline', paddingLeft: row.indent, color: active ? '#1e40af' : '#374151', opacity: active ? 1 : 0.55 }}>
+            <span style={{ flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{row.label}</span>
+            <span style={{ color: '#ccc', margin: '0 2px', fontSize: '0.8em' }}>. . .</span>
+            <span style={{ color: active ? '#3b82f6' : '#888', fontSize: '0.85em' }}>{row.pg}</span>
+          </div>
+        ))}
+      </div>
+    )
   }
 ];
 
@@ -349,6 +392,33 @@ const TOCPanel = memo(function TOCPanel() {
                   </div>
 
                   <div className="toc-section">
+                    <span className="toc-section-label">Numeración de página</span>
+                    <label className="toc-checkbox-row" style={{ paddingLeft: 0 }}>
+                      <input
+                        type="checkbox"
+                        checked={tocConfig?.showFolio !== false}
+                        onChange={() => patchTOC({ showFolio: tocConfig?.showFolio === false ? true : false })}
+                      />
+                      <span className="toc-checkbox-label">
+                        Mostrar folio en preliminares
+                      </span>
+                    </label>
+                    {tocConfig?.showFolio !== false && (
+                      <div className="toc-row" style={{ marginTop: 6 }}>
+                        <span className="toc-row-label">Caso</span>
+                        <select
+                          value={tocConfig?.folioCase ?? 'lower'}
+                          onChange={e => patchTOC({ folioCase: e.target.value })}
+                          className="toc-select"
+                        >
+                          <option value="lower">minúsculas (i, ii, iii…)</option>
+                          <option value="upper">MAYÚSCULAS (I, II, III…)</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="toc-section">
                     <label className="toc-checkbox-row" style={{ paddingLeft: 0 }}>
                       <input
                         type="checkbox"
@@ -386,25 +456,7 @@ const TOCPanel = memo(function TOCPanel() {
                         >
                           <span className="toc-template-name">{tpl.name}</span>
                           <div className="toc-template-preview">
-                            {tpl.preview.map((row, i) => (
-                              <div
-                                key={i}
-                                style={{
-                                  fontSize: row.size,
-                                  fontWeight: row.weight,
-                                  paddingLeft: `${row.indent}px`,
-                                  textTransform: row.transform || 'none',
-                                  lineHeight: '1.4',
-                                  overflow: 'hidden',
-                                  whiteSpace: 'nowrap',
-                                  textOverflow: 'ellipsis',
-                                  color: currentTemplate === tpl.id ? '#1e40af' : '#374151',
-                                  opacity: currentTemplate === tpl.id ? 1 : 0.75,
-                                }}
-                              >
-                                {row.label}
-                              </div>
-                            ))}
+                            {tpl.renderPreview(currentTemplate === tpl.id)}
                           </div>
                         </button>
                       ))}
@@ -690,6 +742,32 @@ const TOCPanel = memo(function TOCPanel() {
                       style={{ height: `${pageStyle.contentHeight}px`, overflow: 'hidden' }}
                       dangerouslySetInnerHTML={{ __html: tocPages[tocPageIdx]?.html || '' }}
                     />
+                    {/* Folio (page number) for TOC pages */}
+                    {(() => {
+                      const pg = tocPages[tocPageIdx];
+                      const showFolio = tocConfig?.showFolio !== false;
+                      const showNums = config?.showPageNumbers;
+                      if (!showNums || !showFolio || !pg?.displayPageNumber) return null;
+                      const pos = config?.pageNumberPos || 'bottom';
+                      const align = config?.pageNumberAlign || 'center';
+                      const margin = config?.pageNumberMargin ?? 12;
+                      const fs = pageStyle.fontSize * 0.8;
+                      let hStyle = {};
+                      if (align === 'paragraph-edge') hStyle = { left: `${pageStyle.paddingH}px` };
+                      else if (align === 'paragraph')  hStyle = { left: `${pageStyle.paddingH + 12}px` };
+                      else if (align === 'outer')      hStyle = { left: '12px' };
+                      else hStyle = { left: '50%', transform: 'translateX(-50%)' };
+                      return (
+                        <span style={{
+                          position: 'absolute',
+                          ...(pos === 'top' ? { top: `${margin}px` } : { bottom: `${margin}px` }),
+                          ...hStyle,
+                          fontSize: `${fs}px`,
+                        }}>
+                          {pg.displayPageNumber}
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
               ) : (

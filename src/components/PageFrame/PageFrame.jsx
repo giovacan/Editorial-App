@@ -35,6 +35,7 @@ export default function PageFrame({
   showMargins = false,
   config,
   bookTitle = '',
+  tocConfig = null,
 }) {
   const {
     pageWidthPx, pageHeightPx,
@@ -48,10 +49,21 @@ export default function PageFrame({
   const rawHtml   = page?.html || '';
   const pageNum   = page?.pageNumber;
   const isBlank   = page?.isBlank;
+  const isFrontMatterPage = !!(page?.isTOCPage || page?.isTitlePage || page?.isFrontMatter);
   const showNums  = config?.showPageNumbers !== false;
-  // Mirror Preview.jsx: also show number on extra end pages when explicitly flagged
-  const showPageNum = (showNums && pageNum && !isBlank)
-    || (page?.isExtraEndPage && page?.shouldShowPageNumber);
+  const showFolio = tocConfig?.showFolio !== false;
+
+  // FM pages: show displayPageNumber if non-empty and showFolio is on
+  const hasFmNumber = isFrontMatterPage && !!page?.displayPageNumber && showFolio;
+  // Content pages: show pageNumber normally
+  const showPageNum = showNums && !isBlank && (
+    hasFmNumber ||
+    (!isFrontMatterPage && !!pageNum) ||
+    (page?.isExtraEndPage && page?.shouldShowPageNumber)
+  );
+
+  // Display value: roman numeral for FM, arabic for content
+  const displayNum = page?.displayPageNumber ?? pageNum;
 
   // ── KP Rendering ─────────────────────────────────────────────────────────────
   // Apply Knuth-Plass optimal line breaks + word-spacing as a rendering-only
@@ -160,7 +172,7 @@ export default function PageFrame({
       {/* Page number */}
       {showPageNum && (
         <span className="pf-page-number" style={pageNumStyle}>
-          {pageNum}
+          {displayNum}
         </span>
       )}
     </div>

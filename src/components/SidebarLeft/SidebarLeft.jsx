@@ -361,6 +361,18 @@ function SidebarLeft() {
                   <span>px</span>
                 </div>
               </fieldset>
+
+              <fieldset className="config-group">
+                <legend>Preliminares (portada, TOC…)</legend>
+                <select
+                  value={safeConfig.frontMatterNumbering ?? 'roman'}
+                  onChange={(e) => setConfig({ frontMatterNumbering: e.target.value })}
+                >
+                  <option value="roman">Números romanos (i, ii, iii…)</option>
+                  <option value="arabic">Números arábigos (1, 2, 3…)</option>
+                  <option value="none">Sin número</option>
+                </select>
+              </fieldset>
             </>
           )}
         </>
