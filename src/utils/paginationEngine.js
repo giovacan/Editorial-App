@@ -1,4 +1,4 @@
-import { measureHtmlHeight, insertHtmlLineBreaks, getLineBreakPositions, buildFontString } from './textLayoutEngine';
+import { measureHtmlHeight, insertHtmlLineBreaks } from './textLayoutEngine';
 import { JUSTIFY_SLACK_RATIO } from './paginateChapters';
 
 export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, hasIndent = false, indentValue = 1.5, preserveFirstIndent = false, quoteConfig = null) => {
@@ -211,27 +211,11 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
         ? getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSize, effectiveBaseLineHeight, effectiveTextAlign)
         : `margin:0;padding:0;text-align:${textAlign};text-indent:${indent};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`);
 
-    // When paragraph continues to next page: justify the last visible line ONLY if
-    // it has enough words to look good under justify. Sparse last lines (1–2 words)
-    // stretch to opposite extremes — keep them left-aligned in that case.
+    // When paragraph continues to next page: the last visible line is a mid-paragraph
+    // line — always justify it regardless of how many words it has.
+    // (text-align-last:left is only correct when the paragraph actually ends on this page)
     if (newRemainingHtml) {
-      const plainChunk = chunkHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-      const fontStr = buildFontString(canvasCtx.baseFontSizePx, canvasCtx.fontFamily);
-      const effectiveLineWidth = canvasCtx.contentWidth - (canvasCtx.widthSlack || 0);
-      const lineStarts = getLineBreakPositions(plainChunk, effectiveLineWidth, fontStr);
-      const chunkWords = plainChunk.split(/\s+/).filter(w => w.length > 0);
-      const lastStart = lineStarts.length > 0 ? lineStarts[lineStarts.length - 1] : 0;
-      const lastLineText = chunkWords.slice(lastStart).join(' ');
-      // Use visual width ≥ 50% instead of word count ≥ 3 — word count is not reliable
-      // for Spanish: "y de la" (3 words) occupies only ~18% of line width.
-      // Always override explicitly (originalStyles from prior split may carry justify).
-      const tmpCanvas = document.createElement('canvas');
-      const tmpCtx = tmpCanvas.getContext('2d');
-      tmpCtx.font = fontStr;
-      const widthRatio = effectiveLineWidth > 0
-        ? tmpCtx.measureText(lastLineText).width / effectiveLineWidth
-        : 0;
-      const newAlignLast = widthRatio >= 0.5 ? 'justify' : 'left';
+      const newAlignLast = effectiveTextAlign === 'justify' ? 'justify' : 'left';
       finalStyle = finalStyle.replace(/text-align-last:[^;]+;?/gi, '') + `text-align-last:${newAlignLast};`;
     }
 

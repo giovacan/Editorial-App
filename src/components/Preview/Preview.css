@@ -161,6 +161,11 @@
 }
 
 .preview-content {
+  overflow: hidden;
+}
+
+/* FM pages (TOC, title) need overflow visible for their flex layout */
+.preview-page.is-front-matter .preview-content {
   overflow: visible;
 }
 

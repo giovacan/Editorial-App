@@ -285,7 +285,7 @@ function Preview() {
       <div className="preview-scroll" ref={previewScrollRef}>
         <div
           ref={previewPageRef}
-          className="preview-page"
+          className={`preview-page${isFrontMatterPage ? ' is-front-matter' : ''}`}
           lang="es"
           style={{
             width: `${pageWidthPx}px`, height: `${pageHeightPx}px`,
