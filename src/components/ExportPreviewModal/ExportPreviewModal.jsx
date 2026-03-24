@@ -26,6 +26,7 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
   const storeDims        = useEditorStore((s) => s.layoutDims);
   const config           = useEditorStore(useShallow((s) => s.config));
   const bookData         = useEditorStore(useShallow((s) => s.bookData));
+  const tocConfig        = useEditorStore((s) => s.tocConfig);
 
   const [format, setFormat]           = useState(initialFormat || 'pdf');
   const [showMargins, setShowMargins] = useState(false);
@@ -74,7 +75,11 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
   const allPages = useMemo(() => {
     if (frontMatterPages.length > 0) {
       const offset = frontMatterPages.length;
-      const offsetPages = paginatedPages.map(p => ({ ...p, pageNumber: (p.pageNumber || 0) + offset }));
+      const offsetPages = paginatedPages.map(p => ({
+        ...p,
+        pageNumber: (p.pageNumber || 0) + offset,
+        displayPageNumber: p.displayPageNumber ?? p.pageNumber ?? 1,
+      }));
       return [...frontMatterPages, ...offsetPages];
     }
     return paginatedPages;
@@ -316,6 +321,7 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
               showMargins={showMargins}
               config={safeConfig}
               bookTitle={safeBookData.title}
+              tocConfig={tocConfig}
             />
             {/* Spine */}
             <div className="epv-spine" style={{ width: SPREAD_GAP }} />
@@ -327,6 +333,7 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
               showMargins={showMargins}
               config={safeConfig}
               bookTitle={safeBookData.title}
+              tocConfig={tocConfig}
             />
           </div>
         ) : (
@@ -338,6 +345,7 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
               showMargins={showMargins}
               config={safeConfig}
               bookTitle={safeBookData.title}
+              tocConfig={tocConfig}
             />
           </div>
         )}

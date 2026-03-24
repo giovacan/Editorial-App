@@ -108,11 +108,18 @@ function Preview() {
     usePagination(bookData, config, measureRef);
 
   const frontMatterPages = useEditorStore((s) => s.frontMatterPages) || [];
+  const tocConfig = useEditorStore((s) => s.tocConfig);
   
   const allPages = useMemo(() => {
     if (frontMatterPages.length > 0) {
       const offset = frontMatterPages.length;
-      const offsetPages = pages.map(p => ({ ...p, pageNumber: (p.pageNumber || 0) + offset }));
+      // pageNumber is offset for array position/even-odd detection
+      // displayPageNumber keeps the original arabic number (1, 2, 3…) restarted from 1
+      const offsetPages = pages.map(p => ({
+        ...p,
+        pageNumber: (p.pageNumber || 0) + offset,
+        displayPageNumber: p.displayPageNumber ?? p.pageNumber ?? 1,
+      }));
       return [...frontMatterPages, ...offsetPages];
     }
     return pages;
@@ -140,6 +147,9 @@ function Preview() {
     : { html: '', pageNumber: 1, isBlank: false, chapterTitle: '', currentSubheader: '' };
 
   const isFrontMatterPage = !!(currentPageData.isTOCPage || currentPageData.isTitlePage || currentPageData.isFrontMatter);
+  if (process.env.NODE_ENV === 'development' && isFrontMatterPage) {
+    console.log('[FM-PAGE]', { isTOCPage: currentPageData.isTOCPage, isTitlePage: currentPageData.isTitlePage, displayPageNumber: currentPageData.displayPageNumber, showFolio: tocConfig?.showFolio });
+  }
 
   const debugHtml = (!isFrontMatterPage && debugConfig.enabled)
     ? addDebugTags(currentPageData.html, debugConfig, safeConfig.paragraph)
@@ -199,9 +209,12 @@ function Preview() {
   const skipHeader = headerConfig.skipFirstChapterPage && currentPageData.isFirstChapterPage;
   const hasHeaderContent = headerLeft || headerCenter || headerRight;
 
-  // Frontmatter pages don't show running headers or page numbers
-  const showPageNumber = !isFrontMatterPage && (
-    (showNums && !currentPageData.isBlank) ||
+  // FM pages show their roman numeral if displayPageNumber is set (non-empty); cover has ''
+  const showFolio = tocConfig?.showFolio !== false; // default true
+  const hasFmNumber = isFrontMatterPage && !!currentPageData.displayPageNumber && showFolio;
+  const showPageNumber = showNums && !currentPageData.isBlank && (
+    hasFmNumber ||
+    (!isFrontMatterPage) ||
     (currentPageData.isExtraEndPage && currentPageData.shouldShowPageNumber)
   );
 
@@ -231,8 +244,9 @@ function Preview() {
     fontSize: `${fontSize * 0.8}px`
   };
 
+  const displayNum = currentPageData.displayPageNumber ?? currentPageData.pageNumber;
   const pageNumHtml = showPageNumber ? (
-    <span className="page-number" style={pageNumStyle}>{currentPageData.pageNumber}</span>
+    <span className="page-number" style={pageNumStyle}>{displayNum}</span>
   ) : null;
 
   const sharedPageProps = {

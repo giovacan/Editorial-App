@@ -6,6 +6,7 @@ export type ChapterType = 'chapter' | 'section';
 export type TabName = 'structure' | 'config' | 'preview' | 'export';
 export type PageNumberPos = 'top' | 'bottom';
 export type PageNumberAlign = 'paragraph-edge' | 'paragraph' | 'outer' | 'center';
+export type FrontMatterNumbering = 'roman' | 'arabic' | 'none';
 export type HeaderContent = 'title' | 'chapter' | 'both';
 export type TextAlign = 'left' | 'center' | 'right' | 'justify';
 export type ChapterLayout = 'continuous' | 'spaced' | 'halfPage' | 'fullPage';

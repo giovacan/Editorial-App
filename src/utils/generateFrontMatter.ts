@@ -59,55 +59,58 @@ const TOC_TITLE_SIZE = '1.1em';
 
 const TEMPLATE_STYLES: Record<TOCTemplate, Record<number, LevelStyle>> = {
   //
-  // CLÁSICO — escala descendente tradicional
-  // title 1.1 → H1 0.88 → H2 0.82 → H3 0.77 → H4 0.73 → H5 0.70 → H6 0.67
+  // CLÁSICO — jerarquía tipográfica tradicional, estilo libro académico / literatura
+  // H1 en bold grande, H2+ con escala descendente clara y sangría generosa.
+  // Evoca tablas de contenido de editoriales clásicas (Alfaguara, FCE, Anagrama).
   //
   classic: {
-    1: { fontSize: '0.88em', fontWeight: 'bold',   marginTop: '0.5em',  marginBottom: '0.4em',  textTransform: 'none', letterSpacing: 'normal', indent: 0  },
-    2: { fontSize: '0.82em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.28em', textTransform: 'none', letterSpacing: 'normal', indent: 8  },
-    3: { fontSize: '0.77em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.2em',  textTransform: 'none', letterSpacing: 'normal', indent: 14 },
-    4: { fontSize: '0.73em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.15em', textTransform: 'none', letterSpacing: 'normal', indent: 18 },
-    5: { fontSize: '0.70em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.12em', textTransform: 'none', letterSpacing: 'normal', indent: 22 },
-    6: { fontSize: '0.67em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.1em',  textTransform: 'none', letterSpacing: 'normal', indent: 26 },
+    1: { fontSize: '0.92em', fontWeight: 'bold',   marginTop: '0.65em', marginBottom: '0.2em',  textTransform: 'none', letterSpacing: 'normal', indent: 0  },
+    2: { fontSize: '0.84em', fontWeight: 'normal', marginTop: '0.1em',  marginBottom: '0.18em', textTransform: 'none', letterSpacing: 'normal', indent: 10 },
+    3: { fontSize: '0.77em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.14em', textTransform: 'none', letterSpacing: 'normal', indent: 20 },
+    4: { fontSize: '0.72em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.11em', textTransform: 'none', letterSpacing: 'normal', indent: 28 },
+    5: { fontSize: '0.68em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.09em', textTransform: 'none', letterSpacing: 'normal', indent: 34 },
+    6: { fontSize: '0.65em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.08em', textTransform: 'none', letterSpacing: 'normal', indent: 38 },
   },
   //
-  // EQUILIBRADO — H1 y H2 comparten peso visual similar, H3+ pasos hacia abajo
-  // El TDC no tiene una jerarquía pronunciada de tamaño, pero sí de sangría y peso.
-  // title 1.1 → H1 0.88 bold → H2 0.86 bold → H3 0.81 normal → H4 0.77 normal
+  // MODERNO — sans-serif, H1 en versalitas con tracking amplio, H2 en color
+  // Estilo diseño editorial contemporáneo (manuales, libros técnicos, ensayos).
+  // H1 uppercase + letter-spacing amplios crean ritmo visual fuerte.
+  // H2 ligeramente más oscuro (italic) — contraste sin sangría.
   //
-  balanced: {
-    1: { fontSize: '0.88em', fontWeight: 'bold',   marginTop: '0.45em', marginBottom: '0.32em', textTransform: 'none', letterSpacing: 'normal', indent: 0  },
-    2: { fontSize: '0.86em', fontWeight: 'bold',   marginTop: '0',      marginBottom: '0.28em', textTransform: 'none', letterSpacing: 'normal', indent: 6  },
-    3: { fontSize: '0.81em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.22em', textTransform: 'none', letterSpacing: 'normal', indent: 12 },
-    4: { fontSize: '0.77em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.18em', textTransform: 'none', letterSpacing: 'normal', indent: 16 },
-    5: { fontSize: '0.73em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.14em', textTransform: 'none', letterSpacing: 'normal', indent: 20 },
-    6: { fontSize: '0.70em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.12em', textTransform: 'none', letterSpacing: 'normal', indent: 24 },
+  modern: {
+    1: { fontSize: '0.80em', fontWeight: 'bold',   marginTop: '0.8em',  marginBottom: '0.22em', textTransform: 'uppercase', letterSpacing: '0.12em', indent: 0,  fontFamily: 'inherit' },
+    2: { fontSize: '0.86em', fontWeight: 'normal', marginTop: '0.05em', marginBottom: '0.16em', textTransform: 'none',      letterSpacing: 'normal', indent: 0,  fontFamily: 'inherit' },
+    3: { fontSize: '0.80em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.13em', textTransform: 'none',      letterSpacing: 'normal', indent: 12, fontFamily: 'inherit' },
+    4: { fontSize: '0.75em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.10em', textTransform: 'none',      letterSpacing: 'normal', indent: 20, fontFamily: 'inherit' },
+    5: { fontSize: '0.71em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.08em', textTransform: 'none',      letterSpacing: 'normal', indent: 26, fontFamily: 'inherit' },
+    6: { fontSize: '0.67em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.07em', textTransform: 'none',      letterSpacing: 'normal', indent: 30, fontFamily: 'inherit' },
   },
   //
-  // ELEGANTE — H1 en versalitas (uppercase + letter-spacing), H2+ en texto normal
-  // Uppercase a 0.78em ≈ visualmente equivalente a lowercase 0.88em
-  // H2 intencionalmente sin sangría — el contraste bold/uppercase vs. normal es suficiente
-  // title 1.1 → H1 0.78 bold uppercase → H2 0.82 normal → H3 0.77 normal
+  // MINIMALISTA — todo el mismo tamaño, solo sangría como jerarquía.
+  // Diseño limpio, blanco, silencioso. H1 leve bold, H2+ normal weight.
+  // Ideal para libros de poesía, ensayo, narrativa contemporánea.
+  // La jerarquía visual viene solo del indentado y el espaciado.
   //
-  elegant: {
-    1: { fontSize: '0.78em', fontWeight: 'bold',   marginTop: '0.65em', marginBottom: '0.4em',  textTransform: 'uppercase', letterSpacing: '0.09em', indent: 0  },
-    2: { fontSize: '0.82em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.3em',  textTransform: 'none',      letterSpacing: 'normal', indent: 0  },
-    3: { fontSize: '0.77em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.22em', textTransform: 'none',      letterSpacing: 'normal', indent: 8  },
-    4: { fontSize: '0.73em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.16em', textTransform: 'none',      letterSpacing: 'normal', indent: 12 },
-    5: { fontSize: '0.70em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.13em', textTransform: 'none',      letterSpacing: 'normal', indent: 16 },
-    6: { fontSize: '0.67em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.11em', textTransform: 'none',      letterSpacing: 'normal', indent: 18 },
+  minimal: {
+    1: { fontSize: '0.84em', fontWeight: '500',    marginTop: '0.55em', marginBottom: '0.12em', textTransform: 'none', letterSpacing: 'normal', indent: 0  },
+    2: { fontSize: '0.84em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.10em', textTransform: 'none', letterSpacing: 'normal', indent: 14 },
+    3: { fontSize: '0.84em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.08em', textTransform: 'none', letterSpacing: 'normal', indent: 26 },
+    4: { fontSize: '0.82em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.07em', textTransform: 'none', letterSpacing: 'normal', indent: 36 },
+    5: { fontSize: '0.80em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.06em', textTransform: 'none', letterSpacing: 'normal', indent: 44 },
+    6: { fontSize: '0.78em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.05em', textTransform: 'none', letterSpacing: 'normal', indent: 50 },
   },
   //
-  // COMPACTO — mismo descenso de jerarquía, espaciado mínimo para TDC largo
-  // title 1.1 → H1 0.84 → H2 0.79 → H3 0.75 → H4 0.71 → …
+  // EDITORIAL — estilo revista / libro de arte. H1 centrado en versalitas espaciadas,
+  // H2 en itálica sin sangría, H3+ indentado fino.
+  // Para libros de fotografía, catálogos, libros de arte, ensayos visuales.
   //
-  compact: {
-    1: { fontSize: '0.84em', fontWeight: 'bold',   marginTop: '0.3em',  marginBottom: '0.18em', textTransform: 'none', letterSpacing: 'normal', indent: 0  },
-    2: { fontSize: '0.79em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.13em', textTransform: 'none', letterSpacing: 'normal', indent: 6  },
-    3: { fontSize: '0.75em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.1em',  textTransform: 'none', letterSpacing: 'normal', indent: 12 },
-    4: { fontSize: '0.71em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.08em', textTransform: 'none', letterSpacing: 'normal', indent: 16 },
-    5: { fontSize: '0.68em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.07em', textTransform: 'none', letterSpacing: 'normal', indent: 18 },
-    6: { fontSize: '0.65em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.06em', textTransform: 'none', letterSpacing: 'normal', indent: 20 },
+  editorial: {
+    1: { fontSize: '0.82em', fontWeight: 'bold',   marginTop: '0.9em',  marginBottom: '0.35em', textTransform: 'uppercase', letterSpacing: '0.15em', indent: 0  },
+    2: { fontSize: '0.84em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.28em', textTransform: 'none',      letterSpacing: 'normal', indent: 0  },
+    3: { fontSize: '0.78em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.20em', textTransform: 'none',      letterSpacing: 'normal', indent: 10 },
+    4: { fontSize: '0.73em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.15em', textTransform: 'none',      letterSpacing: 'normal', indent: 18 },
+    5: { fontSize: '0.69em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.12em', textTransform: 'none',      letterSpacing: 'normal', indent: 24 },
+    6: { fontSize: '0.65em', fontWeight: 'normal', marginTop: '0',      marginBottom: '0.10em', textTransform: 'none',      letterSpacing: 'normal', indent: 28 },
   }
 };
 
@@ -434,7 +437,8 @@ export const generateTOCPages = (
   // from inflating the margin. titleHeightPx already includes this margin in the formula.
   const titleMarginBotPx = Math.ceil(1.5 * titleFontEm * bfPx);
   const titleFontSize = tocConfig.titleFontSize || TOC_TITLE_SIZE;
-  const titleHtml = `<div style="text-align:center; font-size:${titleFontSize}; font-weight:bold; margin-bottom:${titleMarginBotPx}px; line-height:${lineHeightPx}px; letter-spacing:${template === 'elegant' ? '0.09em' : 'normal'};">${tocConfig.title || 'Índice'}</div>`;
+  const titleLetterSpacing = (template === 'editorial' || template === 'modern') ? '0.08em' : 'normal';
+  const titleHtml = `<div style="text-align:center; font-size:${titleFontSize}; font-weight:bold; margin-bottom:${titleMarginBotPx}px; line-height:${lineHeightPx}px; letter-spacing:${titleLetterSpacing};">${tocConfig.title || 'Índice'}</div>`;
 
   // ── Uniform H3 font size ─────────────────────────────────────────────────────
   // Use pre-computed value from caller if provided; otherwise compute on the spot.
@@ -763,25 +767,18 @@ export const generateTOCPages = (
 
   // ── Phase 4: HTML generation + tocLog ────────────────────────────────────
   for (let i = 0; i < computed.length; i++) {
-    const { entry, displayTitle, style, rawLines, entryPx, displayFontSize, entryLhPxCeil, marginTopPx, marginBotPx, titleColW } = computed[i];
+    const { entry, displayTitle, style, rawLines, entryPx, displayFontSize, entryLhPxCeil, marginTopPx, marginBotPx } = computed[i];
     const pageBreak = pageBreakBefore[i];
 
     let titleText = digitalLinks && entry.elementId
       ? `<a href="#${entry.elementId}" style="color:inherit; text-decoration:none;">${displayTitle}</a>`
       : displayTitle;
     const entryFontFamily = style.fontFamily ? `font-family:${style.fontFamily};` : '';
-    // Inline leader dots: title text and dots are both inline content inside a
-    // height-constrained span. The dots (normal wrapping text, NOT nowrap) flow
-    // after the last word, filling the rest of that line. Extra dots that wrap to
-    // additional lines are clipped by height:rawLines*lineHeight + overflow:hidden.
-    // flex:1 on the title span fills the row up to the page number, giving
-    // width ≈ titleColW — matching Canvas line-break measurement.
-    // CRITICAL: line-height and margins use EXPLICIT PX (not em/unitless) to prevent
-    // browser minimum-font-size from inflating line-height via unitless factor resolution.
     const titleHeight = rawLines * entryLhPxCeil;
-    // All separators use inline text inside the title span (2-flex-item layout).
-    // 'line' uses underscores with spaces — same wrapping pattern as dots/dash.
-    // Underscores render at the baseline in ALL fonts, forming a near-continuous line.
+    const mt = marginTopPx + extraMarginTop[i];
+    const mb = marginBotPx;
+
+    // ── Separator inline text (used by classic + minimal) ─────────────────────
     const separatorInline =
       separator === 'dots'
         ? ` <span style="color:#bbb;letter-spacing:0.08em;font-weight:normal;">. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .</span>`
@@ -794,7 +791,49 @@ export const generateTOCPages = (
         : separator === 'asterisk'
         ? ` <span style="color:#bbb;letter-spacing:0.12em;font-weight:normal;">* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *</span>`
         : '';
-    const entryHtml = `<div style="display:flex;align-items:flex-end;margin-top:${marginTopPx + extraMarginTop[i]}px;margin-bottom:${marginBotPx}px;font-size:${displayFontSize};font-weight:${style.fontWeight};${entryFontFamily}text-transform:${style.textTransform};letter-spacing:${style.letterSpacing};padding-left:${style.indent}px;line-height:${entryLhPxCeil}px;"><span style="flex:1 1 0;min-width:0;height:${titleHeight}px;overflow:hidden;overflow-wrap:break-word;word-break:normal;">${titleText}${separatorInline}</span><span style="flex:0 0 ${maxPageNumW}px;text-align:right;white-space:nowrap;font-weight:normal;color:#555;font-size:0.9em;padding-left:1px;line-height:${entryLhPxCeil}px;transform:translateY(-1px);">${entry.page}</span></div>`;
+
+    // ── Per-template HTML layout ───────────────────────────────────────────────
+    // All share the same entryPx measurement — only visual presentation differs.
+    // CRITICAL: line-height and margins use EXPLICIT PX to prevent browser
+    // minimum-font-size from inflating line-height via unitless factor resolution.
+    let entryHtml: string;
+
+    if (template === 'modern') {
+      // MODERNO: barra vertical izquierda en H1, sin dots, número en bold oscuro
+      // H1 → accent bar left + uppercase + tracking wide
+      // H2+ → normal, sin barra, indent
+      const isH1 = entry.level === 1;
+      const barStyle = isH1
+        ? `border-left:2px solid #333;padding-left:6px;`
+        : '';
+      const pageNumStyle = isH1
+        ? `font-weight:bold;color:#222;font-size:0.9em;`
+        : `font-weight:normal;color:#888;font-size:0.85em;`;
+      entryHtml = `<div style="display:flex;align-items:flex-end;margin-top:${mt}px;margin-bottom:${mb}px;font-size:${displayFontSize};font-weight:${style.fontWeight};${entryFontFamily}text-transform:${style.textTransform};letter-spacing:${style.letterSpacing};padding-left:${style.indent}px;line-height:${entryLhPxCeil}px;${barStyle}"><span style="flex:1 1 0;min-width:0;height:${titleHeight}px;overflow:hidden;overflow-wrap:break-word;word-break:normal;">${titleText}</span><span style="flex:0 0 ${maxPageNumW}px;text-align:right;white-space:nowrap;${pageNumStyle}padding-left:1px;line-height:${entryLhPxCeil}px;">${entry.page}</span></div>`;
+
+    } else if (template === 'minimal') {
+      // MINIMALISTA: guión em entre título y número, mismo tamaño todo, solo indent
+      // Sin dots, sin bold, solo el texto alineado con espacio limpio
+      const dashSep = ` <span style="color:#ccc;font-weight:normal;"> —</span>`;
+      entryHtml = `<div style="display:flex;align-items:flex-end;margin-top:${mt}px;margin-bottom:${mb}px;font-size:${displayFontSize};font-weight:${style.fontWeight};${entryFontFamily}letter-spacing:${style.letterSpacing};padding-left:${style.indent}px;line-height:${entryLhPxCeil}px;"><span style="flex:1 1 0;min-width:0;height:${titleHeight}px;overflow:hidden;overflow-wrap:break-word;word-break:normal;">${titleText}${dashSep}</span><span style="flex:0 0 ${maxPageNumW}px;text-align:right;white-space:nowrap;font-weight:normal;color:#666;font-size:0.9em;padding-left:1px;line-height:${entryLhPxCeil}px;">${entry.page}</span></div>`;
+
+    } else if (template === 'editorial') {
+      // EDITORIAL: H1 en versalitas muy espaciadas con número debajo-derecha en pequeño
+      // H1 ocupa su propia "zona" visual — título arriba, número abajo alineado derecha
+      // H2+ normal con dots (hereda el separador del usuario)
+      const isH1 = entry.level === 1;
+      if (isH1) {
+        // H1: bloque completo — título centrado, número flotante abajo derecha
+        const numLine = `<div style="display:flex;justify-content:flex-end;line-height:${entryLhPxCeil}px;margin-top:1px;"><span style="font-size:0.78em;font-weight:normal;color:#888;letter-spacing:normal;">${entry.page}</span></div>`;
+        entryHtml = `<div style="margin-top:${mt}px;margin-bottom:${mb}px;font-size:${displayFontSize};font-weight:${style.fontWeight};${entryFontFamily}text-transform:${style.textTransform};letter-spacing:${style.letterSpacing};line-height:${entryLhPxCeil}px;"><div style="height:${titleHeight}px;overflow:hidden;overflow-wrap:break-word;word-break:normal;text-align:left;">${titleText}</div>${numLine}</div>`;
+      } else {
+        entryHtml = `<div style="display:flex;align-items:flex-end;margin-top:${mt}px;margin-bottom:${mb}px;font-size:${displayFontSize};font-weight:${style.fontWeight};${entryFontFamily}letter-spacing:${style.letterSpacing};padding-left:${style.indent}px;line-height:${entryLhPxCeil}px;"><span style="flex:1 1 0;min-width:0;height:${titleHeight}px;overflow:hidden;overflow-wrap:break-word;word-break:normal;">${titleText}${separatorInline}</span><span style="flex:0 0 ${maxPageNumW}px;text-align:right;white-space:nowrap;font-weight:normal;color:#555;font-size:0.9em;padding-left:1px;line-height:${entryLhPxCeil}px;transform:translateY(-1px);">${entry.page}</span></div>`;
+      }
+
+    } else {
+      // CLÁSICO (default): flex row, título + dots inline, número derecha
+      entryHtml = `<div style="display:flex;align-items:flex-end;margin-top:${mt}px;margin-bottom:${mb}px;font-size:${displayFontSize};font-weight:${style.fontWeight};${entryFontFamily}text-transform:${style.textTransform};letter-spacing:${style.letterSpacing};padding-left:${style.indent}px;line-height:${entryLhPxCeil}px;"><span style="flex:1 1 0;min-width:0;height:${titleHeight}px;overflow:hidden;overflow-wrap:break-word;word-break:normal;">${titleText}${separatorInline}</span><span style="flex:0 0 ${maxPageNumW}px;text-align:right;white-space:nowrap;font-weight:normal;color:#555;font-size:0.9em;padding-left:1px;line-height:${entryLhPxCeil}px;transform:translateY(-1px);">${entry.page}</span></div>`;
+    }
 
     // Use Phase 3's actual decisions — not a re-computation that could diverge.
     const { followPx, orphanReleased, breakReason } = p3[i];
