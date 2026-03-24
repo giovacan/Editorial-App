@@ -1006,9 +1006,9 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
         break;
       }
       // Near-boundary guard: Canvas can under-estimate by 1-3px. If the chunk lands
-      // within half a line of the page limit, reject — DOM may clip the last line.
-      // Only apply when the element is taller than half a line (avoids over-blocking).
-      const nearBoundary = chunkFitHeight > contentHeight - lineHeightPx * 0.5
+      // within 3px of the page limit, reject — DOM rendering may clip the last line.
+      // 3px ≈ the typical Canvas/DOM discrepancy; half-a-line would block too many fills.
+      const nearBoundary = chunkFitHeight > contentHeight - 3
         && measure(chunk) > lineHeightPx * 0.5;
       if (nearBoundary) {
         log.record('fill', 'reject', i + 1, { tag, text: (firstEl.textContent || '').substring(0, 60), reason: 'split-near-boundary', chunkFitHeight: +chunkFitHeight.toFixed(0), contentH: +contentHeight.toFixed(0) });
