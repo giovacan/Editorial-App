@@ -1,3 +1,5 @@
+import { memo } from 'react';
+import useEditorStore from '../../store/useEditorStore';
 import ChapterItem from './ChapterItem';
 
 function StructureTab({
@@ -13,6 +15,7 @@ function StructureTab({
   onMoveChapter,
   onChapterTitleChange,
 }) {
+  const setShowTOCPanel = useEditorStore(s => s.setShowTOCPanel);
   return (
     <section className="sidebar-section">
       <h2 className="sidebar-title">Estructura del Libro</h2>
@@ -46,6 +49,9 @@ function StructureTab({
         </button>
         <button className="btn btn-small btn-secondary" onClick={onAddSection}>
           + Sección
+        </button>
+        <button className="btn btn-small" onClick={() => setShowTOCPanel(true)} style={{ backgroundColor: '#6366f1', color: '#fff' }}>
+          📑 Índice
         </button>
       </div>
 
@@ -90,4 +96,4 @@ function StructureTab({
   );
 }
 
-export default StructureTab;
+export default memo(StructureTab);

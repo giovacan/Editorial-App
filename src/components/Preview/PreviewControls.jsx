@@ -67,7 +67,12 @@ function PreviewControls({
             min="1"
             max={totalPages}
             value={currentPage + 1}
-            onChange={(e) => goToPage(parseInt(e.target.value) || 1)}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val === '') return;
+              goToPage(parseInt(val) || 1);
+            }}
+            onFocus={(e) => e.target.select()}
             className="page-input"
           />
           / {totalPages}

@@ -138,9 +138,8 @@
 
 .epv-canvas {
   flex: 1;
+  min-height: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
   overflow: auto;
   padding: 24px 24px 0;
 }
@@ -149,11 +148,15 @@
   display: flex;
   align-items: flex-start;
   gap: 0;
+  /* margin: auto centers when content fits AND allows scrolling in all directions
+     when zoomed — avoids the align-items:center overflow-top bug */
+  margin: auto;
 }
 
 .epv-single {
   display: flex;
   align-items: flex-start;
+  margin: auto;
 }
 
 .epv-spine {
@@ -250,3 +253,76 @@
 .epv-quality-btn:hover:not(:disabled) { background: #2a2a4a; color: #ccc; }
 .epv-quality-btn.active { background: #1d3461; color: #74b2ff; font-weight: 600; }
 .epv-quality-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* ── Zoom controls ───────────────────────────────────────────────────────── */
+
+.epv-zoom-controls {
+  display: flex;
+  align-items: center;
+  background: #22223a;
+  border: 1px solid #3a3a5a;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.epv-zoom-btn {
+  padding: 6px 11px;
+  background: transparent;
+  border: none;
+  color: #9898b8;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  user-select: none;
+}
+.epv-zoom-btn:hover { background: #2a2a4a; color: #fff; }
+
+.epv-zoom-level {
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  border-left: 1px solid #3a3a5a;
+  border-right: 1px solid #3a3a5a;
+  color: #c8c8e8;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  min-width: 48px;
+  text-align: center;
+  transition: background 0.15s;
+}
+.epv-zoom-level:hover { background: #2a2a4a; }
+
+/* ── Page jump ────────────────────────────────────────────────────────────── */
+
+.epv-page-jump {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.epv-page-input {
+  width: 52px;
+  padding: 5px 8px;
+  background: #22223a;
+  border: 1px solid #3a3a5a;
+  border-radius: 7px;
+  color: #f0f0f0;
+  font-size: 13px;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.15s;
+  /* hide spin buttons */
+  -moz-appearance: textfield;
+}
+.epv-page-input::-webkit-outer-spin-button,
+.epv-page-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.epv-page-input:focus { border-color: #3b5bdb; }
+.epv-page-input::placeholder { color: #6868a0; }
+
+.epv-page-total {
+  font-size: 13px;
+  color: #8888aa;
+  white-space: nowrap;
+}
