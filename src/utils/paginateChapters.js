@@ -611,7 +611,9 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
           - Math.floor(actualCurrentHeight / lineHeightPx);
         const widowLines = Math.floor(measure(restChunk) / lineHeightPx);
         const effectiveMinOrphan = isLastChapterElement ? 1 : minOrphanLines;
-        const effectiveMinWidow = isLastChapterElement ? 1 : minOrphanLines;
+        // Widows (rest chunk at top of next page) are more visually disruptive
+        // than orphans — require 1 extra line (min 3) to avoid 2-line fragments.
+        const effectiveMinWidow = isLastChapterElement ? 1 : minOrphanLines + 1;
 
         if (orphanLines >= effectiveMinOrphan && widowLines >= effectiveMinWidow) {
           // Symmetric lookahead: simulate what the full next page would look like
