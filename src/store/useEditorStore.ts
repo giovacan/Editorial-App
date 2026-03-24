@@ -197,7 +197,18 @@ const initialState = {
   },
   confirmedChapterTitles: [] as string[],
   paginatedPages: [] as any[],
-  layoutDims: null as any
+  layoutDims: null as any,
+  paginationLog: null as any,
+  tocBuildLog: null as any,
+  tocData: null as any,
+  tocConfig: null as any,
+  tocAuto: true as boolean,
+  frontMatterPages: [] as any[],
+  frontMatterConfig: {
+    includeTitlePage: true,
+    includeTOC: true
+  } as any,
+  showTOCPanel: false as boolean
 };
 
 const mergeDeep = (target: any, source: any): any => {
@@ -519,7 +530,15 @@ const useEditorStore = create<EditorState>()(
     }),
 
     setPaginatedPages: (pages: any[]) => set({ paginatedPages: pages }),
-    setLayoutDims: (dims: any) => set({ layoutDims: dims })
+    setLayoutDims: (dims: any) => set({ layoutDims: dims }),
+    setPaginationLog: (log: any) => set({ paginationLog: log }),
+    setTocBuildLog: (log: any) => set({ tocBuildLog: log }),
+    setTOCData: (data: any) => set({ tocData: data }),
+    setTOCConfig: (config: any) => set({ tocConfig: config }),
+    setTOCAuto: (auto: boolean) => set({ tocAuto: auto }),
+    setFrontMatterPages: (pages: any[]) => set({ frontMatterPages: pages }),
+    setFrontMatterConfig: (config: any) => set({ frontMatterConfig: config }),
+    setShowTOCPanel: (show: boolean) => set({ showTOCPanel: show })
   })
   )
 );

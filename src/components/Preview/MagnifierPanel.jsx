@@ -1,5 +1,6 @@
 function MagnifierPanel({
   magnifierPanelRef,
+  magnifierPageRef,
   magnifierContentRef,
   magnifierZoom,
   magnifierPos,
@@ -21,6 +22,7 @@ function MagnifierPanel({
   skipHeader,
   hasHeaderContent,
   headerHtml,
+  isFrontMatterPage,
   handleMouseEnterMagnifier,
   handleMouseLeaveMagnifier
 }) {
@@ -69,6 +71,7 @@ function MagnifierPanel({
         }}
       >
         <div
+          ref={magnifierPageRef}
           className="preview-page"
           lang="es"
           style={{
@@ -78,20 +81,19 @@ function MagnifierPanel({
             fontSize: `${fontSize}px`,
             fontFamily,
             lineHeight: `${lineHeightPx}px`,
-            textAlign,
-            textJustify: 'inter-word',
-            hyphens: 'auto',
+            textAlign: isFrontMatterPage ? 'left' : textAlign,
+            textJustify: isFrontMatterPage ? undefined : 'inter-word',
+            hyphens: isFrontMatterPage ? 'none' : 'auto',
             wordBreak: 'break-word',
             overflowWrap: 'break-word',
             background: 'white',
             boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-            overflow: 'hidden',
             boxSizing: 'border-box',
             transform: `scale(${magScale}) translate(${tx / magScale}px, ${ty / magScale}px)`,
             transformOrigin: '0 0'
           }}
         >
-          {showHeaders && !currentPageData.isBlank && !skipHeader && hasHeaderContent && (
+          {showHeaders && !currentPageData.isBlank && !skipHeader && hasHeaderContent && !isFrontMatterPage && (
             <div
               className="preview-header"
               dangerouslySetInnerHTML={{ __html: headerHtml }}

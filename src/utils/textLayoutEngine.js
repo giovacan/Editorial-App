@@ -336,7 +336,7 @@ const getHyphenWidth = (fontString) => {
  * @param {number} firstLineIndent - First line indent in px
  * @returns {number} Number of lines
  */
-const countLinesFromRuns = (runs, contentWidth, baseFontSizePx, fontFamily, firstLineIndent = 0, wordSpacingPx = 0) => {
+const countLinesFromRuns = (runs, contentWidth, baseFontSizePx, fontFamily, firstLineIndent = 0, wordSpacingPx = 0, noHyphenation = false) => {
   if (!runs || runs.length === 0 || contentWidth <= 0) return 0;
 
   // Flatten runs into word-level tokens with their font
@@ -397,19 +397,21 @@ const countLinesFromRuns = (runs, contentWidth, baseFontSizePx, fontFamily, firs
         lines += broken.lines;
         currentLineWidth = broken.lastLineWidth;
       } else {
-        // Try Spanish hyphenation before wrapping the whole word
-        const available = contentWidth - currentLineWidth;
-        const hyphenW = getHyphenWidth(token.fontStr);
-        const hpts = getSpanishHyphenPoints(token.text);
+        // Try Spanish hyphenation before wrapping the whole word (unless disabled)
         let hyphenated = false;
-        for (let k = hpts.length - 1; k >= 0; k--) {
-          const prefix = token.text.slice(0, hpts[k]);
-          if (measureWordWidth(prefix, token.fontStr) + hyphenW <= available) {
-            const suffix = token.text.slice(hpts[k]);
-            lines++;
-            currentLineWidth = measureWordWidth(suffix, token.fontStr);
-            hyphenated = true;
-            break;
+        if (!noHyphenation) {
+          const available = contentWidth - currentLineWidth;
+          const hyphenW = getHyphenWidth(token.fontStr);
+          const hpts = getSpanishHyphenPoints(token.text);
+          for (let k = hpts.length - 1; k >= 0; k--) {
+            const prefix = token.text.slice(0, hpts[k]);
+            if (measureWordWidth(prefix, token.fontStr) + hyphenW <= available) {
+              const suffix = token.text.slice(hpts[k]);
+              lines++;
+              currentLineWidth = measureWordWidth(suffix, token.fontStr);
+              hyphenated = true;
+              break;
+            }
           }
         }
         if (!hyphenated) {
@@ -468,7 +470,7 @@ initKnuthPlass(measureWordWidth, getSpaceWidth, buildFontString, breakWord);
 
 // ─── Simple line counter (plain text, single font) ──────────────────
 
-const countLines = (text, contentWidth, fontString, firstLineIndent = 0, letterSpacingPx = 0, wordSpacingPx = 0) => {
+const countLines = (text, contentWidth, fontString, firstLineIndent = 0, letterSpacingPx = 0, wordSpacingPx = 0, noHyphenation = false) => {
   if (!text || !text.trim() || contentWidth <= 0) return text?.trim() ? 1 : 0;
 
   const collapsed = collapseWhitespace(text);
@@ -510,23 +512,25 @@ const countLines = (text, contentWidth, fontString, firstLineIndent = 0, letterS
         lines += broken.lines;
         currentLineWidth = broken.lastLineWidth;
       } else {
-        // Try Spanish hyphenation before wrapping the whole word
-        const available = contentWidth - currentLineWidth - spaceWidth;
-        const hyphenW = getHyphenWidth(fontString);
-        const hpts = getSpanishHyphenPoints(words[i]);
+        // Try Spanish hyphenation before wrapping the whole word (unless disabled)
         let hyphenated = false;
-        for (let k = hpts.length - 1; k >= 0; k--) {
-          const prefix = words[i].slice(0, hpts[k]);
-          let prefixW = measureWordWidth(prefix, fontString) + hyphenW;
-          if (letterSpacingPx && prefix.length > 1) prefixW += letterSpacingPx * (prefix.length - 1);
-          if (prefixW <= available) {
-            const suffix = words[i].slice(hpts[k]);
-            let suffixW = measureWordWidth(suffix, fontString);
-            if (letterSpacingPx && suffix.length > 1) suffixW += letterSpacingPx * (suffix.length - 1);
-            lines++;
-            currentLineWidth = suffixW;
-            hyphenated = true;
-            break;
+        if (!noHyphenation) {
+          const available = contentWidth - currentLineWidth - spaceWidth;
+          const hyphenW = getHyphenWidth(fontString);
+          const hpts = getSpanishHyphenPoints(words[i]);
+          for (let k = hpts.length - 1; k >= 0; k--) {
+            const prefix = words[i].slice(0, hpts[k]);
+            let prefixW = measureWordWidth(prefix, fontString) + hyphenW;
+            if (letterSpacingPx && prefix.length > 1) prefixW += letterSpacingPx * (prefix.length - 1);
+            if (prefixW <= available) {
+              const suffix = words[i].slice(hpts[k]);
+              let suffixW = measureWordWidth(suffix, fontString);
+              if (letterSpacingPx && suffix.length > 1) suffixW += letterSpacingPx * (suffix.length - 1);
+              lines++;
+              currentLineWidth = suffixW;
+              hyphenated = true;
+              break;
+            }
           }
         }
         if (!hyphenated) {
@@ -753,7 +757,7 @@ const resolveSize = (value, unit, baseFontSizePx) => {
 const calculateElementHeight = (parsed, layoutCtx) => {
   if (!parsed) return 0;
 
-  const { baseFontSizePx, baseLineHeight, contentWidth, fontFamily, widthSlack = 0 } = layoutCtx;
+  const { baseFontSizePx, baseLineHeight, contentWidth, fontFamily, widthSlack = 0, noHyphenation = false } = layoutCtx;
   const { text, styles, tag, runs } = parsed;
 
   // --- Block replaced elements (img, video, etc.) ---
@@ -861,7 +865,7 @@ const calculateElementHeight = (parsed, layoutCtx) => {
 
   // Check paragraph cache first
   const collapsedText = collapseWhitespace(text);
-  const cacheKey = getParagraphCacheKey(collapsedText, fontString, availableWidth, indentPx, wordSpacingPx);
+  const cacheKey = getParagraphCacheKey(collapsedText, fontString, availableWidth, indentPx, wordSpacingPx) + (noHyphenation ? '|noHyph' : '');
   const cached = _paragraphLayoutCache.get(cacheKey);
   if (cached !== undefined) {
     lineCount = cached;
@@ -874,13 +878,13 @@ const calculateElementHeight = (parsed, layoutCtx) => {
       const kp = useKP
         ? countLinesFromRunsKP(runs, availableWidth, elFontSizePx, fontFamily, indentPx, wordSpacingPx)
         : null;
-      lineCount = kp !== null ? kp : countLinesFromRuns(runs, availableWidth, elFontSizePx, fontFamily, indentPx, wordSpacingPx);
+      lineCount = kp !== null ? kp : countLinesFromRuns(runs, availableWidth, elFontSizePx, fontFamily, indentPx, wordSpacingPx, noHyphenation);
     } else {
       // Uniform font — try Knuth-Plass optimal, fall back to greedy
       const kp = useKP
         ? countLinesKP(collapsedText, availableWidth, fontString, indentPx, letterSpacingPx, wordSpacingPx)
         : null;
-      lineCount = kp !== null ? kp : countLines(collapsedText, availableWidth, fontString, indentPx, letterSpacingPx, wordSpacingPx);
+      lineCount = kp !== null ? kp : countLines(collapsedText, availableWidth, fontString, indentPx, letterSpacingPx, wordSpacingPx, noHyphenation);
     }
   }
 
@@ -1174,6 +1178,13 @@ export const applyKpRendering = (pageHtml, layoutCtx) => {
       // which complicates span wrapping. Greedy rendering is acceptable there.
       const runs = extractTextRuns(el, { bold: false, italic: false, fontSize: null });
       if (runs && hasStyledRuns(runs)) continue;
+
+      // Skip when entire content is uniformly bold or italic (single <strong>/<em> wrapper).
+      // Inserting <br> inside the wrapping element creates malformed HTML fragments
+      // (e.g. "<strong>line1" + "line2</strong>") — the browser auto-repairs by closing
+      // the tag before the break, causing the second line to lose its bold/italic styling.
+      // These are typically subheader paragraphs; browser line-breaking is acceptable.
+      if (runs && runs.length === 1 && (runs[0].bold || runs[0].italic)) continue;
 
       // Resolve element font
       const styles = extractStyles(el.style);

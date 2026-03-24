@@ -3,6 +3,9 @@ import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 import Layout from './components/Layout/Layout';
 import { LandingPage } from './pages/LandingPage';
 import HomePage from './pages/HomePage';
+import BookDetailPage from './pages/BookDetailPage';
+import AuthorPage from './pages/AuthorPage';
+import CategoryPage from './pages/CategoryPage';
 import { LoginPage } from './components/Auth/LoginPage';
 import { RegisterPage } from './components/Auth/RegisterPage';
 import { ProtectedRoute } from './components/Auth/ProtectedRoute';
@@ -47,6 +50,16 @@ function App() {
         
         {/* Home page - comunidad */}
         <Route path="/home" element={<HomePage />} />
+        
+        {/* Book detail page */}
+        <Route path="/book/:id" element={<BookDetailPage />} />
+        
+        {/* Author page */}
+        <Route path="/author/:authorName" element={<AuthorPage />} />
+        
+        {/* Category page */}
+        <Route path="/category" element={<CategoryPage />} />
+        <Route path="/category/:categoryId" element={<CategoryPage />} />
         
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

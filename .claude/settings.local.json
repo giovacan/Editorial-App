@@ -1,4 +1,17 @@
 {
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"c:/Users/equipo/OneDrive/GCpersonal/APPS/editorial-app/scripts/read-pagination-log.js\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
   "permissions": {
     "allow": [
       "Bash(git push:*)",
@@ -37,7 +50,27 @@
       "WebFetch(domain:pagedjs.org)",
       "WebFetch(domain:vivliostyle.org)",
       "WebFetch(domain:react-pdf.org)",
-      "WebFetch(domain:discuss.prosemirror.net)"
+      "WebFetch(domain:discuss.prosemirror.net)",
+      "Bash(git pull:*)",
+      "Bash(git restore:*)",
+      "Bash(git add:*)",
+      "Bash(node -e \"const { build } = require\\(''''vite''''\\); build\\(\\).then\\(\\(\\) => console.log\\(''''BUILD OK''''\\)\\).catch\\(e => console.error\\(''''BUILD FAIL:'''', e.message\\)\\)\")",
+      "Bash(NODE_OPTIONS=\"--max-old-space-size=4096\" npx vite build)",
+      "Bash(node -e \"try { require\\(''esbuild''\\).buildSync\\({ entryPoints: [''src/utils/paginateChapters.js''], bundle: false, write: false, format: ''esm'', jsx: ''automatic'' }\\); console.log\\(''OK: no syntax errors''\\); } catch\\(e\\) { console.error\\(e.message\\); }\")",
+      "Bash(npx vite:*)",
+      "Bash(node --max-old-space-size=2048 node_modules/.bin/vite build)",
+      "Bash(node --max-old-space-size=2048 node_modules/vite/bin/vite.js build)",
+      "Bash(node -e \"const fs=require\\(''fs''\\); const code=fs.readFileSync\\(''c:/Users/equipo/OneDrive/GCpersonal/APPS/editorial-app/src/utils/paginateChapters.js'',''utf8''\\); try { new Function\\(code.replace\\(/import\\\\s+\\\\{[^}]+\\\\}\\\\s+from\\\\s+[''\"\"][^''\"\"]+[''\"\"]/g,''''\\).replace\\(/export\\\\s+const/g,''const''\\)\\); console.log\\(''SYNTAX OK, lines:'',code.split\\(''\\\\n''\\).length\\); } catch\\(e\\) { console.error\\(''SYNTAX ERROR:'',e.message\\); }\")",
+      "Bash(xargs grep:*)",
+      "Bash(netstat -ano)",
+      "Bash(wc -l /c/Users/equipo/OneDrive/GCpersonal/APPS/editorial-app/src/utils/*.js)",
+      "Bash(npx -y acorn --ecma2020 --module --allow-import-export-everywhere src/utils/paginateChapters.js)",
+      "Bash(node -c src/utils/paginateChapters.js)",
+      "Bash(node --check src/utils/paginateChapters.js)",
+      "Bash(node -e \"const fs = require\\(''fs''\\); const code = fs.readFileSync\\(''src/utils/paginateChapters.js'', ''utf8''\\); try { new Function\\(code\\); console.log\\(''Parse OK''\\); } catch\\(e\\) { console.log\\(''Parse error:'', e.message\\); }\")",
+      "Bash(node -e \"try { require\\(''esbuild''\\).transformSync\\(require\\(''fs''\\).readFileSync\\(''src/utils/paginateChapters.js'',''utf8''\\), {loader:''js''}\\); console.log\\(''OK''\\); } catch\\(e\\) { console.error\\(e.message.slice\\(0,500\\)\\); }\")",
+      "Bash(node --max-old-space-size=4096 -e \":*)",
+      "Bash(NODE_OPTIONS=--max-old-space-size=4096 npx vite build)"
     ]
   }
 }
