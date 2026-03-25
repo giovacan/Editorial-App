@@ -1005,21 +1005,6 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
         log.record('fill', 'reject', i + 1, { tag, text: (firstEl.textContent || '').substring(0, 60), reason: 'split-overfit', chunkFitHeight: +chunkFitHeight.toFixed(0), contentH: +contentHeight.toFixed(0) });
         break;
       }
-      // Near-boundary guard: Canvas can under-estimate by 1-3px when placing a chunk
-      // ON TOP of existing content (rounding errors compound). If the combined height
-      // lands within 3px of the page limit AND there is already content on the page,
-      // reject — DOM rendering may clip the last line.
-      // Only applies when currentHtml is non-empty (existing content + chunk compound).
-      // When the chunk fills the whole page alone (currentHtml=''), Canvas is accurate.
-      const hasExistingContent = currentHtml.trim().length > 0;
-      const nearBoundary = hasExistingContent
-        && chunkFitHeight > contentHeight - 3
-        && measure(chunk) > lineHeightPx * 0.5;
-      if (nearBoundary) {
-        log.record('fill', 'reject', i + 1, { tag, text: (firstEl.textContent || '').substring(0, 60), reason: 'split-near-boundary', chunkFitHeight: +chunkFitHeight.toFixed(0), contentH: +contentHeight.toFixed(0) });
-        break;
-      }
-
       let chunkLines = Math.floor(measure(chunk) / lineHeightPx);
 
       // Hard: rest chunk itself must have at least minOrphanLines lines.
