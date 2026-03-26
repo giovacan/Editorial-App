@@ -264,11 +264,16 @@ export const tryParagraphCompression = (
  * Evaluate page quality using a scoring system.
  * Lower score = better layout.
  *
- * Penalties:
- *   widow (1 line at top): +50
- *   orphan (1 line at bottom): +50
- *   heading alone at bottom: +40
- *   white space (remaining space * 0.5): variable
+ * Penalties (synchronized with evaluatePageQualityCanvas in paginateChapters.js):
+ *   whitespace 1-2 lines: unusedLines * 80
+ *   whitespace 3-4 lines: 200
+ *   whitespace 5+ lines:  500
+ *   fill% deviation from 92% target: abs(fillPct - 0.92) * 200
+ *   heading alone at bottom: +800
+ *   orphan (continuation ≤1 line): +1000
+ *   widow (last para ≤1 line):     +1000
+ *   split shallow (<3 lines continuation): +200
+ *   fragment (any continuation): +100
  *
  * @param {string} pageHtml - Page HTML content
  * @param {number} contentHeight - Maximum page height
@@ -296,9 +301,15 @@ export const evaluatePageQuality = (
     const remainingSpace = contentHeight - pageHeight;
     const linesOnPage = Math.floor(pageHeight / lineHeightPx);
 
-    // Penalty 1: White space (remaining space * 0.5)
-    const whitespacePenalty = Math.max(0, remainingSpace) * 0.5;
-    score += whitespacePenalty;
+    // Penalty 1: Whitespace — line-based tiers (matches evaluatePageQualityCanvas)
+    const unusedLines = Math.floor(Math.max(0, remainingSpace) / lineHeightPx);
+    if (unusedLines > 4)      score += 500;
+    else if (unusedLines > 2) score += 200;
+    else                      score += unusedLines * 80;
+
+    // Penalty 2: Fill% deviation from 92% target
+    const fillPct = pageHeight / contentHeight;
+    score += Math.abs(fillPct - 0.92) * 200;
 
     // Parse page structure
     const pageDiv = document.createElement('div');
@@ -306,36 +317,62 @@ export const evaluatePageQuality = (
     const children = Array.from(pageDiv.children);
 
     if (children.length > 0) {
-      const lastChild = children[children.length - 1];
-      const lastTag = lastChild.tagName || '';
+      const lastEl = children[children.length - 1];
+      const lastTag = lastEl.tagName || '';
 
-      // Penalty 2: Heading alone at bottom
-      if (lastTag.match(/^H[1-6]$/i)) {
-        score += 40;
+      // Penalty 3: Heading alone at bottom (+800, matches canvas engine)
+      let isBoldParaAtBottom = false;
+      if (lastTag === 'P') {
+        if (/font-weight:\s*(?:bold|[7-9]00)/i.test(lastEl.getAttribute('style') || '')) {
+          isBoldParaAtBottom = true;
+        } else if (/^<p[^>]*>\s*<(?:strong|b)\b/i.test(lastEl.outerHTML)) {
+          const totalText = (lastEl.textContent || '').trim();
+          const boldEls = lastEl.querySelectorAll('strong, b');
+          let boldLen = 0;
+          for (const b of boldEls) boldLen += (b.textContent || '').trim().length;
+          isBoldParaAtBottom = totalText.length > 0 && (boldLen / totalText.length) >= 0.8;
+        }
+      }
+      if (/^H[1-6]$/i.test(lastTag) || isBoldParaAtBottom) {
+        score += 800;
         violations.push('heading_at_bottom');
       }
 
-      // Penalty 3: Widow (single line at bottom - approximation)
-      if (lastTag === 'P' && children.length === 1) {
-        const singleParaLines = Math.floor((lastChild.offsetHeight || 0) / lineHeightPx);
-        if (singleParaLines === 1) {
-          score += 50;
+      // Scan ALL paragraphs for orphan/widow violations
+      for (let ci = 0; ci < children.length; ci++) {
+        const el = children[ci];
+        if (el.tagName?.toUpperCase() !== 'P') continue;
+
+        const isContinuation = el.dataset?.continuation === 'true';
+        const elLines = Math.floor((el.offsetHeight || 0) / lineHeightPx);
+
+        // Penalty 4: Orphan — continuation chunk with only 1 line (+1000)
+        if (isContinuation && elLines <= 1) {
+          score += 1000;
+          violations.push('orphan');
+        }
+
+        // Penalty 5: Widow — last paragraph with only 1 line (+1000)
+        if (ci === children.length - 1 && elLines <= 1) {
+          score += 1000;
           violations.push('widow');
         }
-      }
 
-      // Penalty 4: Orphan (single line at top - approximation)
-      if (children.length === 1) {
-        const firstChild = children[0];
-        const firstParaLines = Math.floor((firstChild.offsetHeight || 0) / lineHeightPx);
-        if (firstParaLines === 1) {
-          score += 50;
-          violations.push('orphan');
+        // Penalty 6: Split shallow — continuation with <3 lines (+200)
+        if (isContinuation && elLines > 1 && elLines < 3) {
+          score += 200;
+          violations.push('split_shallow');
+        }
+
+        // Penalty 7: Fragment — any continuation (+100)
+        if (isContinuation) {
+          score += 100;
+          violations.push('fragment');
         }
       }
     }
 
-    const fillPercentage = (pageHeight / contentHeight) * 100;
+    const fillPercentage = fillPct * 100;
 
     return {
       score,
@@ -396,11 +433,13 @@ export const compareLayoutOptions = (
  * @private
  */
 const getQualityRating = (score, fillPercentage) => {
-  if (score < 20 && fillPercentage > 85) return 'excellent';
-  if (score < 50 && fillPercentage > 75) return 'good';
-  if (score < 100 && fillPercentage > 60) return 'acceptable';
-  if (score < 150) return 'fair';
-  return 'poor';
+  // Thresholds calibrated to match the canvas engine's penalty scale
+  // (heading_at_bottom=800, orphan/widow=1000 — old 40/50 scale is now 800/1000)
+  if (score <= 16 && fillPercentage >= 90)  return 'excellent'; // A: perfect fill, no violations
+  if (score <= 116 && fillPercentage >= 88) return 'good';      // B: one fragment, good fill
+  if (score <= 316 && fillPercentage >= 85) return 'acceptable'; // C: shallow split or heading issue
+  if (score <= 500 && fillPercentage >= 70) return 'fair';       // D: moderate underfill
+  return 'poor';                                                  // F: severe problem
 };
 
 /**

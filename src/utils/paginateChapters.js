@@ -23,7 +23,8 @@ import {
   measureHtmlHeight,
   createLayoutContext,
   getLineBreakPositions,
-  buildFontString
+  buildFontString,
+  countHyphenationMetrics
 } from './textLayoutEngine';
 
 import { createPaginationLogger } from './paginationLogger.js';
@@ -123,10 +124,117 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, lo
   // Parity pass 2 — restore invariant if smoothing shifted page count
   enforceChapterStartParity(allPages, safeConfig);
 
+  // E8: Merge split paragraph fragments that ended up adjacent on the same page.
+  // This happens when greedy-split + fill-pass produce two <p> elements from the
+  // same original paragraph on one page. One has data-continuation='true' — merge
+  // it with its neighbor so it displays as a single paragraph.
+  mergeSplitFragments(allPages, log);
+
   // E6: Distribute remaining vertical whitespace proportionally among elements.
   // Runs LAST (after all structural mutations) so margins are set once on the
   // final page layout and are never moved to a different page.
   distributeVerticalSpace(allPages, layoutCtx, canvasCtx);
+
+  // ╔══════════════════════════════════════════════════════════════════╗
+  // ║  ⚠️  FASE 6 — GLOBAL REOPTIMIZATION PASS                       ║
+  // ║  IMPORTANTE: actualmente solo corre en NODE_ENV=development.   ║
+  // ║                                                                  ║
+  // ║  Para promover a producción se deben cumplir las 3 condiciones: ║
+  // ║                                                                  ║
+  // ║  1. MISMOS RESULTADOS en el mismo libro entre ejecuciones.      ║
+  // ║     Verificar: paginar el mismo libro 3 veces seguidas y        ║
+  // ║     confirmar que el pagination-log es byte-for-byte idéntico.  ║
+  // ║     Si difiere, hay no-determinismo (DOM timing, font loading). ║
+  // ║                                                                  ║
+  // ║  2. NINGUNA REGRESIÓN en calidad visual.                        ║
+  // ║     Verificar: comparar visualmente los capítulos reoptimizados ║
+  // ║     contra los originales. minOrphanLines=1 puede producir      ║
+  // ║     líneas sueltas visibles si el scoring no las penaliza bien. ║
+  // ║     El log muestra eventos reopt/accepted con delta de score.   ║
+  // ║                                                                  ║
+  // ║  3. TIEMPO ACEPTABLE en libros grandes (200+ páginas).          ║
+  // ║     Verificar: medir cuántos capítulos activa REOPT_SCORE_      ║
+  // ║     THRESHOLD en producción real. Cada capítulo reoptimizado    ║
+  // ║     corre flattenChapterElements + greedyPaginate + 2x fillPass ║
+  // ║     extra — si activa en 10+ capítulos puede agregar 500ms+.    ║
+  // ║     Si es necesario, subir REOPT_SCORE_THRESHOLD a 700-800.     ║
+  // ╚══════════════════════════════════════════════════════════════════╝
+  const REOPT_SCORE_THRESHOLD = 500; // Solo toca páginas genuinamente malas
+
+  if (process.env.NODE_ENV === 'development') {
+    // Identify chapters with problematic non-chapter-end pages
+    const badChapters = new Set();
+    for (const page of allPages) {
+      if (page.isBlank || page.isTitleOnlyPage || page.isFirstChapterPage || !page.html) continue;
+      const q = evaluatePageQualityCanvas(page.html, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx);
+      // Skip pages that are purely underfilled chapter endings — they can't be improved
+      // by reoptimization since there's simply no more content for them
+      const isChapterEndPage = q.fillPct < 0.55 && !q.violations.some(v =>
+        v === 'orphan' || v === 'widow' || v === 'heading_at_bottom'
+      );
+      if (!isChapterEndPage && q.score >= REOPT_SCORE_THRESHOLD) {
+        badChapters.add(page.chapterTitle);
+      }
+    }
+
+    if (badChapters.size > 0) {
+      // Relaxed layout context: minOrphanLines=1 lets the engine split more aggressively
+      const relaxedLayoutCtx = { ...layoutCtx, minOrphanLines: 1, minWidowLines: 1 };
+
+      for (const chapterTitle of badChapters) {
+        const chapter = chapters.find(c => c.title === chapterTitle);
+        if (!chapter) continue;
+
+        // Score the current pages for this chapter
+        const currentChapterPages = allPages.filter(p => p.chapterTitle === chapterTitle && !p.isBlank);
+        const currentScore = currentChapterPages.reduce((sum, p) => {
+          if (!p.html) return sum;
+          return sum + evaluatePageQualityCanvas(p.html, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score;
+        }, 0);
+
+        // Run relaxed pagination for this chapter only
+        const relaxedElements = flattenChapterElements(chapter, relaxedLayoutCtx, canvasCtx, measureDiv, safeConfig);
+        const relaxedPages = greedyPaginate(relaxedElements, relaxedLayoutCtx, canvasCtx, measureDiv, safeConfig, chapter, log);
+
+        // Apply fill-pass to the relaxed pages in isolation
+        applyFillPass(relaxedPages, relaxedLayoutCtx, canvasCtx, measureDiv, safeConfig, log);
+        fixHeadingsAtBottom(relaxedPages, canvasCtx, relaxedLayoutCtx, log);
+        applyFillPass(relaxedPages, relaxedLayoutCtx, canvasCtx, measureDiv, safeConfig, log);
+        cleanupNearlyEmptyPages(relaxedPages, relaxedLayoutCtx, canvasCtx);
+        smoothPageBalance(relaxedPages, relaxedLayoutCtx, canvasCtx, log);
+        mergeSplitFragments(relaxedPages, log);
+
+        // Score the relaxed result
+        const relaxedScore = relaxedPages.filter(p => !p.isBlank && p.html).reduce((sum, p) => {
+          return sum + evaluatePageQualityCanvas(p.html, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score;
+        }, 0);
+
+        // Accept only if meaningfully better (at least 50 points improvement)
+        if (relaxedScore < currentScore - 50) {
+          // Replace chapter pages in allPages with the relaxed version
+          const firstIdx = allPages.findIndex(p => p.chapterTitle === chapterTitle);
+          const lastIdx = allPages.reduce((last, p, i) => p.chapterTitle === chapterTitle ? i : last, -1);
+          if (firstIdx >= 0 && lastIdx >= firstIdx) {
+            allPages.splice(firstIdx, lastIdx - firstIdx + 1, ...relaxedPages);
+            log.record('reopt', 'accepted', firstIdx + 1, {
+              chapter: chapterTitle.substring(0, 40),
+              before: { score: +currentScore.toFixed(0), pages: currentChapterPages.length },
+              after: { score: +relaxedScore.toFixed(0), pages: relaxedPages.length }
+            });
+          }
+        }
+      }
+
+      // Re-run parity and smoothing after reoptimization may have changed page counts
+      if (badChapters.size > 0) {
+        enforceChapterStartParity(allPages, safeConfig);
+        smoothPageBalance(allPages, layoutCtx, canvasCtx, log);
+        enforceChapterStartParity(allPages, safeConfig);
+        mergeSplitFragments(allPages, log);
+        distributeVerticalSpace(allPages, layoutCtx, canvasCtx);
+      }
+    }
+  }
 
   // Re-number again after fill-pass may have emptied some pages.
   // Blank pages count toward the physical position but don't show a number —
@@ -135,6 +243,26 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, lo
   for (const p of allPages) {
     if (!p.isBlank) p.pageNumber = pageNum;
     pageNum++;
+  }
+
+  // DEV: dump final HTML structure of pages 25-35 (after all passes including distributeVerticalSpace)
+  if (process.env.NODE_ENV === 'development') {
+    for (let di = 0; di < allPages.length; di++) {
+      const dp = allPages[di];
+      if (!dp || dp.isBlank || !dp.html) continue;
+      const dpNum = dp.pageNumber || (di + 1);
+      if (dpNum < 25 || dpNum > 35) continue;
+      const ddiv = document.createElement('div');
+      ddiv.innerHTML = dp.html;
+      const els = Array.from(ddiv.children).map((el, idx) => ({
+        idx,
+        tag: el.tagName,
+        text: (el.textContent || '').substring(0, 50),
+        indent: (el.getAttribute('style') || '').match(/text-indent:\s*([^;]+)/)?.[1] || 'none',
+        cont: el.dataset?.continuation || 'false',
+      }));
+      log.record('diag', 'page-structure', dpNum, { elements: els });
+    }
   }
 
   // Generate structured summary via logger
@@ -290,7 +418,55 @@ const scoreCandidate = (firstChunkHtml, restChunkHtml, fullParaHtml, remainingPx
   const fill = remainingPx > 0 ? chunkH / remainingPx : 1;
   score += Math.max(0, 1 - fill) * 300;
 
-  // 4. Stability bias — strong preference for delta=0 when last line is already OK.
+  // 4. Hyphenation quality scoring.
+  // Professional typesetting limits consecutive hyphenated lines to 2 max.
+  // Penalise:
+  //   - 3+ consecutive hyphenated lines: +150 per extra line beyond 2
+  //   - hyphen on the very last line of the chunk: +300
+  //     (reader turns the page unsure if the word continues — very disruptive)
+  // Only computed when there are enough lines to matter (≥3 lines in chunk).
+  if (lineStarts.length >= 3 && plainText.length > 0) {
+    const hyphenMetrics = countHyphenationMetrics(plainText, effectiveWidth, fontStr);
+    if (hyphenMetrics.maxConsecutive >= 3) {
+      score += (hyphenMetrics.maxConsecutive - 2) * 150;
+    }
+    if (hyphenMetrics.lastLineHyphen) {
+      score += 300;
+    }
+  }
+
+  // 5. Paragraph shape scoring (line-width variance).
+  // A paragraph where line widths vary wildly looks jagged and unprofessional.
+  // Measure the width of each line and penalise high standard deviation.
+  // Only applies to multi-line chunks (≥3 lines) — single-line splits have no shape.
+  // stdDev > 25% of line width triggers a proportional penalty.
+  // Uses lineStarts from getLineBreakPositions (already computed above).
+  if (lineStarts.length >= 3 && words.length > 0) {
+    const offscreen2 = document.createElement('canvas');
+    const ctx2d2 = offscreen2.getContext('2d');
+    ctx2d2.font = fontStr;
+    const lineWidths = [];
+    for (let li = 0; li < lineStarts.length; li++) {
+      const start = lineStarts[li];
+      const end = li < lineStarts.length - 1 ? lineStarts[li + 1] : words.length;
+      const lineText = words.slice(start, end).join(' ');
+      lineWidths.push(ctx2d2.measureText(lineText).width);
+    }
+    // Exclude the last line — its short length is intentional (paragraph end)
+    const measuredLines = lineWidths.slice(0, -1);
+    if (measuredLines.length >= 2) {
+      const avg = measuredLines.reduce((a, b) => a + b, 0) / measuredLines.length;
+      const variance = measuredLines.reduce((acc, w) => acc + Math.pow(w - avg, 2), 0) / measuredLines.length;
+      const stdDev = Math.sqrt(variance);
+      const cvRatio = stdDev / (effectiveWidth || 1); // coefficient of variation
+      // Penalise only when variance is notable (>20% of line width)
+      if (cvRatio > 0.20) {
+        score += Math.round(cvRatio * 200); // max ~+160 at cvRatio=0.8
+      }
+    }
+  }
+
+  // 6. Stability bias — strong preference for delta=0 when last line is already OK.
   // This prevents delta=-1 from being chosen unless there's a real quality gain.
   if (delta === 0) score -= 200;
 
@@ -773,6 +949,13 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
       const tag = firstEl.tagName;
       const isHeader = /^H[1-6]$/i.test(tag);
       const firstElHtml = firstEl.outerHTML;
+      if (process.env.NODE_ENV === 'development') {
+        const srcRawCont = /data-continuation/.test(nextPage.html);
+        const elCont = firstEl.getAttribute('data-continuation');
+        if (srcRawCont || elCont) {
+          log.record('fill', 'src-extract-debug', i + 1, { srcPage: nextIdx + 1, srcRawCont, elCont, elOuterStart: firstElHtml.substring(0, 120) });
+        }
+      }
 
       // Detect bold-paragraph subheaders — only if ≥80% of text is bold.
       // Same logic as flattenChapterElements and fixHeadingsAtBottom.
@@ -948,28 +1131,14 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
           break;
         }
 
-        // Accept move — try to re-merge split chunks if the moved element
-        // is a continuation of the last element on current page.
-        // Use data-continuation attribute (set by splitParagraphByLines) — not regex.
-        let mergedHtml = currentHtml + firstElHtml;
-
-        const isContinuation = (firstEl.dataset?.continuation === 'true')
-          && (tag === 'P' || tag === 'BLOCKQUOTE');
-        if (isContinuation) {
-          const curDiv = document.createElement('div');
-          curDiv.innerHTML = currentHtml;
-          const lastEl = curDiv.lastElementChild;
-          if (lastEl && lastEl.tagName === tag) {
-            // Re-unify: merge continuation back into the original paragraph
-            const reunified = mergeIntoOne(lastEl.outerHTML, firstElHtml);
-            lastEl.remove();
-            mergedHtml = curDiv.innerHTML + reunified;
-          }
-        }
-
+        // Accept move — append element to current page, then immediately run
+        // mergeSplitFragments to reunify any adjacent split fragments.
+        // This handles both direct moves and the case where a continuation chunk
+        // is moved onto a page that already ends with the first-chunk of the same paragraph.
         log.record('fill', 'move', i + 1, { tag: firstEl.tagName || '?', text: (firstEl.textContent || '').substring(0, 60), fromPage: nextIdx + 1, before: { score: +badnessBefore.toFixed(0) }, after: { score: +badnessAfter.toFixed(0), fillPct: +(qMovedCurrent.fillPct * 100).toFixed(0) } });
 
-        pages[i] = { ...pages[i], html: mergedHtml };
+        pages[i] = { ...pages[i], html: currentHtml + firstElHtml };
+        mergeSplitFragments([pages[i]], log);
         if (sourceHtml) {
           pages[nextIdx] = { ...nextPage, html: sourceHtml };
         } else {
@@ -986,6 +1155,9 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
 
       // Detect if element is a continuation — use data-continuation attribute (not regex)
       const isContChunk = firstEl.dataset?.continuation === 'true';
+      if (process.env.NODE_ENV === 'development') {
+        log.record('fill', 'cont-check', i + 1, { isContChunk, contAttr: firstEl.getAttribute('data-continuation'), text: (firstEl.textContent || '').substring(0, 60) });
+      }
       const splitResult = splitInTwo(
         firstElHtml, measureDiv, canvasCtx, remainingSpace, contentHeight,
         textAlign, true,
@@ -1095,8 +1267,28 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
       // Hard constraint: never strand heading at bottom of source
       if (qSplitSource.violations.includes('heading_at_bottom')) break;
 
+      // Place the split chunk onto the current page, then immediately try to merge
+      // adjacent split fragments. This handles cascading splits (e.g. two consecutive
+      // fill-pass splits of the same paragraph) where the chunk has data-continuation
+      // but the last element of the page is not a direct predecessor tag-match.
+      // Rather than relying on the tag check here, we always append first and let
+      // mergeSplitFragments() do the merge via its Pass 1 (data-continuation check)
+      // or Pass 2 (end-of-sentence heuristic).
+      if (process.env.NODE_ENV === 'development') {
+        const dbgDiv = document.createElement('div');
+        dbgDiv.innerHTML = chunk;
+        const dbgEl = dbgDiv.firstElementChild;
+        const chunkIndent = dbgEl ? (dbgEl.getAttribute('style') || '').match(/text-indent:\s*([^;]+)/)?.[1] : '?';
+        log.record('fill', 'split-chunk-debug', i + 1, { isContChunk, chunkIndent, chunkText: (dbgEl?.textContent || '').substring(0, 60) });
+      }
       pages[i] = { ...pages[i], html: currentHtml + chunk };
+      mergeSplitFragments([pages[i]], log);
       pages[nextIdx] = { ...nextPage, html: newSourceHtml };
+      if (process.env.NODE_ENV === 'development') {
+        const hasCont = /data-continuation="true"/.test(rest);
+        const srcHasCont = /data-continuation="true"/.test(newSourceHtml);
+        log.record('fill', 'rest-cont-check', nextIdx + 1, { hasCont, srcHasCont, restSnippet: rest.substring(0, 120) });
+      }
       // Detailed split log: show chunk tail and rest head to detect content gaps
       const chunkPlain = chunk.replace(/<[^>]*>/g, '').trim();
       const restPlain = rest.replace(/<[^>]*>/g, '').trim();
@@ -1105,6 +1297,107 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
     }
   }
   } // end 2-pass loop
+};
+
+/**
+ * E8: Merge split paragraph fragments on the same page.
+ *
+ * After greedy pagination + fill-pass, a page may contain two (or more) <p>
+ * elements that are fragments of the same original paragraph. This happens when:
+ *   - Greedy pass splits paragraph P: first chunk → page N, rest → page N+1
+ *   - Fill-pass then moves/splits content from N+1 back to N
+ *   - Result: page N has the first chunk AND part of the rest as separate <p>'s
+ *
+ * Detection: adjacent <p> elements where one has data-continuation='true'
+ * indicate they were split from the same paragraph. Merge them into one.
+ *
+ * Only merges with the IMMEDIATELY preceding same-tag element.
+ * If any other element type sits between the continuation and its predecessor,
+ * we stop searching — they are not adjacent split fragments (the arrangement is intentional).
+ *
+ * @private
+ */
+const mergeSplitFragments = (pages, log = null) => {
+  for (let pageIdx = 0; pageIdx < pages.length; pageIdx++) {
+    const page = pages[pageIdx];
+    if (!page || page.isBlank || !page.html) continue;
+
+    const div = document.createElement('div');
+    div.innerHTML = page.html;
+    let children = Array.from(div.children);
+    let changed = false;
+
+    // Pass 1: merge elements with data-continuation='true' with their predecessor.
+    // Safety: only merge with the immediately preceding same-tag element — if any
+    // other element type is between them, they are NOT split fragments from the same
+    // paragraph (the fill-pass or smooth-pass placed them there intentionally).
+    for (let i = 1; i < children.length; i++) {
+      const el = children[i];
+      if (el.dataset?.continuation !== 'true') continue;
+      const tag = el.tagName;
+
+      for (let j = i - 1; j >= 0; j--) {
+        const prev = children[j];
+        if (prev.tagName !== tag) break; // stop at any non-matching element — don't skip over
+
+        prev.innerHTML = prev.innerHTML + ' ' + el.innerHTML;
+        prev.style.textAlignLast = 'left';
+        prev.removeAttribute('data-continuation');
+        el.remove();
+        children.splice(i, 1);
+        i--;
+        changed = true;
+        if (log) log.record('merge', 'pass1-merge', pageIdx + 1, { tag, text: (prev.textContent || '').substring(0, 60) });
+        break;
+      }
+    }
+
+    // Pass 2: merge adjacent <p> elements where the first ends mid-sentence.
+    // This catches splits where neither fragment has data-continuation
+    // (e.g. fill-pass split's chunk appended after a greedy-split's firstChunk).
+    // A <p> that ends without sentence-ending punctuation (.!?»") was truncated
+    // by a split — the next <p> of the same tag is its continuation.
+    children = Array.from(div.children);
+    for (let i = 0; i < children.length - 1; i++) {
+      const el = children[i];
+      const next = children[i + 1];
+      if (el.tagName !== 'P' || next.tagName !== 'P') continue;
+
+      // Skip if either is a heading-like element (bold paragraph = subtitle)
+      if (/font-weight:\s*bold/i.test(el.getAttribute('style') || '')) continue;
+      if (/font-weight:\s*bold/i.test(next.getAttribute('style') || '')) continue;
+
+      const elText = (el.textContent || '').trim();
+      // Check if element ends mid-sentence (no sentence-ending punctuation)
+      if (!elText || /[.!?»"]\s*$/.test(elText)) continue;
+
+      // Safety: next element should look like a continuation, not a new paragraph.
+      // Accept if: text-indent:0, no text-indent, OR next starts with lowercase
+      // (no real paragraph/sentence starts lowercase — it must be a split fragment).
+      const nextStyle = next.getAttribute('style') || '';
+      const nextHasZeroIndent = /text-indent:\s*0/.test(nextStyle);
+      const nextHasNoIndent = !/text-indent/.test(nextStyle);
+      const nextText = (next.textContent || '').trim();
+      const nextStartsLowercase = /^[a-záéíóúüñ]/.test(nextText);
+      if (!nextHasZeroIndent && !nextHasNoIndent && !nextStartsLowercase) {
+        if (log) log.record('merge', 'pass2-skip', pageIdx + 1, { reason: 'indent-check', text: (el.textContent || '').substring(0, 60) });
+        continue;
+      }
+
+      // Merge
+      el.innerHTML = el.innerHTML + ' ' + next.innerHTML;
+      el.style.textAlignLast = 'left';
+      next.remove();
+      children.splice(i + 1, 1);
+      i--; // re-check
+      changed = true;
+      if (log) log.record('merge', 'pass2-merge', pageIdx + 1, { text: (el.textContent || '').substring(0, 60) });
+    }
+
+    if (changed) {
+      page.html = div.innerHTML;
+    }
+  }
 };
 
 /**
@@ -1346,64 +1639,111 @@ const smoothPageBalance = (pages, layoutCtx, canvasCtx, log) => {
     if (!next || !next.html || next.isTitleOnlyPage || next.isFirstChapterPage) continue;
     if (page.chapterTitle !== next.chapterTitle) continue;
 
-    const q1 = evaluatePageQualityCanvas(page.html, contentHeight, lineHeightPx, canvasCtx);
-    const q2 = evaluatePageQualityCanvas(next.html, contentHeight, lineHeightPx, canvasCtx);
+    // Multi-attempt loop for severely underfilled pages (chapter-end scenario).
+    // Normal pages use 1 attempt — sufficient since they're close to balanced.
+    // Severely underfilled pages (< 55%) get up to 8 attempts to move multiple
+    // elements until the receiver reaches a reasonable fill level.
+    const MAX_SMOOTH_ATTEMPTS = 8;
+    for (let attempt = 0; attempt < MAX_SMOOTH_ATTEMPTS; attempt++) {
+
+    const q1 = evaluatePageQualityCanvas(pages[i].html, contentHeight, lineHeightPx, canvasCtx);
+    const q2 = evaluatePageQualityCanvas(pages[nextIdx].html, contentHeight, lineHeightPx, canvasCtx);
 
     // Guard: the DONOR (fuller page) must have enough slack to give.
     // Without this, a 99%-full odd page can be reduced to 85% just to
     // balance a 70% even page — the badness gate approves it but the
     // result is inconsistent fill across odd pages throughout the book.
+    //
+    // Exception: if the RECEIVER is severely underfilled (< 55%) — i.e. a
+    // chapter-end page that is nearly empty — relax the donor slack guard
+    // entirely. Moving content forward to fill a 20–40% page is always
+    // visually better than leaving it nearly blank, even if the donor
+    // drops from 100% to 85%.
     const donorPct = q1.fillPct > q2.fillPct ? q1.fillPct : q2.fillPct;
+    const receiverPct = q1.fillPct > q2.fillPct ? q2.fillPct : q1.fillPct;
+    const isSeverelyUnderfilled = receiverPct < 0.55;
     const donorSlackLines = Math.floor((1 - donorPct) * contentHeight / lineHeightPx);
-    if (donorSlackLines < MIN_DONOR_SLACK_LINES) continue;
+    if (!isSeverelyUnderfilled && donorSlackLines < MIN_DONOR_SLACK_LINES) break;
 
     // Only smooth if imbalance exceeds threshold
-    if (Math.abs(q1.fillPct - q2.fillPct) <= SMOOTH_THRESHOLD) continue;
+    if (Math.abs(q1.fillPct - q2.fillPct) <= SMOOTH_THRESHOLD) break;
 
     const badnessBefore = q1.score + q2.score;
 
     // Determine direction: move from fuller page to emptier page
     const fromIdx = q1.fillPct > q2.fillPct ? i      : nextIdx;
     const toIdx   = q1.fillPct > q2.fillPct ? nextIdx : i;
-    const fromPage = pages[fromIdx];
-    const toPage   = pages[toIdx];
 
     const tmp = document.createElement('div');
-    tmp.innerHTML = fromPage.html;
+    tmp.innerHTML = pages[fromIdx].html;
 
     // Forward move (toIdx > fromIdx): take LAST element of fromPage, PREPEND to toPage.
     // Backward move (toIdx < fromIdx): take FIRST element of fromPage, APPEND to toPage.
     // This preserves reading order: content flows from the bottom of one page to the top
     // of the next (or from the top of one page to the bottom of the previous).
     const elToMove = toIdx > fromIdx ? tmp.lastElementChild : tmp.firstElementChild;
-    if (!elToMove) continue;
+    if (!elToMove) break;
 
     const elHtml = elToMove.outerHTML;
     elToMove.remove();
     const fromRest = tmp.innerHTML.trim();
-    if (!fromRest) continue; // Would empty fromPage — skip
+    if (!fromRest) break; // Would empty fromPage — skip
 
     const toNewHtml = toIdx > fromIdx
-      ? elHtml + (toPage.html || '')   // forward: element goes to TOP of next page
-      : (toPage.html || '') + elHtml;  // backward: element goes to BOTTOM of prev page
+      ? elHtml + (pages[toIdx].html || '')   // forward: element goes to TOP of next page
+      : (pages[toIdx].html || '') + elHtml;  // backward: element goes to BOTTOM of prev page
 
-    if (!canAcceptHtml(toNewHtml, contentHeight, canvasCtx)) continue;
+    if (!canAcceptHtml(toNewHtml, contentHeight, canvasCtx)) break;
 
     const qFrom = evaluatePageQualityCanvas(fromRest, contentHeight, lineHeightPx, canvasCtx);
     const qTo   = evaluatePageQualityCanvas(toNewHtml, contentHeight, lineHeightPx, canvasCtx);
 
     // Hard constraints — the badness gate alone is insufficient when pages are
     // severely underfilled (huge badness delta can override a +800 heading penalty).
-    if (qFrom.violations.includes('heading_at_bottom')) continue;
-    if (qTo.violations.includes('heading_at_bottom')) continue;
+    if (qFrom.violations.includes('heading_at_bottom')) break;
+    if (qTo.violations.includes('heading_at_bottom')) break;
 
     const badnessAfter = qFrom.score + qTo.score;
 
     if (badnessAfter < badnessBefore - SMOOTH_BADNESS_MIN_DELTA) {
-      pages[fromIdx] = { ...fromPage, html: fromRest };
-      pages[toIdx]   = { ...toPage,  html: toNewHtml };
-      log.record('smooth', 'move', fromIdx + 1, { toPage: toIdx + 1, before: { score: +badnessBefore.toFixed(0), fillPct: +(q1.fillPct * 100).toFixed(0) }, after: { score: +badnessAfter.toFixed(0), fillPct: +(q2.fillPct * 100).toFixed(0) } });
+      pages[fromIdx] = { ...pages[fromIdx], html: fromRest };
+
+      // Reunify split fragments if the moved element is a continuation chunk.
+      // A backward move (toIdx < fromIdx) appends the element to the bottom of the
+      // previous page — if it is a data-continuation chunk and the page already ends
+      // with the first-chunk of the same paragraph, merge them into one <p> now.
+      // This avoids leaving two adjacent <p> elements that look like a new paragraph.
+      let finalToHtml = toNewHtml;
+      if (toIdx < fromIdx) {
+        const movedDiv = document.createElement('div');
+        movedDiv.innerHTML = elHtml;
+        const movedEl = movedDiv.firstElementChild;
+        const isCont = movedEl?.dataset?.continuation === 'true'
+          && (movedEl.tagName === 'P' || movedEl.tagName === 'BLOCKQUOTE');
+        if (isCont) {
+          const toDiv = document.createElement('div');
+          toDiv.innerHTML = toNewHtml;
+          // The appended continuation is the last child; its predecessor should be the first chunk
+          const lastChild = toDiv.lastElementChild;
+          const secondLast = lastChild?.previousElementSibling;
+          if (secondLast && secondLast.tagName === lastChild.tagName) {
+            const reunified = mergeIntoOne(secondLast.outerHTML, lastChild.outerHTML);
+            secondLast.remove();
+            lastChild.remove();
+            toDiv.innerHTML += reunified;
+            finalToHtml = toDiv.innerHTML;
+          }
+        }
+      }
+
+      pages[toIdx] = { ...pages[toIdx], html: finalToHtml };
+      log.record('smooth', 'move', fromIdx + 1, { toPage: toIdx + 1, attempt, before: { score: +badnessBefore.toFixed(0), fillPct: +(q1.fillPct * 100).toFixed(0) }, after: { score: +badnessAfter.toFixed(0), fillPct: +(qTo.fillPct * 100).toFixed(0) } });
+      // If receiver is now above 70%, balance is good enough — stop moving
+      if (qTo.fillPct >= 0.70) break;
+    } else {
+      break; // no improvement — stop attempts for this pair
     }
+    } // end attempt loop
   }
 };
 

@@ -91,16 +91,32 @@ export function createPaginationLogger() {
         let elCount = 0;
         if (tmp) { tmp.innerHTML = p.html; elCount = tmp.children.length; }
 
+        // qualityGrade: A/B/C/D/F based on score thresholds matching evaluatePageQualityCanvas
+        // A=16, B=116, C=316, D=500, F=anything worse
+        const sc = Math.round(q.score);
+        const fp = Math.round(q.fillPct != null ? q.fillPct * 100 : 0);
+        const qualityGrade =
+          sc <= 16  && fp >= 90 ? 'A' :
+          sc <= 116 && fp >= 88 ? 'B' :
+          sc <= 316 && fp >= 85 ? 'C' :
+          sc <= 500 && fp >= 70 ? 'D' : 'F';
+
+        // chapterEnd: true when page is underfilled, has no fill-pass activity, and no splits
+        // These are typically the last pages of chapters — the fill-pass can't cross chapter boundaries
+        const isChapterEnd = fp < 80 && moves === 0 && splits === 0 && pageEntries.filter(e => e.type === 'reject' && e.data?.reason === 'chapter-boundary').length > 0;
+
         return {
           page: i + 1,
           chapter: p.chapterTitle || '',
-          fillPct: Math.round(q.fillPct != null ? q.fillPct * 100 : 0),
-          score: Math.round(q.score),
+          fillPct: fp,
+          score: sc,
+          qualityGrade,
           violations: q.violations || [],
           elements: elCount,
           events: pageEntries.length,
           splits,
           moves,
+          chapterEnd: isChapterEnd,
           unstable: splits > 0 || moves > 1
         };
       });
@@ -132,18 +148,31 @@ export function createPaginationLogger() {
       lines.push(`Config: ${config.pageFormat || '?'}, ${config.fontSize || '?'}pt, ${config.lineHeight || '?'}lh, contentH=${config.contentHeight || '?'}px`);
       lines.push(`${summary.length} pages, ${entries.length} events`);
       lines.push('');
-      lines.push('Page | Fill% | Score | Splits | Moves | Violations');
-      lines.push('-----+-------+-------+--------+-------+-----------');
+      lines.push('Page | Fill% | Score | Grd | Splits | Moves | Violations');
+      lines.push('-----+-------+-------+-----+--------+-------+-----------');
 
       for (const s of summary) {
         if (s.blank) continue;
         // Only show pages with issues (score > 50) or events, to keep it compact
         if (s.score <= 50 && s.events === 0 && s.splits === 0 && s.moves === 0) continue;
-        const viol = s.violations.length > 0 ? s.violations.join(', ') : '';
+        const viol = [
+          ...(s.violations || []),
+          ...(s.chapterEnd ? ['chapter_end'] : [])
+        ].join(', ');
         lines.push(
-          `${String(s.page).padStart(4)} | ${String(s.fillPct + '%').padStart(5)} | ${String(s.score).padStart(5)} | ${String(s.splits).padStart(6)} | ${String(s.moves).padStart(5)} | ${viol}`
+          `${String(s.page).padStart(4)} | ${String(s.fillPct + '%').padStart(5)} | ${String(s.score).padStart(5)} | ${String(s.qualityGrade || '?').padStart(3)} | ${String(s.splits).padStart(6)} | ${String(s.moves).padStart(5)} | ${viol}`
         );
       }
+
+      // Grade distribution summary
+      const realPages = summary.filter(s => !s.blank);
+      const gradeCounts = { A: 0, B: 0, C: 0, D: 0, F: 0 };
+      for (const s of realPages) gradeCounts[s.qualityGrade || 'F']++;
+      const chapterEndCount = realPages.filter(s => s.chapterEnd).length;
+      lines.push('');
+      lines.push(`Quality: A=${gradeCounts.A} B=${gradeCounts.B} C=${gradeCounts.C} D=${gradeCounts.D} F=${gradeCounts.F} | ChapterEnd=${chapterEndCount}`);
+      const worstPages = realPages.filter(s => s.qualityGrade === 'F' || s.qualityGrade === 'D').map(s => `p${s.page}(${s.fillPct}%)`);
+      if (worstPages.length > 0) lines.push(`Worst: ${worstPages.join(', ')}`);
 
       return lines.join('\n');
     },

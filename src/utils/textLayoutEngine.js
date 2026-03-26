@@ -1284,6 +1284,109 @@ export const applyKpRendering = (pageHtml, layoutCtx) => {
   }
 };
 
+// ─── Hyphenation quality analysis ───────────────────────────────────
+
+/**
+ * Analyse hyphenation quality for a plain-text paragraph.
+ *
+ * Returns:
+ *   maxConsecutive  — longest run of consecutive lines ending with a hyphen
+ *   lastLineHyphen  — true if the paragraph's last line ends with a hyphen
+ *   totalHyphens    — total number of hyphenated line-breaks in the paragraph
+ *
+ * Used by scoreCandidate() in paginateChapters.js to penalise:
+ *   - 3+ consecutive hyphenated lines  (+150 each beyond the 2nd)
+ *   - hyphen on the last line of a chunk (+300)
+ *
+ * @param {string} text           - Whitespace-collapsed plain text
+ * @param {number} contentWidth   - Effective line width in px
+ * @param {string} fontString     - CSS font string
+ * @param {number} firstLineIndent - First-line indent in px
+ * @returns {{ maxConsecutive: number, lastLineHyphen: boolean, totalHyphens: number }}
+ */
+const countHyphenationMetrics = (text, contentWidth, fontString, firstLineIndent = 0) => {
+  if (!text || !text.trim() || contentWidth <= 0) {
+    return { maxConsecutive: 0, lastLineHyphen: false, totalHyphens: 0 };
+  }
+
+  const collapsed = collapseWhitespace(text);
+  const spaceWidth = getSpaceWidth(fontString);
+  const words = collapsed.split(' ').filter(w => w.length > 0);
+  if (words.length === 0) return { maxConsecutive: 0, lastLineHyphen: false, totalHyphens: 0 };
+
+  // lineEndsWithHyphen[i] = true if line i was closed via a hyphen break
+  const lineEndsWithHyphen = [];
+  let currentLineWidth = firstLineIndent;
+
+  for (let i = 0; i < words.length; i++) {
+    const wordWidth = measureWordWidth(words[i], fontString);
+
+    if (i === 0) {
+      currentLineWidth += wordWidth;
+      continue;
+    }
+
+    const widthWithWord = currentLineWidth + spaceWidth + wordWidth;
+
+    if (widthWithWord > contentWidth) {
+      if (wordWidth > contentWidth) {
+        // Character-break — not a hyphen break
+        lineEndsWithHyphen.push(false);
+        currentLineWidth = wordWidth % contentWidth; // approximate
+      } else {
+        // Try Spanish hyphenation
+        const available = contentWidth - currentLineWidth - spaceWidth;
+        const hyphenW = getHyphenWidth(fontString);
+        const hpts = getSpanishHyphenPoints(words[i]);
+        let hyphenated = false;
+        for (let k = hpts.length - 1; k >= 0; k--) {
+          const prefix = words[i].slice(0, hpts[k]);
+          if (measureWordWidth(prefix, fontString) + hyphenW <= available) {
+            lineEndsWithHyphen.push(true);
+            const suffix = words[i].slice(hpts[k]);
+            currentLineWidth = measureWordWidth(suffix, fontString);
+            hyphenated = true;
+            break;
+          }
+        }
+        if (!hyphenated) {
+          lineEndsWithHyphen.push(false);
+          currentLineWidth = wordWidth;
+        }
+      }
+    } else {
+      currentLineWidth = widthWithWord;
+    }
+  }
+
+  // Analyse the collected data
+  let maxConsecutive = 0;
+  let currentRun = 0;
+  let totalHyphens = 0;
+  for (const h of lineEndsWithHyphen) {
+    if (h) {
+      currentRun++;
+      totalHyphens++;
+      if (currentRun > maxConsecutive) maxConsecutive = currentRun;
+    } else {
+      currentRun = 0;
+    }
+  }
+
+  // Last "line" is the natural end — never a hyphen, so lineEndsWithHyphen
+  // covers all but the last line. The last LINE of the chunk is the content
+  // after the last word-wrap — it ends naturally (not hyphenated).
+  // However, if the very last word-wrap was a hyphen, the LAST RENDERED LINE
+  // of the chunk starts with a suffix — that's fine. What we care about is
+  // whether the last LINE of the CHUNK (what the reader sees at bottom) ends
+  // with a hyphen. That equals lineEndsWithHyphen[last] if > 0 entries.
+  const lastLineHyphen = lineEndsWithHyphen.length > 0
+    ? lineEndsWithHyphen[lineEndsWithHyphen.length - 1]
+    : false;
+
+  return { maxConsecutive, lastLineHyphen, totalHyphens };
+};
+
 // ─── Exports for testing ────────────────────────────────────────────
 
 export {
@@ -1297,5 +1400,6 @@ export {
   normalizeWidth,
   collapseWhitespace,
   getLineBreakPositions,
-  getLineBreakPositionsFromRuns
+  getLineBreakPositionsFromRuns,
+  countHyphenationMetrics
 };

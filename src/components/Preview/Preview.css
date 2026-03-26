@@ -311,7 +311,7 @@
 }
 
 .magnifier-panel .preview-content {
-  overflow: visible;
+  overflow: hidden;
 }
 
 /* Debug Tags */

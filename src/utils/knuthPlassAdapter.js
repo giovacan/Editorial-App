@@ -8,7 +8,24 @@
  * line breaks that minimize inter-word spacing variance across the paragraph.
  */
 
-import { breakLines, forcedBreak, MAX_COST } from 'tex-linebreak';
+import { breakLines, forcedBreak, MAX_COST, MaxAdjustmentExceededError } from 'tex-linebreak';
+
+/**
+ * KP_MAX_ADJUSTMENT_RATIO: Maximum allowed stretch/shrink ratio per space.
+ *
+ * Controls how much a word-space can deviate from its natural width.
+ * 1.0 = spaces can grow up to 2x or shrink to ~0.67x their natural width.
+ * 1.5 = spaces can grow to 2.5x — more flexible but visually looser.
+ *
+ * InDesign default: ~1.0–1.5 depending on mode.
+ * We use 1.5 as the primary limit and fall back to null (unlimited) only
+ * when the paragraph genuinely can't fit within the limit (e.g., very long
+ * Spanish words, or extremely narrow columns).
+ *
+ * This prevents the "river" effect where a 3-word line gets huge gaps
+ * because KP is optimizing globally across all lines.
+ */
+const KP_MAX_ADJUSTMENT_RATIO = 1.5;
 
 // ─── Imported from textLayoutEngine.js (will be injected) ───────────
 // We need measureWordWidth, getSpaceWidth, buildFontString, breakWord
@@ -114,12 +131,23 @@ export const countLinesKP = (text, contentWidth, fontString, firstLineIndent = 0
   const items = buildItems(wordItems, spaceWidth, firstLineIndent);
 
   try {
-    const breakpoints = breakLines(items, contentWidth, { maxAdjustmentRatio: null });
+    // Try with controlled ratio first — prevents overly-wide spaces in short lines.
+    // Falls back to unlimited if the paragraph can't satisfy the ratio constraint
+    // (e.g. very long Spanish compound words, narrow columns).
+    let breakpoints;
+    try {
+      breakpoints = breakLines(items, contentWidth, { maxAdjustmentRatio: KP_MAX_ADJUSTMENT_RATIO });
+    } catch (ratioErr) {
+      if (ratioErr instanceof MaxAdjustmentExceededError) {
+        breakpoints = breakLines(items, contentWidth, { maxAdjustmentRatio: null });
+      } else {
+        throw ratioErr;
+      }
+    }
     // breakpoints includes start (0) and end, so line count = breakpoints.length - 1
     return breakpoints.length - 1;
   } catch (e) {
-    // If Knuth-Plass fails (shouldn't with maxAdjustmentRatio: null), return null for fallback
-    return null;
+    return null; // Signal caller to use greedy fallback
   }
 };
 
@@ -182,7 +210,16 @@ export const getLineBreakPositionsKP = (text, contentWidth, fontString, firstLin
   itemWordIdx.push(-1);
 
   try {
-    const breakpoints = breakLines(items, contentWidth, { maxAdjustmentRatio: null });
+    let breakpoints;
+    try {
+      breakpoints = breakLines(items, contentWidth, { maxAdjustmentRatio: KP_MAX_ADJUSTMENT_RATIO });
+    } catch (ratioErr) {
+      if (ratioErr instanceof MaxAdjustmentExceededError) {
+        breakpoints = breakLines(items, contentWidth, { maxAdjustmentRatio: null });
+      } else {
+        throw ratioErr;
+      }
+    }
     // breakpoints: [0, bp1, bp2, ..., forcedBreakPos]
     // Each intermediate bp is an item index where the line ends (typically a glue).
     // The word that STARTS the next line is the first word-box AFTER that item.
@@ -277,7 +314,16 @@ export const countLinesFromRunsKP = (runs, contentWidth, baseFontSizePx, fontFam
   const items = buildItems(wordItems, baseSpaceWidth, firstLineIndent);
 
   try {
-    const breakpoints = breakLines(items, contentWidth, { maxAdjustmentRatio: null });
+    let breakpoints;
+    try {
+      breakpoints = breakLines(items, contentWidth, { maxAdjustmentRatio: KP_MAX_ADJUSTMENT_RATIO });
+    } catch (ratioErr) {
+      if (ratioErr instanceof MaxAdjustmentExceededError) {
+        breakpoints = breakLines(items, contentWidth, { maxAdjustmentRatio: null });
+      } else {
+        throw ratioErr;
+      }
+    }
     return breakpoints.length - 1;
   } catch (e) {
     return null; // Fallback to greedy
