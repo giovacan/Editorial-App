@@ -761,6 +761,40 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
     const fitTolerance = isLastChapterElement ? lineHeightPx * 0.5 : 0;
 
     if (candidateHeight <= contentHeight + fitTolerance) {
+      // Runt-flush guard: if adding this paragraph fills the page completely (≤1 free line
+      // remaining on the COMBINED page) and its last line is a single word, it will sit
+      // isolated at the bottom — visually identical to a widow but in a whole paragraph.
+      // Guard: only when the page is already meaningfully filled (≥70% before this element)
+      // so we never flush a page that only has 1-2 small elements on it.
+      // Also skip for last-chapter elements (their final pages are expected short).
+      // candidateHeight = measure(currentHtml + el.html) — already computed above the fit check.
+      // Use it directly as the authoritative "page height after adding this element".
+      const currentPageHeight = currentHtml ? measure(currentHtml) : 0;
+      const freeLinesAfter = Math.floor((contentHeight - candidateHeight) / lineHeightPx);
+      const currentFill = currentPageHeight / contentHeight;
+      if (!isLastChapterElement
+          && el.tag === 'P'
+          && !el.isBold
+          && freeLinesAfter <= 1
+          && currentFill >= 0.70
+          && currentHtml) {
+        const fontStr = buildFontString(canvasCtx.baseFontSizePx, canvasCtx.fontFamily);
+        const effectiveWidth = canvasCtx.contentWidth - (canvasCtx.widthSlack || 0);
+        const plainText = (el.textContent || '').trim();
+        const words = plainText.split(/\s+/).filter(w => w.length > 0);
+        const lineStarts = getLineBreakPositions(plainText, effectiveWidth, fontStr);
+        if (lineStarts && lineStarts.length > 0) {
+          const lastStart = lineStarts[lineStarts.length - 1];
+          const lastLineWords = Math.max(0, words.length - lastStart);
+          if (lastLineWords === 1) {
+            // Flush current page without this paragraph, start fresh page with it
+            log.record('greedy', 'no-fit', pages.length + 1, { tag: el.tag, text: plainText.substring(0, 60), reason: 'runt-flush', lastLineWords });
+            flushCurrent(el.html, elIdx);
+            continue;
+          }
+        }
+      }
+
       currentHtml += el.html;
       if (fitTolerance > 0 && candidateHeight > contentHeight) {
         log.record('greedy', 'fit', pages.length + 1, { tag: el.tag, text: (el.textContent || '').substring(0, 60), overflowPx: +(candidateHeight - contentHeight).toFixed(1), tolerancePx: +fitTolerance.toFixed(1) });
@@ -1923,6 +1957,43 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
         violations.push('fragment');
       }
 
+    }
+
+    // Runt-line penalty: last paragraph on page is a split continuation fragment
+    // (data-continuation=true) ending with 1 word or 2 very short words (< 25% width).
+    // Only split fragments are pagination artefacts — natural whole-paragraph endings
+    // are the author's text and must not be penalised.
+    // Penalty 300/200 scaled by fs so fragment lookaheads don't over-fire.
+    const lastPEl = children.slice().reverse().find(c => c.tagName?.toUpperCase() === 'P');
+    if (lastPEl && lastPEl.dataset.continuation === 'true') {
+      const lastPLines = Math.floor(measure(lastPEl.outerHTML) / lineHeightPx);
+      if (lastPLines >= 2) {
+        const fontStr = buildFontString(canvasCtx.baseFontSizePx, canvasCtx.fontFamily);
+        const effectiveWidth = canvasCtx.contentWidth - (canvasCtx.widthSlack || 0);
+        const plainText = (lastPEl.textContent || '').trim();
+        const words = plainText.split(/\s+/).filter(w => w.length > 0);
+        const lineStarts = getLineBreakPositions(plainText, effectiveWidth, fontStr);
+        if (lineStarts && lineStarts.length > 0) {
+          const lastStart = lineStarts[lineStarts.length - 1];
+          const lastLineWords = Math.max(0, words.length - lastStart);
+          let runtPenalty = 0;
+          if (lastLineWords === 1) {
+            runtPenalty = 300;
+          } else if (lastLineWords === 2) {
+            const offscreen = document.createElement('canvas');
+            const ctx2d = offscreen.getContext('2d');
+            ctx2d.font = fontStr;
+            const lastLineText = words.slice(lastStart).join(' ');
+            const widthRatio = effectiveWidth > 0
+              ? ctx2d.measureText(lastLineText).width / effectiveWidth : 1;
+            if (widthRatio < 0.25) runtPenalty = 200;
+          }
+          if (runtPenalty > 0) {
+            score += runtPenalty * fs;
+            violations.push('runt_line');
+          }
+        }
+      }
     }
   }
 

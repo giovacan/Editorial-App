@@ -9,9 +9,9 @@ const ProgressBarContainer = styled.div`
   border-radius: 6px;
   overflow: hidden;
   margin: 12px 0;
-  opacity: ${props => props.isVisible ? 1 : 0};
+  opacity: ${props => props.$isVisible ? 1 : 0};
   transition: opacity 0.3s ease;
-  display: ${props => props.isVisible ? 'block' : 'none'};
+  display: ${props => props.$isVisible ? 'block' : 'none'};
   border: 1px solid #d0d0d0;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.5);
   
@@ -30,7 +30,7 @@ const ProgressBarContainer = styled.div`
 const ProgressFill = styled.div`
   height: 100%;
   background: linear-gradient(90deg, #007bff, #0056b3);
-  width: ${props => props.progress}%;
+  width: ${props => props.$progress}%;
   transition: width 0.3s ease;
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
   animation: shimmer 2s infinite;
@@ -105,8 +105,8 @@ const PaginationProgressBar = ({ progress, isVisible, compact = false }) => {
       <ProgressLabel>
         📄 Paginando contenido... {Math.round(progress)}%
       </ProgressLabel>
-      <ProgressBarContainer isVisible={isVisible}>
-        <ProgressFill progress={progress} />
+      <ProgressBarContainer $isVisible={isVisible}>
+        <ProgressFill $progress={progress} />
         <ProgressText>{Math.round(progress)}% completado</ProgressText>
       </ProgressBarContainer>
       {progress === 100 && (

@@ -2,7 +2,6 @@ import { useEffect, useCallback, useState, useRef, useMemo } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
-import Underline from '@tiptap/extension-underline';
 import useEditorStore from '../../store/useEditorStore';
 import { usePagination } from '../../hooks/usePagination';
 import PageBreakMarkers from './PageBreakMarkers';
@@ -48,7 +47,6 @@ function Editor({ pushChange, onContentChange }) {
       Placeholder.configure({
         placeholder: 'Escribe tu contenido aquí...',
       }),
-      Underline,
     ],
     content: activeChapter?.html || '',
     onUpdate: ({ editor: ed }) => {
