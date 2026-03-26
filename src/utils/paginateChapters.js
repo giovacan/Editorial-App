@@ -282,6 +282,23 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, lo
       console.log(`  p${s.page} fill=${s.fillPct}% score=${s.score}${viols}`);
     }
     console.groupEnd();
+
+    // Diagnostic: for F-grade pages, show all fill-pass reject reasons
+    const fPages = logData.summary.filter(s => !s.blank && s.qualityGrade === 'F' && !s.chapterEnd);
+    if (fPages.length > 0) {
+      console.groupCollapsed(`[PAGINATION] F-grade pages (${fPages.length}) — fill-pass rejects`);
+      for (const fp of fPages) {
+        const rejects = logData.entries.filter(e => e.page === fp.page && e.type === 'reject');
+        const moves   = logData.entries.filter(e => e.page === fp.page && (e.type === 'move' || e.type === 'split'));
+        console.group(`p${fp.page} fill=${fp.fillPct}% score=${fp.score} | ${moves.length} moves/splits, ${rejects.length} rejects`);
+        for (const r of rejects) {
+          const d = r.data || {};
+          console.log(`  [${r.phase}] reason=${d.reason || '?'} tag=${d.tag || '?'} text="${(d.text || '').substring(0, 60)}" before=${d.before?.score ?? '?'} after=${d.after?.score ?? '?'}`);
+        }
+        console.groupEnd();
+      }
+      console.groupEnd();
+    }
   }
 
   return { pages: allPages, log: log.getLog(), summaryText: log.formatSummaryText() };

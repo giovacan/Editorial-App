@@ -101,9 +101,11 @@ export function createPaginationLogger() {
           sc <= 316 && fp >= 85 ? 'C' :
           sc <= 500 && fp >= 70 ? 'D' : 'F';
 
-        // chapterEnd: true when page is underfilled, has no fill-pass activity, and no splits
-        // These are typically the last pages of chapters — the fill-pass can't cross chapter boundaries
-        const isChapterEnd = fp < 80 && moves === 0 && splits === 0 && pageEntries.filter(e => e.type === 'reject' && e.data?.reason === 'chapter-boundary').length > 0;
+        // chapterEnd: true when page is underfilled and ALL fill-pass rejects are chapter-boundary.
+        // These are last pages of chapters where the fill-pass correctly refuses to cross chapter lines.
+        const pageRejects = pageEntries.filter(e => e.type === 'reject');
+        const chapterBoundaryRejects = pageRejects.filter(e => e.data?.reason === 'chapter-boundary');
+        const isChapterEnd = fp < 80 && pageRejects.length > 0 && chapterBoundaryRejects.length === pageRejects.length;
 
         return {
           page: i + 1,
@@ -147,6 +149,24 @@ export function createPaginationLogger() {
       lines.push(`PAGINATION SUMMARY (${new Date().toISOString().slice(0, 10)})`);
       lines.push(`Config: ${config.pageFormat || '?'}, ${config.fontSize || '?'}pt, ${config.lineHeight || '?'}lh, contentH=${config.contentHeight || '?'}px`);
       lines.push(`${summary.length} pages, ${entries.length} events`);
+
+      // Fill-pass reject details for F-grade non-chapter-end pages — FIRST for visibility
+      const realPagesEarly = summary.filter(s => !s.blank);
+      const fPagesEarly = realPagesEarly.filter(s => s.qualityGrade === 'F' && !s.chapterEnd);
+      if (fPagesEarly.length > 0) {
+        lines.push('');
+        lines.push('F-PAGE REJECT DETAILS:');
+        for (const fp of fPagesEarly) {
+          const rejects = entries.filter(e => e.page === fp.page && e.type === 'reject');
+          const allEvts = entries.filter(e => e.page === fp.page);
+          lines.push(`  p${fp.page} fill=${fp.fillPct}% | ${allEvts.length} events, ${rejects.length} rejects`);
+          for (const r of rejects.slice(0, 8)) {
+            const d = r.data || {};
+            lines.push(`    [${r.phase}] reason=${d.reason || '?'} tag=${d.tag || '?'} before=${d.before?.score ?? '?'} after=${d.after?.score ?? '?'} text="${(d.text || '').substring(0, 50)}"`);
+          }
+        }
+      }
+
       lines.push('');
       lines.push('Page | Fill% | Score | Grd | Splits | Moves | Violations');
       lines.push('-----+-------+-------+-----+--------+-------+-----------');
