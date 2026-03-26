@@ -588,10 +588,10 @@ const mergeIntoOne = (htmlA, htmlB) => {
       // Use elA's outerHTML to preserve the original paragraph's styles
       // (especially text-indent). elB is typically a continuation with text-indent:0.
       elA.innerHTML = elA.innerHTML + ' ' + elB.innerHTML;
-      // Merged paragraph is complete — reset text-align-last to left.
-      // The first chunk may have had justify (for split continuity) but
-      // after reunification the last line must be left-aligned.
-      elA.style.textAlignLast = 'left';
+      // text-align-last depends on whether the merged paragraph ends here
+      // or continues on the next page. If it ends mid-sentence, keep justify.
+      const mergedText = (elA.textContent || '').trim();
+      elA.style.textAlignLast = /[.!?»"]\s*$/.test(mergedText) ? 'left' : 'justify';
       return elA.outerHTML;
     }
   } catch (e) {
@@ -645,7 +645,7 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
   };
 
   const flushCurrent = (startWith = '', firstIdx = null) => {
-    if (currentHtml) pushPage(currentHtml);
+    if (currentHtml) pushPage(currentHtml, { isFirstChapterPage: pageHasTitle });
     currentHtml = startWith;
     pageHasTitle = false;
     if (firstIdx !== null) {
@@ -879,7 +879,7 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
   }
 
   // Final flush
-  if (currentHtml) pushPage(currentHtml);
+  if (currentHtml) pushPage(currentHtml, { isFirstChapterPage: pageHasTitle });
 
   return pages;
 };
@@ -1235,6 +1235,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
       // Badness gate for split — accept only if total quality improves
       const qSplitCurrent = evaluatePageQualityCanvas(currentHtml + chunk, contentHeight, lineHeightPx, canvasCtx);
       const qSplitSource  = evaluatePageQualityCanvas(newSourceHtml, contentHeight, lineHeightPx, canvasCtx);
+
       const splitBadnessAfter = qSplitCurrent.score + qSplitSource.score + widowSoftPenalty;
 
       // For 1-line gaps (created by delta=-1 splits), accept even Δ0 — the goal is
@@ -1245,19 +1246,23 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
       // fill-pass will cascade to fix the source page in subsequent iterations.
       // For underfilled pages raise the split threshold — leaving a page 27% full
       // is far worse than an imperfect split that improves fill at the cost of badness.
-      // Thresholds scale with how empty the page is:
-      //   >= 45% empty (severely): +400 (accept up to 400-point degradation)
-      //   >= 35% empty (moderately): +380
-      //   1-line gap: +300 (delta=-1 compensation)
-      //   normal: +50 (only accept meaningful improvements)
+      // Uses continuous scaling: the emptier the page, the more degradation we accept.
+      //   >= 45% empty: +400, 30% empty: +350, 20% empty: +200, 1-line gap: +300
+      //   normal (< 15% empty): +50
       const totalLines = Math.round(contentHeight / lineHeightPx);
-      const isSeverelyUnderfilled = remainingLines >= Math.round(totalLines * 0.45);
-      const isModeratelyUnderfilled = remainingLines >= Math.round(totalLines * 0.35);
-      const splitThreshold = isRetrySplit
-        ? badnessBefore + 400
-        : isSeverelyUnderfilled ? badnessBefore + 400
-        : isModeratelyUnderfilled ? badnessBefore + 380
-        : remainingLines <= 1 ? badnessBefore + 300 : badnessBefore + 50;
+      const emptyRatio = remainingLines / totalLines;
+      let splitAllowance;
+      if (isRetrySplit) {
+        splitAllowance = 400;
+      } else if (emptyRatio >= 0.25) {
+        // Continuous scale: 25% empty → +300, 45%+ empty → +400
+        splitAllowance = Math.min(400, Math.round(200 + emptyRatio * 450));
+      } else if (remainingLines <= 1) {
+        splitAllowance = 300; // delta=-1 compensation
+      } else {
+        splitAllowance = 50;
+      }
+      const splitThreshold = badnessBefore + splitAllowance;
       if (splitBadnessAfter > splitThreshold) {
         log.record('fill', 'reject', i + 1, { tag, text: (firstEl.textContent || '').substring(0, 60), reason: 'badness-split', before: { score: +badnessBefore.toFixed(0) }, after: { score: +splitBadnessAfter.toFixed(0) }, delta: +(badnessBefore - splitBadnessAfter).toFixed(0) });
         break;
@@ -1341,8 +1346,12 @@ const mergeSplitFragments = (pages, log = null) => {
         if (prev.tagName !== tag) break; // stop at any non-matching element — don't skip over
 
         prev.innerHTML = prev.innerHTML + ' ' + el.innerHTML;
-        prev.style.textAlignLast = 'left';
         prev.removeAttribute('data-continuation');
+        // text-align-last: only 'left' if the merged paragraph truly ends here.
+        // If the merged text still ends mid-sentence, the paragraph continues on
+        // the next page — keep 'justify' so the last visible line fills the width.
+        const mergedText = (prev.textContent || '').trim();
+        prev.style.textAlignLast = /[.!?»"]\s*$/.test(mergedText) ? 'left' : 'justify';
         el.remove();
         children.splice(i, 1);
         i--;
@@ -1386,7 +1395,8 @@ const mergeSplitFragments = (pages, log = null) => {
 
       // Merge
       el.innerHTML = el.innerHTML + ' ' + next.innerHTML;
-      el.style.textAlignLast = 'left';
+      const mergedText2 = (el.textContent || '').trim();
+      el.style.textAlignLast = /[.!?»"]\s*$/.test(mergedText2) ? 'left' : 'justify';
       next.remove();
       children.splice(i + 1, 1);
       i--; // re-check
@@ -1892,6 +1902,7 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
         score += 100;
         violations.push('fragment');
       }
+
     }
   }
 

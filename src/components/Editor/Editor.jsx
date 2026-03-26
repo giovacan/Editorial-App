@@ -169,12 +169,13 @@ function Editor({ pushChange, onContentChange }) {
 
   useEffect(() => {
     if (editor && activeChapter) {
-      const currentContent = editor.getHTML();
-      if (currentContent !== activeChapter.html) {
-        editor.commands.setContent(activeChapter.html || '');
-      }
+      editor.commands.setContent(activeChapter.html || '');
     }
-  }, [activeChapterId, activeChapter?.html, editor]);
+    // Only reload content when the active chapter ID changes, not when html changes.
+    // Including activeChapter.html would cause the editor to overwrite user edits
+    // during the 1-second debounce window before the store is updated.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeChapterId, editor]);
 
   const wordCount = activeChapter?.wordCount || 0;
 
