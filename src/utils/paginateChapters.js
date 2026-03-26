@@ -68,7 +68,8 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, lo
       layoutCtx.fontFamily || 'Georgia, serif'
     ),
     widthSlack: justifySlack,
-    lineHeightPx: layoutCtx.lineHeightPx
+    lineHeightPx: layoutCtx.lineHeightPx,
+    targetFillPct: safeConfig?.pagination?.targetFillPct ?? 0.92
   };
 
   const { contentHeight, lineHeightPx, baseFontSize: baseFontSizeTop, baseLineHeight: baseLineHeightTop, minOrphanLines: minOrphanLinesTop } = layoutCtx;
@@ -706,11 +707,12 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
         const level = isHeading ? el.tag?.toLowerCase() : 'h3';
         const subConfig = safeConfig.subheaders?.[level];
         // minLinesAfter: how many follow lines the heading needs to stay on this page.
-        // Default 2 (= minOrphanLines) — enough to show the heading isn't stranded
-        // at the bottom, without being so strict that it wastes half-pages.
-        // Previously defaulted to 3, which was too aggressive and left pages half-empty
-        // when the heading + 2 follow lines would have fit perfectly.
-        const effectiveMinLines = Math.max(minOrphanLines, subConfig?.minLinesAfter || 2);
+        // Respect explicit config value; fall back to minOrphanLines (default 2).
+        // Previously used Math.max(minOrphanLines, configured) which silently ignored
+        // any configured value lower than minOrphanLines (e.g. minLinesAfter:1 → 2).
+        const effectiveMinLines = subConfig?.minLinesAfter != null
+          ? subConfig.minLinesAfter
+          : Math.max(minOrphanLines, 2);
         const minFollowHeight = effectiveMinLines * lineHeightPx;
         const spaceAfterSub = contentHeight - pageWithSub;
 
@@ -1831,11 +1833,12 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
   else if (unusedLines > 2) score += 200 * fs; // moderate underfill (3-4 lines)
   else                      score += unusedLines * 80 * fs; // 1-2 lines: 80/160
 
-  // fillPct deviation penalty — pages deviating from 92% fill target score higher.
-  // Discourages both underfill (< 92%) and overfill (> 92%).
+  // fillPct deviation penalty — pages deviating from targetFillPct score higher.
+  // Discourages both underfill and overfill relative to target.
   // Scaled by fs when evaluating a fragment (fill will change as content is added).
+  const targetFill = canvasCtx?.targetFillPct ?? 0.92;
   const fillPct = pageHeight / contentHeight;
-  score += Math.abs(fillPct - 0.92) * 200 * fs;
+  score += Math.abs(fillPct - targetFill) * 200 * fs;
 
   // Parse structure
   const div = document.createElement('div');

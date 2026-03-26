@@ -60,7 +60,7 @@ const DEFAULT_CONFIG = {
   },
   paragraph: { firstLineIndent: 1.5, align: 'justify', spacingBetween: 0 },
   quote: { enabled: true, indentLeft: 2, indentRight: 2, showLine: true, italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1, template: 'classic', autoDetect: true },
-  pagination: { minOrphanLines: 2, minWidowLines: 2, splitLongParagraphs: true },
+  pagination: { minOrphanLines: 2, minWidowLines: 2, splitLongParagraphs: true, targetFillPct: 0.92 },
   header: {
     enabled: false,
     template: 'classic',
