@@ -119,7 +119,12 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     widthSlack: justifySlack,
     lineHeightPx: layoutCtx.lineHeightPx,
     targetFillPct: safeConfig?.pagination?.targetFillPct ?? 0.92,
-    ctx2d: getEngineCtx2d()
+    ctx2d: getEngineCtx2d(),
+    textAlign: layoutCtx.textAlign || 'left',
+    quoteConfig: safeConfig?.quote || {
+      enabled: true, indentLeft: 2, indentRight: 2, showLine: true,
+      italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1
+    }
   };
 
   const { contentHeight, lineHeightPx, baseFontSize: baseFontSizeTop, baseLineHeight: baseLineHeightTop, minOrphanLines: minOrphanLinesTop } = layoutCtx;
@@ -918,18 +923,7 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
   let currentHtml = '';
   let currentSubheader = '';
 
-  const quoteOptions = {
-    config: safeConfig.quote || {
-      enabled: true, indentLeft: 2, indentRight: 2, showLine: true,
-      italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1
-    },
-    baseFontSize,
-    baseLineHeight,
-    textAlign,
-    lineHeightPx,
-    contentWidth: canvasCtx.contentWidth,
-    fontFamily: canvasCtx.fontFamily
-  };
+  const quoteOptions = canvasCtx;
 
   let currentFirstElementIndex = 0;
   let pageHasTitle = false;
@@ -1243,15 +1237,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
   const { contentHeight, lineHeightPx, minOrphanLines, minWidowLines,
     baseFontSize, baseLineHeight, textAlign, splitLongParagraphs } = layoutCtx;
 
-  const quoteOptions = {
-    config: safeConfig.quote || {
-      enabled: true, indentLeft: 2, indentRight: 2, showLine: true,
-      italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1
-    },
-    baseFontSize, baseLineHeight, textAlign, lineHeightPx,
-    contentWidth: canvasCtx.contentWidth,  // pass real width so splitParagraphByLines wraps correctly in worker
-    fontFamily: canvasCtx.fontFamily
-  };
+  const quoteOptions = canvasCtx;
 
   // Helper: measure height using Canvas engine
   const measure = (html) => measureHtmlHeight(html, canvasCtx);

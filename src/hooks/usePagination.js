@@ -6,7 +6,6 @@ import { extractTOC, ENABLE_TOC, generateRecommendedTOCConfig } from '../utils/e
 import { mapTOCToPages } from '../utils/mapTOCToPages';
 import { generateFrontMatter, combineFrontMatterWithContent } from '../utils/generateFrontMatter';
 import {
-  splitParagraphByLines,
   buildParagraphHtml,
   buildChapterTitleHtml,
   getQuoteStyle,

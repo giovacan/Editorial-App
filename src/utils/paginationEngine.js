@@ -1,6 +1,5 @@
 import { measureHtmlHeight, insertHtmlLineBreaks } from './textLayoutEngine';
 import {
-  JUSTIFY_SLACK_RATIO,
   extractInlineStyle,
   getInnerHtml as getIrInnerHtml,
   getFirstBlock,
@@ -9,32 +8,14 @@ import {
   splitHtmlByCharsPreservingTags as irSplitHtmlByCharsPreservingTags
 } from './layoutIr.js';
 
-export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, hasIndent = false, indentValue = 1.5, preserveFirstIndent = false, quoteConfig = null) => {
+export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, textAlign, hasIndent = false, indentValue = 1.5, preserveFirstIndent = false, canvasCtx = null) => {
 
-  // Build Canvas layout context from quoteConfig (passed from paginateChapters)
-  const effectiveBaseFontSize = quoteConfig?.baseFontSize || 12;
-  const effectiveBaseLineHeight = quoteConfig?.baseLineHeight || 1.6;
-  const effectiveTextAlign = quoteConfig?.textAlign || textAlign;
+  // canvasCtx is the canonical layout context built once in paginateChapters.
+  // All layout geometry comes from here — no fallback to measureDiv.style.
   const PX_PER_PT = 96 / 72;
-  const baseFontSizePx = effectiveBaseFontSize * PX_PER_PT;
-
-  // Build canvasCtx for deterministic measurement.
-  // Prefer contentWidth from quoteConfig (set by worker path where measureDiv=null).
-  const effectiveContentWidth = measureDiv
-    ? parseFloat(measureDiv.style?.width) || quoteConfig?.contentWidth || 400
-    : quoteConfig?.contentWidth || 400;
-  const effectiveFontFamily = measureDiv
-    ? measureDiv.style?.fontFamily || 'Georgia, serif'
-    : quoteConfig?.fontFamily || 'Georgia, serif';
-  const justifySlack = effectiveTextAlign === 'justify' ? effectiveContentWidth * JUSTIFY_SLACK_RATIO : 0;
-  const canvasCtx = {
-    baseFontSizePx,
-    baseLineHeight: effectiveBaseLineHeight,
-    contentWidth: effectiveContentWidth,
-    fontFamily: effectiveFontFamily,
-    widthSlack: justifySlack,
-    lineHeightPx: quoteConfig?.lineHeightPx || Math.ceil(baseFontSizePx * effectiveBaseLineHeight)
-  };
+  const effectiveTextAlign = canvasCtx?.textAlign || textAlign;
+  const effectiveBaseLineHeight = canvasCtx?.baseLineHeight || 1.6;
+  const effectiveBaseFontSizePt = canvasCtx ? canvasCtx.baseFontSizePx / PX_PER_PT : 12;
 
   // Deterministic measure function (Canvas, no DOM layout)
   const measure = (htmlStr) => measureHtmlHeight(htmlStr, canvasCtx);
@@ -55,7 +36,7 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
     italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1
   };
 
-  const effectiveQuoteConfig = quoteConfig?.config || defaultQuoteConfig;
+  const effectiveQuoteConfig = canvasCtx?.quoteConfig || defaultQuoteConfig;
 
   const computeIndent = (isFirst) =>
     isFirst
@@ -69,9 +50,9 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
       return `${cleanStyles}text-indent:${indent};`.replace(/;;/g, ';');
     }
     if (isBlockquote) {
-      return getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSize, effectiveBaseLineHeight, effectiveTextAlign);
+      return getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSizePt, effectiveBaseLineHeight, effectiveTextAlign);
     }
-    return `margin:0;padding:0;text-align:${textAlign};text-indent:${indent};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`;
+    return `margin:0;padding:0;text-align:${effectiveTextAlign};text-indent:${indent};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`;
   };
 
   const getDefaultStyle = () => getChunkStyle(isFirstChunk);
@@ -149,8 +130,8 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
     let finalStyle = originalStyles
       ? getChunkStyle(isFirstChunk)
       : (isBlockquote
-        ? getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSize, effectiveBaseLineHeight, effectiveTextAlign)
-        : `margin:0;padding:0;text-align:${textAlign};text-indent:${indent};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`);
+        ? getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSizePt, effectiveBaseLineHeight, effectiveTextAlign)
+        : `margin:0;padding:0;text-align:${effectiveTextAlign};text-indent:${indent};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`);
 
     // When paragraph continues to next page: the last visible line is a mid-paragraph
     // line — always justify it regardless of how many words it has.
@@ -184,9 +165,9 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
         if (originalStyles) {
           continuationStyle = originalStyles.replace(/text-indent:[^;]+;?/gi, '').replace(/;?\s*$/, ';') + 'text-indent:0;';
         } else if (isBlockquote) {
-          continuationStyle = getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSize, effectiveBaseLineHeight, effectiveTextAlign);
+          continuationStyle = getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSizePt, effectiveBaseLineHeight, effectiveTextAlign);
         } else {
-          continuationStyle = `margin:0;padding:0;text-align:${textAlign};text-indent:0;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`;
+          continuationStyle = `margin:0;padding:0;text-align:${effectiveTextAlign};text-indent:0;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`;
         }
       } else {
         // Chunk ends at sentence boundary — rest is a new paragraph, give it indent
@@ -194,9 +175,9 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
         if (originalStyles) {
           continuationStyle = originalStyles.replace(/text-indent:[^;]+;?/gi, '').replace(/;?\s*$/, ';') + `text-indent:${indentVal};`;
         } else if (isBlockquote) {
-          continuationStyle = getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSize, effectiveBaseLineHeight, effectiveTextAlign);
+          continuationStyle = getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSizePt, effectiveBaseLineHeight, effectiveTextAlign);
         } else {
-          continuationStyle = `margin:0;padding:0;text-align:${textAlign};text-indent:${indentVal};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`;
+          continuationStyle = `margin:0;padding:0;text-align:${effectiveTextAlign};text-indent:${indentVal};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`;
         }
       }
 
