@@ -20,6 +20,22 @@ import {
 } from './paginationEngine';
 
 import {
+  JUSTIFY_SLACK_RATIO,
+  htmlToText,
+  parseTopLevelBlocks as parseHtmlElements,
+  getFirstBlock as getFirstElement,
+  getLastBlock as getLastElement,
+  removeBlockAt as removeElementAt,
+  removeLastBlock as removeLastElement,
+  removeFirstBlock as removeFirstHtmlElement,
+  getBoldTextRatio,
+  serializeBlocks,
+  getPageBlocks,
+  setPageBlocks,
+  setPageHtml
+} from './layoutIr.js';
+
+import {
   measureHtmlHeight,
   createLayoutContext,
   getLineBreakPositions,
@@ -36,143 +52,6 @@ import { createPaginationLogger, assignBlockId, deriveFragmentId, injectBlockIdA
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Strip all HTML tags → plain text (replaces el.textContent) */
-const htmlToText = (html) => (html || '').replace(/<[^>]*>/g, '');
-
-/**
- * Parse an HTML string into an array of top-level element descriptor objects.
- * Each descriptor has: { tag, outerHtml, innerHTML, textContent, style, dataset }
- * where dataset is an object of data-* attributes.
- */
-const parseHtmlElements = (html) => {
-  if (!html) return [];
-  const elements = [];
-  let i = 0;
-  while (i < html.length) {
-    // Skip whitespace between elements
-    while (i < html.length && html[i] !== '<') i++;
-    if (i >= html.length) break;
-
-    // Find the opening tag
-    const tagStart = i;
-    const tagEnd = html.indexOf('>', i);
-    if (tagEnd === -1) break;
-    const openTag = html.slice(tagStart, tagEnd + 1);
-    i = tagEnd + 1;
-
-    // Self-closing tags (hr, br, img...)
-    if (openTag.endsWith('/>') || /^<(br|hr|img|input|meta|link)\b/i.test(openTag)) {
-      const tagMatch = openTag.match(/^<([a-zA-Z][^\s/>]*)/);
-      const tag = tagMatch ? tagMatch[1].toUpperCase() : 'UNKNOWN';
-      const styleMatch = openTag.match(/\bstyle="([^"]*)"/i);
-      elements.push({ tag, outerHtml: openTag, innerHTML: '', textContent: '', style: styleMatch ? styleMatch[1] : '', dataset: {} });
-      continue;
-    }
-
-    const tagMatch = openTag.match(/^<([a-zA-Z][^\s/>]*)/);
-    if (!tagMatch) { i++; continue; }
-    const tagName = tagMatch[1];
-
-    // Find the matching closing tag (handles nesting)
-    let depth = 1;
-    let j = i;
-    const openRe = new RegExp(`<${tagName}[\\s>]`, 'i');
-    const closeRe = new RegExp(`</${tagName}>`, 'i');
-    while (j < html.length && depth > 0) {
-      const nextOpen = openRe.exec(html.slice(j));
-      const nextClose = closeRe.exec(html.slice(j));
-      if (!nextClose) break;
-      if (nextOpen && nextOpen.index < nextClose.index) {
-        depth++;
-        j += nextOpen.index + 1;
-      } else {
-        depth--;
-        j += nextClose.index + nextClose[0].length;
-      }
-    }
-    const outerHtml = html.slice(tagStart, j);
-    const closeTagMatch = outerHtml.match(/<\/[^>]+>$/);
-    const inner = closeTagMatch
-      ? outerHtml.slice(openTag.length, outerHtml.length - closeTagMatch[0].length)
-      : '';
-
-    const styleMatch = openTag.match(/\bstyle="([^"]*)"/i);
-    // Extract data-* attributes
-    const dataset = {};
-    let dataMatch;
-    const dataRe = /\bdata-([a-z0-9-]+)="([^"]*)"/gi;
-    while ((dataMatch = dataRe.exec(openTag)) !== null) {
-      // Convert kebab-case to camelCase
-      const key = dataMatch[1].replace(/-([a-z])/g, (_, c) => c.toUpperCase());
-      dataset[key] = dataMatch[2];
-    }
-
-    elements.push({
-      tag: tagName.toUpperCase(),
-      outerHtml,
-      innerHTML: inner,
-      textContent: htmlToText(inner),
-      style: styleMatch ? styleMatch[1] : '',
-      dataset
-    });
-    i = j;
-  }
-  return elements;
-};
-
-/** Get the first top-level element descriptor from an HTML string */
-const getFirstElement = (html) => parseHtmlElements(html)[0] || null;
-
-/** Get the last top-level element descriptor from an HTML string */
-const getLastElement = (html) => {
-  const els = parseHtmlElements(html);
-  return els.length > 0 ? els[els.length - 1] : null;
-};
-
-/** Remove the element at position `index` from an HTML string, return new string */
-const removeElementAt = (html, index) => {
-  const els = parseHtmlElements(html);
-  if (index < 0 || index >= els.length) return html;
-  const toRemove = els[index].outerHtml;
-  const pos = html.indexOf(toRemove);
-  if (pos === -1) return html;
-  return (html.slice(0, pos) + html.slice(pos + toRemove.length)).trim();
-};
-
-/** Remove the last top-level element, return { newHtml, removed } */
-const removeLastElement = (html) => {
-  const els = parseHtmlElements(html);
-  if (els.length === 0) return { newHtml: html, removed: null };
-  const last = els[els.length - 1];
-  const pos = html.lastIndexOf(last.outerHtml);
-  if (pos === -1) return { newHtml: html, removed: last };
-  return { newHtml: html.slice(0, pos).trim(), removed: last };
-};
-
-/** Remove the first top-level element, return { newHtml, removed } */
-const removeFirstHtmlElement = (html) => {
-  const els = parseHtmlElements(html);
-  if (els.length === 0) return { newHtml: html, removed: null };
-  const first = els[0];
-  const pos = html.indexOf(first.outerHtml);
-  if (pos === -1) return { newHtml: html, removed: first };
-  return { newHtml: html.slice(pos + first.outerHtml.length).trim(), removed: first };
-};
-
-/**
- * Count bold text length in an HTML string (replaces querySelectorAll('strong, b')).
- * Returns { boldLen, totalLen } for ratio calculation.
- */
-const getBoldTextRatio = (outerHtml) => {
-  const totalText = htmlToText(outerHtml).trim();
-  let boldLen = 0;
-  const boldRe = /<(?:strong|b)(?:\s[^>]*)?>([^<]*(?:<(?!\/(?:strong|b)>)[^<]*)*)<\/(?:strong|b)>/gi;
-  let m;
-  while ((m = boldRe.exec(outerHtml)) !== null) {
-    boldLen += htmlToText(m[1]).trim().length;
-  }
-  return { boldLen, totalLen: totalText.length };
-};
-
 /**
  * Worker-safe canvas measurement: get a 2D context from an OffscreenCanvas if available,
  * otherwise from a regular canvas (main thread). Returns the ctx.
@@ -197,7 +76,6 @@ const getCanvasCtx2d = (() => {
  * Used here (greedy paginator) and in paginationEngine.splitParagraphByLines.
  * 4% compensates Canvas.measureText() underestimating Spanish chars (ñ, á, é).
  */
-export const JUSTIFY_SLACK_RATIO = 0.04;
 const FILL_PASS_RUNT_MIN_CURRENT_FILL = 0.70;
 const FILL_PASS_RUNT_MIN_RESULT_FILL = 0.88;
 const SHORT_LAST_LINE_POSTPASS_MIN_SOURCE_FILL = 0.80;
@@ -291,6 +169,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
       if (allPages.length % 2 === 1) {
         allPages.push({
           html: '',
+          blocks: [],
           pageNumber: allPages.length + 1,
           isBlank: true,
           chapterTitle: '',
@@ -1056,11 +935,13 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
   let pageHasTitle = false;
 
   const pushPage = (html, opts = {}) => {
+    const blocks = parseHtmlElements(html);
     pages.push({
-      html,
+      html: serializeBlocks(blocks),
+      blocks,
       pageNumber: pages.length + 1,
       chapterTitle: chapter.title,
-      isBlank: false,
+      isBlank: blocks.length === 0,
       isTitleOnlyPage: opts.isTitleOnlyPage || false,
       isFirstChapterPage: opts.isFirstChapterPage || false,
       currentSubheader,
@@ -1423,7 +1304,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
         evaluatePageQualityCanvas(nextPage.html, contentHeight, lineHeightPx, canvasCtx).score;
 
       // Extract first element from next page
-      const nextPageEls = parseHtmlElements(nextPage.html);
+      const nextPageEls = getPageBlocks(nextPage);
       if (nextPageEls.length === 0) break;
       const firstEl = nextPageEls[0];
 
@@ -1496,9 +1377,9 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
               const groupBadnessAfter = qGroup.score + qSrc.score;
               const BADNESS_MIN_DELTA = remainingLines >= 8 ? -500 : remainingLines >= 3 ? Math.round(-100 - (remainingLines - 3) * 80) : -100;
               if (groupBadnessAfter <= badnessBefore - BADNESS_MIN_DELTA) {
-                pages[i] = { ...pages[i], html: currentHtml + groupHtml };
+                pages[i] = setPageHtml(pages[i], currentHtml + groupHtml);
                 if (srcHtml) {
-                  pages[nextIdx] = { ...nextPage, html: srcHtml };
+                  pages[nextIdx] = setPageHtml(nextPage, srcHtml);
                 } else {
                   pages.splice(nextIdx, 1);
                 }
@@ -1540,8 +1421,8 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
                       const splitBadnessAfter = qDest.score + qSrc.score;
                       const BADNESS_MIN_DELTA = remainingLines >= 8 ? -500 : remainingLines >= 3 ? Math.round(-100 - (remainingLines - 3) * 80) : -100;
                       if (splitBadnessAfter <= badnessBefore - BADNESS_MIN_DELTA) {
-                        pages[i] = { ...pages[i], html: destHtml };
-                        pages[nextIdx] = { ...nextPage, html: srcHtml };
+                        pages[i] = setPageHtml(pages[i], destHtml);
+                        pages[nextIdx] = setPageHtml(nextPage, srcHtml);
                         log.record('fill', 'split', i + 1, { tag, text: firstEl.textContent.substring(0, 60), fromPage: nextIdx + 1, followChunkLines, before: { score: +badnessBefore.toFixed(0) }, after: { score: +splitBadnessAfter.toFixed(0) } });
                         continue;
                       }
@@ -1566,7 +1447,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
       if (candidateFitHeight <= contentHeight) {
 
         // Remove first element from source page
-        const sourceHtml = nextPageEls.slice(1).map(e => e.outerHtml).join('').trim();
+        const sourceHtml = serializeBlocks(nextPageEls.slice(1)).trim();
 
         // Don't leave source with fewer lines than minWidowLines.
         // Hop to the next source page before giving up — a different source page
@@ -1652,10 +1533,10 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
           ? restoreIndentIfNeeded(firstElHtml, safeConfig.paragraph?.firstLineIndent || 1.5)
           : firstElHtml;
 
-        pages[i] = { ...pages[i], html: currentHtml + movedElHtml };
+        pages[i] = setPageHtml(pages[i], currentHtml + movedElHtml);
         mergeSplitFragments([pages[i]], log);
         if (sourceHtml) {
-          pages[nextIdx] = { ...nextPage, html: sourceHtml };
+          pages[nextIdx] = setPageHtml(nextPage, sourceHtml);
         } else {
           pages.splice(nextIdx, 1);
         }
@@ -1783,7 +1664,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
       // without violating the orphan rule in all other cases.
       if (chunkLines < minOrphanLines && !(chunkLines === 1 && remainingLines <= 1)) break;
 
-      const remainingEls = nextPageEls.slice(1).map(e => e.outerHtml).join('').trim();
+      const remainingEls = serializeBlocks(nextPageEls.slice(1)).trim();
       // The `rest` chunk becomes the first element on the source page.
       // If it's a <p> with text-indent:0 (baked in from a prior split) but starts with
       // an uppercase letter, it's a new paragraph — restore its indent now so it doesn't
@@ -1890,9 +1771,9 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
         firstEl.fragmentIndex = restIds.fragmentIndex;
         rest = injectBlockIdAttrs(rest, restIds);
       }
-      pages[i] = { ...pages[i], html: currentHtml + chunk };
+      pages[i] = setPageHtml(pages[i], currentHtml + chunk);
       mergeSplitFragments([pages[i]], log);
-      pages[nextIdx] = { ...nextPage, html: newSourceHtml };
+      pages[nextIdx] = setPageHtml(nextPage, newSourceHtml);
       if (process.env.NODE_ENV === 'development') {
         const hasCont = /data-continuation="true"/.test(rest);
         const srcHasCont = /data-continuation="true"/.test(newSourceHtml);
@@ -1937,7 +1818,7 @@ const repairMissingIndents = (pages, safeConfig) => {
   for (const page of pages) {
     if (!page || page.isBlank || !page.html) continue;
 
-    const children = parseHtmlElements(page.html);
+    const children = getPageBlocks(page);
     let changed = false;
 
     const repairedChildren = children.map((el, idx) => {
@@ -1992,7 +1873,7 @@ const repairMissingIndents = (pages, safeConfig) => {
     });
 
     if (changed) {
-      page.html = repairedChildren.map(c => c.outerHtml).join('');
+      Object.assign(page, setPageBlocks(page, repairedChildren));
     }
   }
 };
@@ -2020,7 +1901,7 @@ const mergeSplitFragments = (pages, log = null) => {
     const page = pages[pageIdx];
     if (!page || page.isBlank || !page.html) continue;
 
-    let children = parseHtmlElements(page.html);
+    let children = getPageBlocks(page);
     const mergeBeforeHtml = page.html;
     let changed = false;
 
@@ -2058,7 +1939,7 @@ const mergeSplitFragments = (pages, log = null) => {
         children = [...children.slice(0, j), merged, ...children.slice(j + 1, i), ...children.slice(i + 1)];
         i = j; // re-check from merged position
         changed = true;
-        if (log) log.record('merge', 'pass1-merge', pageIdx + 1, { tag, text: htmlToText(merged.innerHTML).substring(0, 60), beforeHtml: mergeBeforeHtml, afterHtml: children.map(c => c.outerHtml).join('') });
+        if (log) log.record('merge', 'pass1-merge', pageIdx + 1, { tag, text: htmlToText(merged.innerHTML).substring(0, 60), beforeHtml: mergeBeforeHtml, afterHtml: serializeBlocks(children) });
         break;
       }
     }
@@ -2093,7 +1974,7 @@ const mergeSplitFragments = (pages, log = null) => {
     }
 
     if (changed) {
-      page.html = children.map(c => c.outerHtml).join('');
+      Object.assign(page, setPageBlocks(page, children));
     }
   }
 };
@@ -2124,7 +2005,7 @@ const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
     const gap = contentHeight - actualHeight;
     if (gap < MIN_GAP) continue;
 
-    let children = parseHtmlElements(page.html);
+    let children = getPageBlocks(page);
     if (children.length < 2) continue;
 
     // Don't adjust if last element is a heading (should have been moved already)
@@ -2172,7 +2053,7 @@ const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
     }
 
     if (bestGap >= 1) {
-      page.html = applyGap(bestGap);
+      Object.assign(page, setPageHtml(page, applyGap(bestGap)));
     }
   }
 };
@@ -2189,7 +2070,7 @@ const fixHeadingsAtBottom = (pages, canvasCtx, layoutCtx, log) => {
     const page = pages[i];
     if (!page || page.isBlank || !page.html) continue;
 
-    const children = parseHtmlElements(page.html);
+    const children = getPageBlocks(page);
     if (children.length === 0) continue;
 
     const last = children[children.length - 1];
@@ -2229,10 +2110,10 @@ const fixHeadingsAtBottom = (pages, canvasCtx, layoutCtx, log) => {
       continue;
     }
 
-    const remainingHtml = children.slice(0, children.length - 1).map(c => c.outerHtml).join('').trim();
+    const remainingHtml = serializeBlocks(children.slice(0, children.length - 1)).trim();
 
-    pages[i] = { ...page, html: remainingHtml, isBlank: !remainingHtml };
-    pages[ni] = { ...next, html: mergedHtml };
+    pages[i] = setPageHtml(page, remainingHtml, { isBlank: !remainingHtml });
+    pages[ni] = setPageHtml(next, mergedHtml);
 
     log.record('heading-fix', 'move', i + 1, { tag: last.tag, text: htmlToText(last.innerHTML).substring(0, 60), toPage: ni + 1, beforeHtml: page.html, afterHtml: remainingHtml });
   }
@@ -2269,9 +2150,8 @@ const cleanupNearlyEmptyPages = (pages, layoutCtx, canvasCtx) => {
       const shortLineViolation = getNearFullShortLineViolation(mergedHtml, canvasCtx, prevFill, mergedFill);
       if (shortLineViolation) continue;
 
-      pages[i - 1] = { ...prevPage, html: mergedHtml };
-      page.html = '';
-      page.isBlank = true;
+      pages[i - 1] = setPageHtml(prevPage, mergedHtml);
+      Object.assign(page, setPageHtml(page, '', { isBlank: true }));
     }
   }
 };
@@ -2294,6 +2174,7 @@ const enforceChapterStartParity = (pages, safeConfig) => {
     if ((i + 1) % 2 === 0) {
       const blankPage = {
         html: '',
+        blocks: [],
         pageNumber: 0,
         isBlank: true,
         chapterTitle: pages[i - 1]?.chapterTitle || '',
@@ -2379,7 +2260,7 @@ const smoothPageBalance = (pages, layoutCtx, canvasCtx, log) => {
     const fromIdx = q1.fillPct > q2.fillPct ? i      : nextIdx;
     const toIdx   = q1.fillPct > q2.fillPct ? nextIdx : i;
 
-    const fromEls = parseHtmlElements(pages[fromIdx].html);
+    const fromEls = getPageBlocks(pages[fromIdx]);
     if (fromEls.length === 0) break;
 
     // Forward move (toIdx > fromIdx): take LAST element of fromPage, PREPEND to toPage.
@@ -2391,7 +2272,7 @@ const smoothPageBalance = (pages, layoutCtx, canvasCtx, log) => {
 
     const elHtml = elToMove.outerHtml;
     const fromRestEls = toIdx > fromIdx ? fromEls.slice(0, fromEls.length - 1) : fromEls.slice(1);
-    const fromRest = fromRestEls.map(e => e.outerHtml).join('').trim();
+    const fromRest = serializeBlocks(fromRestEls).trim();
     if (!fromRest) break; // Would empty fromPage — skip
 
     const toNewHtml = toIdx > fromIdx
@@ -2431,7 +2312,7 @@ const smoothPageBalance = (pages, layoutCtx, canvasCtx, log) => {
 
     if (badnessAfter < badnessBefore - SMOOTH_BADNESS_MIN_DELTA) {
       const smoothBeforeHtml = pages[fromIdx].html;
-      pages[fromIdx] = { ...pages[fromIdx], html: fromRest };
+      pages[fromIdx] = setPageHtml(pages[fromIdx], fromRest);
 
       // Reunify split fragments if the moved element is a continuation chunk.
       // A backward move (toIdx < fromIdx) appends the element to the bottom of the
@@ -2450,12 +2331,12 @@ const smoothPageBalance = (pages, layoutCtx, canvasCtx, log) => {
           const secondLast = toEls[toEls.length - 2];
           if (secondLast && secondLast.tag === lastChild?.tag) {
             const reunified = mergeIntoOne(secondLast.outerHtml, lastChild.outerHtml);
-            finalToHtml = toEls.slice(0, toEls.length - 2).map(e => e.outerHtml).join('') + reunified;
+            finalToHtml = serializeBlocks(toEls.slice(0, toEls.length - 2)) + reunified;
           }
         }
       }
 
-      pages[toIdx] = { ...pages[toIdx], html: finalToHtml };
+      pages[toIdx] = setPageHtml(pages[toIdx], finalToHtml);
       log.record('smooth', 'move', fromIdx + 1, { toPage: toIdx + 1, attempt, before: { score: +badnessBefore.toFixed(0), fillPct: +(q1.fillPct * 100).toFixed(0) }, after: { score: +badnessAfter.toFixed(0), fillPct: +(qTo.fillPct * 100).toFixed(0) }, beforeHtml: smoothBeforeHtml, afterHtml: fromRest });
       // If receiver is now above 70%, balance is good enough — stop moving
       if (qTo.fillPct >= 0.70) break;
@@ -2499,14 +2380,14 @@ const fixShortLastLines = (pages, layoutCtx, canvasCtx, log) => {
       if (!nextPage || !nextPage.html || nextPage.isTitleOnlyPage || nextPage.isFirstChapterPage) continue;
       if (page.chapterTitle !== nextPage.chapterTitle) continue;
 
-      const pageEls = parseHtmlElements(page.html);
+      const pageEls = getPageBlocks(page);
       const lastEl = pageEls[pageEls.length - 1];
       const tagName = (lastEl?.tag || '').toUpperCase();
       if (!lastEl || /^H[1-6]$/i.test(tagName)) continue;
       if (tagName === 'P' && isMostlyBoldParagraph(lastEl)) continue;
 
       const movedHtml = lastEl.outerHtml;
-      const newCurrentHtml = pageEls.slice(0, pageEls.length - 1).map(e => e.outerHtml).join('').trim();
+      const newCurrentHtml = serializeBlocks(pageEls.slice(0, pageEls.length - 1)).trim();
       if (!newCurrentHtml) continue;
 
       const newCurrentFill = measure(newCurrentHtml) / contentHeight;
@@ -2518,8 +2399,8 @@ const fixShortLastLines = (pages, layoutCtx, canvasCtx, log) => {
       const nextHtml = movedHtml + (nextPage.html || '');
       if (!canAcceptHtml(nextHtml, contentHeight, canvasCtx)) continue;
 
-      pages[i] = { ...page, html: newCurrentHtml };
-      pages[nextIdx] = { ...nextPage, html: nextHtml };
+      pages[i] = setPageHtml(page, newCurrentHtml);
+      pages[nextIdx] = setPageHtml(nextPage, nextHtml);
       mergeSplitFragments([pages[i], pages[nextIdx]], log);
       changedAny = true;
 

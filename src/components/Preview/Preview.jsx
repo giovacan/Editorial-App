@@ -8,7 +8,7 @@ import { useHeaderFooter, buildHeaderHtml } from '../../hooks/useHeaderFooter';
 import { calculateContentDimensions } from '../../utils/textMeasurer';
 import { DEFAULT_CONFIG } from './utils/previewConfig';
 import { applyKpRendering } from '../../utils/textLayoutEngine';
-import { JUSTIFY_SLACK_RATIO } from '../../utils/paginateChapters';
+import { JUSTIFY_SLACK_RATIO } from '../../utils/layoutIr';
 import { addDebugTags } from './utils/debugTags';
 import PreviewControls from './PreviewControls';
 import MagnifierPanel from './MagnifierPanel';

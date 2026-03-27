@@ -15,6 +15,8 @@
  *   const log = logger.getLog();
  */
 
+import { parseTopLevelBlocks, htmlToText } from './layoutIr.js';
+
 const IS_DEV = process.env.NODE_ENV === 'development';
 
 // ─── HTML element inspector (string-based, no DOM, worker-safe) ───────────────
@@ -26,27 +28,19 @@ const IS_DEV = process.env.NODE_ENV === 'development';
  */
 function inspectParagraphs(pageHtml) {
   if (!pageHtml) return [];
-  const result = [];
-  // Match each top-level <p ...>...</p>
-  const pRe = /<p(\s[^>]*)?>[\s\S]*?<\/p>/gi;
-  let idx = 0;
-  let m;
-  while ((m = pRe.exec(pageHtml)) !== null) {
-    const outerHtml = m[0];
-    const attrStr = m[1] || '';
-    const isContinuation = /data-continuation\s*=\s*["']true["']/i.test(attrStr);
-    // Extract text-indent from inline style
-    const styleM = attrStr.match(/\bstyle\s*=\s*["']([^"']*)["']/i);
-    const styleStr = styleM ? styleM[1] : '';
-    const indentM = styleStr.match(/text-indent\s*:\s*([^;]+)/i);
-    const indentValue = indentM ? indentM[1].trim() : null;
-    // Numeric value: strip units, parse
-    const indentNum = indentValue ? parseFloat(indentValue) : null;
-    // First 80 chars of plain text
-    const text = outerHtml.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().substring(0, 80);
-    result.push({ index: idx++, isContinuation, indentValue, indentNum, text });
-  }
-  return result;
+  return parseTopLevelBlocks(pageHtml)
+    .filter((block) => block.tag === 'P')
+    .map((block, index) => {
+      const indentMatch = (block.style || '').match(/text-indent\s*:\s*([^;]+)/i);
+      const indentValue = indentMatch ? indentMatch[1].trim() : null;
+      return {
+        index,
+        isContinuation: block.dataset?.continuation === 'true',
+        indentValue,
+        indentNum: indentValue ? parseFloat(indentValue) : null,
+        text: htmlToText(block.outerHtml).replace(/\s+/g, ' ').trim().substring(0, 80)
+      };
+    });
 }
 
 /**
@@ -555,24 +549,20 @@ function renderPageLines(s, colW) {
  */
 function parseAllElements(pageHtml) {
   if (!pageHtml) return [];
-  const result = [];
-  const elRe = /<(h[1-6]|p|ul|ol|blockquote|div)(\s[^>]*)?>[\s\S]*?<\/\1>/gi;
-  let idx = 0;
-  let m;
-  while ((m = elRe.exec(pageHtml)) !== null) {
-    const tag = m[1].toUpperCase();
-    const attrStr = m[2] || '';
-    const outerHtml = m[0];
-    const isContinuation = /data-continuation\s*=\s*["']true["']/i.test(attrStr);
-    const styleM = attrStr.match(/\bstyle\s*=\s*["']([^"']*)["']/i);
-    const styleStr = styleM ? styleM[1] : '';
-    const indentM = styleStr.match(/text-indent\s*:\s*([^;]+)/i);
-    const indentValue = indentM ? indentM[1].trim() : null;
-    const indentNum = indentValue ? parseFloat(indentValue) : null;
-    const text = outerHtml.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().substring(0, 100);
-    result.push({ tag, isContinuation, indentValue, indentNum, text, index: idx++ });
-  }
-  return result;
+  return parseTopLevelBlocks(pageHtml)
+    .filter((block) => ['P', 'DIV', 'BLOCKQUOTE', 'UL', 'OL'].includes(block.tag) || /^H[1-6]$/.test(block.tag))
+    .map((block, index) => {
+      const indentMatch = (block.style || '').match(/text-indent\s*:\s*([^;]+)/i);
+      const indentValue = indentMatch ? indentMatch[1].trim() : null;
+      return {
+        tag: block.tag,
+        isContinuation: block.dataset?.continuation === 'true',
+        indentValue,
+        indentNum: indentValue ? parseFloat(indentValue) : null,
+        text: htmlToText(block.outerHtml).replace(/\s+/g, ' ').trim().substring(0, 100),
+        index
+      };
+    });
 }
 
 // ─── HTML snapshot helpers ────────────────────────────────────────────────────

@@ -13,7 +13,7 @@
 import { useMemo } from 'react';
 import { buildHeaderHtmlPure } from '../../hooks/useHeaderFooter';
 import { applyKpRendering } from '../../utils/textLayoutEngine';
-import { JUSTIFY_SLACK_RATIO } from '../../utils/paginateChapters';
+import { JUSTIFY_SLACK_RATIO } from '../../utils/layoutIr';
 import './PageFrame.css';
 
 /**
