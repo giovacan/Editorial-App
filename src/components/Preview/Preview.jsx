@@ -157,11 +157,16 @@ function Preview() {
 
   // Run only when page content changes — NOT on every mouse-move render.
   // Skip word-spacing adjustment on frontmatter pages (flex layout breaks with it).
+  // Skip when KP rendering is active (textAlign=justify): KP already sets precise per-line
+  // word-spacing via <span> elements; applying a uniform offset on the outer <p> creates
+  // inconsistency between KP-adjusted lines (explicit span word-spacing) and non-adjusted
+  // lines (inherit the outer negative offset), making paragraphs look "crooked".
   useEffect(() => {
     if (isFrontMatterPage) return;
+    if ((safeConfig.paragraph?.align || 'justify') === 'justify') return;
     adjustWordSpacing(previewContentRef.current);
     adjustWordSpacing(magnifierContentRef.current);
-  }, [currentPage, debugHtml, isFrontMatterPage]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentPage, debugHtml, isFrontMatterPage, safeConfig.paragraph?.align]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isCurrentPageEven = currentPageData.pageNumber % 2 === 0;
   const isTitleOnlyPage = currentPageData.isTitleOnlyPage === true;
@@ -185,17 +190,7 @@ function Preview() {
   // ── KP Rendering ─────────────────────────────────────────────────────────────
   // Frontmatter pages (title, TOC) skip KP rendering — their HTML uses flex
   // layout that would be corrupted by the word-spacing pass.
-  const renderedHtml = useMemo(() => {
-    if (!debugHtml || currentPageData?.isBlank || isFrontMatterPage || textAlign !== 'justify') return debugHtml;
-    const cw = pageWidthPx - marginLeft - marginRight;
-    return applyKpRendering(debugHtml, {
-      baseFontSizePx: fontSize,
-      fontFamily,
-      contentWidth: cw,
-      widthSlack: cw * JUSTIFY_SLACK_RATIO,
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debugHtml, currentPageData?.isBlank, isFrontMatterPage, textAlign, pageWidthPx, marginLeft, marginRight, fontSize, fontFamily]);
+  const renderedHtml = debugHtml;
 
   const { showMagnifier, setShowMagnifier, magnifierZoom, setMagnifierZoom, magnifierPanelRef,
     magnifierPos, updateMagnifierPosition, handleMouseEnterPreview, handleMouseLeavePreview,
@@ -280,10 +275,11 @@ function Preview() {
         <TOCPanel />
       )}
 
-      <PaginationProgressBar progress={paginationPercent} isVisible={isPaginationRunning} compact={false} />
+      <div className="preview-stage">
+        <PaginationProgressBar progress={paginationPercent} isVisible={isPaginationRunning} />
 
-      <div className="preview-scroll" ref={previewScrollRef}>
-        <div
+        <div className="preview-scroll" ref={previewScrollRef}>
+          <div
           ref={previewPageRef}
           className={`preview-page${isFrontMatterPage ? ' is-front-matter' : ''}`}
           lang="es"
@@ -322,10 +318,11 @@ function Preview() {
               }
             }}
             className="preview-content"
-            style={{ height: `${effectiveContentHeight}px` }}
+            style={{ height: `${effectiveContentHeight + 2}px` }}
             dangerouslySetInnerHTML={{ __html: renderedHtml || '' }}
           />
           {pageNumHtml}
+          </div>
         </div>
       </div>
 

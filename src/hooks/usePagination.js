@@ -161,6 +161,7 @@ export const usePagination = (bookData, config, measureRef) => {
   const [gutterValue, setGutterValue] = useState(() => calculateGutter(0));
   const gutterValueRef = useRef(gutterValue);
   const previousPageCountRef = useRef(0);
+  const paginationWorkerRef = useRef(null);
 
   // Keep ref in sync with state, but don't trigger pagination effect
   useEffect(() => {
@@ -351,9 +352,12 @@ export const usePagination = (bookData, config, measureRef) => {
       // TODO: replace with measureHtmlHeight(buildHeaderHtmlPure(...), canvasCtx) for exact measurement.
       const headerSpaceEstimate = safeConfig.header?.enabled ? Math.round(lineHeightPx * 3.0) : 0;
       const minOrphanLines = safeConfig.pagination?.minOrphanLines ?? 2;
-      // Floor to line grid — rounding provides up to 1 line of safety.
+      // Floor to line grid, then subtract 1 line as a safety buffer.
+      // The browser's typographic engine renders text with fractional pixels that
+      // can accumulate to push the last line ~1px beyond the Canvas-calculated height.
+      // Reserving one line prevents that last line from being clipped by overflow:hidden.
       const rawContentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight) - headerSpaceEstimate;
-      const contentHeight = Math.floor(rawContentHeight / lineHeightPx) * lineHeightPx;
+      const contentHeight = Math.floor(rawContentHeight / lineHeightPx) * lineHeightPx - lineHeightPx;
 
       if (process.env.NODE_ENV === 'development') {
         const floorDrop = rawContentHeight - contentHeight;
@@ -382,23 +386,53 @@ export const usePagination = (bookData, config, measureRef) => {
       if (cancelled) return;
 
       let generatedPages;
+      let paginationLog = null;
+      let paginationSummaryText = null;
       try {
-        const paginationResult = paginateChapters(
-          safeBookData.chapters,
-          layoutCtx,
-          measureDiv,
-          safeConfig
-        );
+        const paginationResult = await new Promise((resolve, reject) => {
+          if (paginationWorkerRef.current) {
+            paginationWorkerRef.current.terminate();
+          }
+          paginationWorkerRef.current = new Worker(
+            new URL('../workers/paginationWorker.js', import.meta.url),
+            { type: 'module' }
+          );
+          paginationWorkerRef.current.onmessage = ({ data: msg }) => {
+            if (msg.type === 'PROGRESS') {
+              if (!cancelled) {
+                useEditorStore.getState().setPaginationProgress(msg.percent);
+              }
+            } else if (msg.type === 'DONE') {
+              resolve(msg);
+            } else if (msg.type === 'ERROR') {
+              reject(new Error(msg.message));
+            }
+          };
+          paginationWorkerRef.current.onerror = (e) => {
+            const msg = `Worker error: ${e?.message || '(no message)'} @ ${e?.filename || '?'}:${e?.lineno || '?'}:${e?.colno || '?'}`;
+            console.error('[WORKER ONERROR]', msg, e);
+            reject(new Error(msg));
+          };
+          paginationWorkerRef.current.postMessage({
+            type: 'START',
+            chapters: safeBookData.chapters,
+            layoutCtx,
+            safeConfig
+          });
+        });
+        if (cancelled) return;
         generatedPages = paginationResult.pages;
-        if (paginationResult.log) {
-          useEditorStore.getState().setPaginationLog(paginationResult.log);
+        paginationLog = paginationResult.log;
+        paginationSummaryText = paginationResult.summaryText;
+        if (paginationLog) {
+          useEditorStore.getState().setPaginationLog(paginationLog);
           if (process.env.NODE_ENV === 'development') {
             fetch('/api/pagination-log', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                log: paginationResult.log,
-                summaryText: paginationResult.summaryText
+                log: paginationLog,
+                summaryText: paginationSummaryText
               })
             }).catch(() => {})
           }
@@ -613,6 +647,10 @@ export const usePagination = (bookData, config, measureRef) => {
           gutterValue: engineGutter,
         });
         useEditorStore.getState().setPaginationProgress(100);
+        // Small delay so the 100% state renders before we hide the progress indicator
+        setTimeout(() => {
+          if (!cancelled) useEditorStore.getState().endPagination();
+        }, 500);
       }
     };
 
@@ -620,6 +658,10 @@ export const usePagination = (bookData, config, measureRef) => {
 
     return () => {
       cancelled = true;
+      if (paginationWorkerRef.current) {
+        paginationWorkerRef.current.terminate();
+        paginationWorkerRef.current = null;
+      }
       useEditorStore.getState().endPagination();
     };
   }, [

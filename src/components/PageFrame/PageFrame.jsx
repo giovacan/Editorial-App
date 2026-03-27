@@ -165,7 +165,7 @@ export default function PageFrame({
       {/* Content */}
       <div
         className="pf-content preview-content"
-        style={{ height: `${effectiveContentHeight}px`, overflow: 'hidden' }}
+        style={{ height: `${effectiveContentHeight + 2}px`, overflow: 'hidden' }}
         dangerouslySetInnerHTML={{ __html: html }}
       />
 

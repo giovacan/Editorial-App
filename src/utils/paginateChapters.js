@@ -24,10 +24,173 @@ import {
   createLayoutContext,
   getLineBreakPositions,
   buildFontString,
-  countHyphenationMetrics
+  countHyphenationMetrics,
+  getCtx as getEngineCtx2d
 } from './textLayoutEngine';
 
-import { createPaginationLogger } from './paginationLogger.js';
+import { createPaginationLogger, assignBlockId, deriveFragmentId, injectBlockIdAttrs, resetBlockCounter } from './paginationLogger.js';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DOM-free HTML helpers — Worker-safe string-based replacements for
+// document.createElement('div') + innerHTML patterns used throughout this file.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Strip all HTML tags → plain text (replaces el.textContent) */
+const htmlToText = (html) => (html || '').replace(/<[^>]*>/g, '');
+
+/**
+ * Parse an HTML string into an array of top-level element descriptor objects.
+ * Each descriptor has: { tag, outerHtml, innerHTML, textContent, style, dataset }
+ * where dataset is an object of data-* attributes.
+ */
+const parseHtmlElements = (html) => {
+  if (!html) return [];
+  const elements = [];
+  let i = 0;
+  while (i < html.length) {
+    // Skip whitespace between elements
+    while (i < html.length && html[i] !== '<') i++;
+    if (i >= html.length) break;
+
+    // Find the opening tag
+    const tagStart = i;
+    const tagEnd = html.indexOf('>', i);
+    if (tagEnd === -1) break;
+    const openTag = html.slice(tagStart, tagEnd + 1);
+    i = tagEnd + 1;
+
+    // Self-closing tags (hr, br, img...)
+    if (openTag.endsWith('/>') || /^<(br|hr|img|input|meta|link)\b/i.test(openTag)) {
+      const tagMatch = openTag.match(/^<([a-zA-Z][^\s/>]*)/);
+      const tag = tagMatch ? tagMatch[1].toUpperCase() : 'UNKNOWN';
+      const styleMatch = openTag.match(/\bstyle="([^"]*)"/i);
+      elements.push({ tag, outerHtml: openTag, innerHTML: '', textContent: '', style: styleMatch ? styleMatch[1] : '', dataset: {} });
+      continue;
+    }
+
+    const tagMatch = openTag.match(/^<([a-zA-Z][^\s/>]*)/);
+    if (!tagMatch) { i++; continue; }
+    const tagName = tagMatch[1];
+
+    // Find the matching closing tag (handles nesting)
+    let depth = 1;
+    let j = i;
+    const openRe = new RegExp(`<${tagName}[\\s>]`, 'i');
+    const closeRe = new RegExp(`</${tagName}>`, 'i');
+    while (j < html.length && depth > 0) {
+      const nextOpen = openRe.exec(html.slice(j));
+      const nextClose = closeRe.exec(html.slice(j));
+      if (!nextClose) break;
+      if (nextOpen && nextOpen.index < nextClose.index) {
+        depth++;
+        j += nextOpen.index + 1;
+      } else {
+        depth--;
+        j += nextClose.index + nextClose[0].length;
+      }
+    }
+    const outerHtml = html.slice(tagStart, j);
+    const closeTagMatch = outerHtml.match(/<\/[^>]+>$/);
+    const inner = closeTagMatch
+      ? outerHtml.slice(openTag.length, outerHtml.length - closeTagMatch[0].length)
+      : '';
+
+    const styleMatch = openTag.match(/\bstyle="([^"]*)"/i);
+    // Extract data-* attributes
+    const dataset = {};
+    let dataMatch;
+    const dataRe = /\bdata-([a-z0-9-]+)="([^"]*)"/gi;
+    while ((dataMatch = dataRe.exec(openTag)) !== null) {
+      // Convert kebab-case to camelCase
+      const key = dataMatch[1].replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+      dataset[key] = dataMatch[2];
+    }
+
+    elements.push({
+      tag: tagName.toUpperCase(),
+      outerHtml,
+      innerHTML: inner,
+      textContent: htmlToText(inner),
+      style: styleMatch ? styleMatch[1] : '',
+      dataset
+    });
+    i = j;
+  }
+  return elements;
+};
+
+/** Get the first top-level element descriptor from an HTML string */
+const getFirstElement = (html) => parseHtmlElements(html)[0] || null;
+
+/** Get the last top-level element descriptor from an HTML string */
+const getLastElement = (html) => {
+  const els = parseHtmlElements(html);
+  return els.length > 0 ? els[els.length - 1] : null;
+};
+
+/** Remove the element at position `index` from an HTML string, return new string */
+const removeElementAt = (html, index) => {
+  const els = parseHtmlElements(html);
+  if (index < 0 || index >= els.length) return html;
+  const toRemove = els[index].outerHtml;
+  const pos = html.indexOf(toRemove);
+  if (pos === -1) return html;
+  return (html.slice(0, pos) + html.slice(pos + toRemove.length)).trim();
+};
+
+/** Remove the last top-level element, return { newHtml, removed } */
+const removeLastElement = (html) => {
+  const els = parseHtmlElements(html);
+  if (els.length === 0) return { newHtml: html, removed: null };
+  const last = els[els.length - 1];
+  const pos = html.lastIndexOf(last.outerHtml);
+  if (pos === -1) return { newHtml: html, removed: last };
+  return { newHtml: html.slice(0, pos).trim(), removed: last };
+};
+
+/** Remove the first top-level element, return { newHtml, removed } */
+const removeFirstHtmlElement = (html) => {
+  const els = parseHtmlElements(html);
+  if (els.length === 0) return { newHtml: html, removed: null };
+  const first = els[0];
+  const pos = html.indexOf(first.outerHtml);
+  if (pos === -1) return { newHtml: html, removed: first };
+  return { newHtml: html.slice(pos + first.outerHtml.length).trim(), removed: first };
+};
+
+/**
+ * Count bold text length in an HTML string (replaces querySelectorAll('strong, b')).
+ * Returns { boldLen, totalLen } for ratio calculation.
+ */
+const getBoldTextRatio = (outerHtml) => {
+  const totalText = htmlToText(outerHtml).trim();
+  let boldLen = 0;
+  const boldRe = /<(?:strong|b)(?:\s[^>]*)?>([^<]*(?:<(?!\/(?:strong|b)>)[^<]*)*)<\/(?:strong|b)>/gi;
+  let m;
+  while ((m = boldRe.exec(outerHtml)) !== null) {
+    boldLen += htmlToText(m[1]).trim().length;
+  }
+  return { boldLen, totalLen: totalText.length };
+};
+
+/**
+ * Worker-safe canvas measurement: get a 2D context from an OffscreenCanvas if available,
+ * otherwise from a regular canvas (main thread). Returns the ctx.
+ */
+const getCanvasCtx2d = (() => {
+  let _ctx = null;
+  return () => {
+    if (_ctx) return _ctx;
+    if (typeof OffscreenCanvas !== 'undefined') {
+      _ctx = new OffscreenCanvas(1, 1).getContext('2d');
+    } else if (typeof document !== 'undefined') {
+      _ctx = document.createElement('canvas').getContext('2d');
+    }
+    return _ctx;
+  };
+})();
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Shared justify slack ratio — single source of truth.
@@ -35,6 +198,9 @@ import { createPaginationLogger } from './paginationLogger.js';
  * 4% compensates Canvas.measureText() underestimating Spanish chars (ñ, á, é).
  */
 export const JUSTIFY_SLACK_RATIO = 0.04;
+const FILL_PASS_RUNT_MIN_CURRENT_FILL = 0.70;
+const FILL_PASS_RUNT_MIN_RESULT_FILL = 0.88;
+const SHORT_LAST_LINE_POSTPASS_MIN_SOURCE_FILL = 0.80;
 
 /**
  * Main entry point — same interface as before.
@@ -45,9 +211,14 @@ export const JUSTIFY_SLACK_RATIO = 0.04;
  * @param {object} safeConfig
  * @returns {Page[]}
  */
-export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, logger = null) => {
+export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, options = null) => {
+  if (!chapters || !Array.isArray(chapters)) return { pages: [], log: {}, summaryText: '' };
+
+  const logger = options?.logger || null;
+  const onProgress = options?.onProgress || null;
   const log = logger || createPaginationLogger();
   log.reset();
+  resetBlockCounter();
 
   const allPages = [];
 
@@ -69,15 +240,51 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, lo
     ),
     widthSlack: justifySlack,
     lineHeightPx: layoutCtx.lineHeightPx,
-    targetFillPct: safeConfig?.pagination?.targetFillPct ?? 0.92
+    targetFillPct: safeConfig?.pagination?.targetFillPct ?? 0.92,
+    ctx2d: getEngineCtx2d()
   };
 
   const { contentHeight, lineHeightPx, baseFontSize: baseFontSizeTop, baseLineHeight: baseLineHeightTop, minOrphanLines: minOrphanLinesTop } = layoutCtx;
   const pageFormat = safeConfig?.pageFormat || layoutCtx.pageFormat || 'unknown';
   log.setConfig({ pageFormat, fontSize: baseFontSizeTop, lineHeight: baseLineHeightTop, contentHeight, contentWidth: layoutCtx.contentWidth, minOrphanLines: minOrphanLinesTop, lineHeightPx });
 
+  // Reproduction bundle — everything needed to replay this exact pagination run
+  if (process.env.NODE_ENV === 'development') {
+    const manuscriptHash = chapters.reduce((acc, ch) => acc + (ch.html || '').length + (ch.title || '').length, 0);
+    const configStr = JSON.stringify({ pageFormat, fontSize: baseFontSizeTop, lineHeight: baseLineHeightTop, contentHeight, contentWidth: layoutCtx.contentWidth, minOrphanLines: minOrphanLinesTop, lineHeightPx, textAlign: layoutCtx.textAlign, fontFamily: layoutCtx.fontFamily });
+    const configHash = configStr.split('').reduce((h, c) => (Math.imul(31, h) + c.charCodeAt(0)) | 0, 0).toString(16);
+    log.setReproBundle({
+      engineVersion: '4.0',
+      timestamp: new Date().toISOString(),
+      manuscriptHash: `len${manuscriptHash}`,
+      configHash,
+      layoutCtx: {
+        pageFormat,
+        baseFontSizePx: canvasCtx.baseFontSizePx,
+        baseLineHeight: baseLineHeightTop,
+        contentHeight,
+        contentWidth: layoutCtx.contentWidth,
+        lineHeightPx,
+        textAlign: layoutCtx.textAlign,
+        fontFamily: layoutCtx.fontFamily || 'Georgia, serif',
+        minOrphanLines: minOrphanLinesTop,
+        minWidowLines: layoutCtx.minWidowLines
+      },
+      flags: {
+        splitLongParagraphs: layoutCtx.splitLongParagraphs,
+        targetFillPct: safeConfig?.pagination?.targetFillPct ?? 0.92,
+        firstLineIndent: safeConfig?.paragraph?.firstLineIndent ?? 1.5,
+        justifySlack: justifySlack,
+        workerPath: typeof WorkerGlobalScope !== 'undefined' ? 'worker' : 'main-thread'
+      },
+      chapterCount: chapters.length,
+      totalContentLength: manuscriptHash
+    });
+  }
+
   for (let i = 0; i < chapters.length; i++) {
     const chapter = chapters[i];
+    if (onProgress) onProgress(i + 1, chapters.length);
 
     // Pad to odd page if chapter must start on right
     if (shouldStartOnRightPage(chapter, i, safeConfig) && i > 0) {
@@ -93,6 +300,14 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, lo
     }
 
     const elements = flattenChapterElements(chapter, layoutCtx, canvasCtx, measureDiv, safeConfig);
+    // DEV: log first 4 paragraph indents to diagnose missing-indent bugs
+    if (process.env.NODE_ENV === 'development' && i === 0) {
+      const paraEls = elements.filter(e => e.tag === 'P').slice(0, 4);
+      paraEls.forEach((e, pi) => {
+        const indentM = e.html?.match(/text-indent\s*:\s*([^;}"]+)/i);
+        log.record('greedy', 'diag', 0, { note: 'indent-check', para: pi, indent: indentM?.[1] ?? 'none', text: (e.textContent||'').substring(0,50) });
+      });
+    }
     const chapterPages = greedyPaginate(elements, layoutCtx, canvasCtx, measureDiv, safeConfig, chapter, log);
     allPages.push(...chapterPages);
   }
@@ -130,6 +345,17 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, lo
   // same original paragraph on one page. One has data-continuation='true' — merge
   // it with its neighbor so it displays as a single paragraph.
   mergeSplitFragments(allPages, log);
+  fixShortLastLines(allPages, layoutCtx, canvasCtx, log);
+
+  // Indent repair pass — correct any <p> that lost its text-indent due to being
+  // the "first paragraph" of a chapter (baked-in text-indent:0) but ended up on
+  // a page other than the chapter-start page after fill/split operations.
+  // Also fixes any non-continuation <p> at the start of a page that has indent:0.
+  repairMissingIndents(allPages, safeConfig);
+
+  // Tag last page of each chapter — suppresses fill-penalties in scoring
+  // for pages that can never be filled further (chapter boundary constraint).
+  tagChapterLastPages(allPages);
 
   // E6: Distribute remaining vertical whitespace proportionally among elements.
   // Runs LAST (after all structural mutations) so margins are set once on the
@@ -137,43 +363,29 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, lo
   distributeVerticalSpace(allPages, layoutCtx, canvasCtx);
 
   // ╔══════════════════════════════════════════════════════════════════╗
-  // ║  ⚠️  FASE 6 — GLOBAL REOPTIMIZATION PASS                       ║
-  // ║  IMPORTANTE: actualmente solo corre en NODE_ENV=development.   ║
+  // ║  FASE 6 — GLOBAL REOPTIMIZATION PASS                           ║
+  // ║  Corre en todos los entornos (dev y producción).               ║
   // ║                                                                  ║
-  // ║  Para promover a producción se deben cumplir las 3 condiciones: ║
+  // ║  Identifica capítulos con páginas de score ≥ REOPT_SCORE_      ║
+  // ║  THRESHOLD y los repagina con minOrphanLines=1. Solo acepta     ║
+  // ║  el resultado si mejora ≥ 50 puntos sobre el original.         ║
   // ║                                                                  ║
-  // ║  1. MISMOS RESULTADOS en el mismo libro entre ejecuciones.      ║
-  // ║     Verificar: paginar el mismo libro 3 veces seguidas y        ║
-  // ║     confirmar que el pagination-log es byte-for-byte idéntico.  ║
-  // ║     Si difiere, hay no-determinismo (DOM timing, font loading). ║
-  // ║                                                                  ║
-  // ║  2. NINGUNA REGRESIÓN en calidad visual.                        ║
-  // ║     Verificar: comparar visualmente los capítulos reoptimizados ║
-  // ║     contra los originales. minOrphanLines=1 puede producir      ║
-  // ║     líneas sueltas visibles si el scoring no las penaliza bien. ║
-  // ║     El log muestra eventos reopt/accepted con delta de score.   ║
-  // ║                                                                  ║
-  // ║  3. TIEMPO ACEPTABLE en libros grandes (200+ páginas).          ║
-  // ║     Verificar: medir cuántos capítulos activa REOPT_SCORE_      ║
-  // ║     THRESHOLD en producción real. Cada capítulo reoptimizado    ║
-  // ║     corre flattenChapterElements + greedyPaginate + 2x fillPass ║
-  // ║     extra — si activa en 10+ capítulos puede agregar 500ms+.    ║
-  // ║     Si es necesario, subir REOPT_SCORE_THRESHOLD a 700-800.     ║
+  // ║  Costo: flattenChapterElements + greedyPaginate + 2x fillPass  ║
+  // ║  por capítulo reoptimizado. En libros con 10+ capítulos malos  ║
+  // ║  puede agregar 300-500ms. Subir threshold a 700-800 si lento.  ║
   // ╚══════════════════════════════════════════════════════════════════╝
   const REOPT_SCORE_THRESHOLD = 500; // Solo toca páginas genuinamente malas
 
-  if (process.env.NODE_ENV === 'development') {
+  {
     // Identify chapters with problematic non-chapter-end pages
     const badChapters = new Set();
     for (const page of allPages) {
       if (page.isBlank || page.isTitleOnlyPage || page.isFirstChapterPage || !page.html) continue;
+      // isChapterLastPage flag is set — skip these pages entirely since fill-based
+      // badness is suppressed for them and they don't benefit from reoptimization.
+      if (page.isChapterLastPage) continue;
       const q = evaluatePageQualityCanvas(page.html, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx);
-      // Skip pages that are purely underfilled chapter endings — they can't be improved
-      // by reoptimization since there's simply no more content for them
-      const isChapterEndPage = q.fillPct < 0.55 && !q.violations.some(v =>
-        v === 'orphan' || v === 'widow' || v === 'heading_at_bottom'
-      );
-      if (!isChapterEndPage && q.score >= REOPT_SCORE_THRESHOLD) {
+      if (q.score >= REOPT_SCORE_THRESHOLD) {
         badChapters.add(page.chapterTitle);
       }
     }
@@ -186,11 +398,11 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, lo
         const chapter = chapters.find(c => c.title === chapterTitle);
         if (!chapter) continue;
 
-        // Score the current pages for this chapter
+        // Score the current pages for this chapter (pass isChapterLastPage so scoring is consistent)
         const currentChapterPages = allPages.filter(p => p.chapterTitle === chapterTitle && !p.isBlank);
         const currentScore = currentChapterPages.reduce((sum, p) => {
           if (!p.html) return sum;
-          return sum + evaluatePageQualityCanvas(p.html, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score;
+          return sum + evaluatePageQualityCanvas(p.html, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx, false, { isChapterLastPage: p.isChapterLastPage === true }).score;
         }, 0);
 
         // Run relaxed pagination for this chapter only
@@ -204,10 +416,12 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, lo
         cleanupNearlyEmptyPages(relaxedPages, relaxedLayoutCtx, canvasCtx);
         smoothPageBalance(relaxedPages, relaxedLayoutCtx, canvasCtx, log);
         mergeSplitFragments(relaxedPages, log);
+        fixShortLastLines(relaxedPages, relaxedLayoutCtx, canvasCtx, log);
+        tagChapterLastPages(relaxedPages);
 
-        // Score the relaxed result
+        // Score the relaxed result (consistent: same isChapterLastPage suppression)
         const relaxedScore = relaxedPages.filter(p => !p.isBlank && p.html).reduce((sum, p) => {
-          return sum + evaluatePageQualityCanvas(p.html, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score;
+          return sum + evaluatePageQualityCanvas(p.html, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx, false, { isChapterLastPage: p.isChapterLastPage === true }).score;
         }, 0);
 
         // Accept only if meaningfully better (at least 50 points improvement)
@@ -232,6 +446,9 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, lo
         smoothPageBalance(allPages, layoutCtx, canvasCtx, log);
         enforceChapterStartParity(allPages, safeConfig);
         mergeSplitFragments(allPages, log);
+        fixShortLastLines(allPages, layoutCtx, canvasCtx, log);
+        repairMissingIndents(allPages, safeConfig);
+        tagChapterLastPages(allPages);
         distributeVerticalSpace(allPages, layoutCtx, canvasCtx);
       }
     }
@@ -246,60 +463,8 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, lo
     pageNum++;
   }
 
-  // DEV: dump final HTML structure of pages 25-35 (after all passes including distributeVerticalSpace)
-  if (process.env.NODE_ENV === 'development') {
-    for (let di = 0; di < allPages.length; di++) {
-      const dp = allPages[di];
-      if (!dp || dp.isBlank || !dp.html) continue;
-      const dpNum = dp.pageNumber || (di + 1);
-      if (dpNum < 25 || dpNum > 35) continue;
-      const ddiv = document.createElement('div');
-      ddiv.innerHTML = dp.html;
-      const els = Array.from(ddiv.children).map((el, idx) => ({
-        idx,
-        tag: el.tagName,
-        text: (el.textContent || '').substring(0, 50),
-        indent: (el.getAttribute('style') || '').match(/text-indent:\s*([^;]+)/)?.[1] || 'none',
-        cont: el.dataset?.continuation || 'false',
-      }));
-      log.record('diag', 'page-structure', dpNum, { elements: els });
-    }
-  }
-
   // Generate structured summary via logger
   log.generateSummary(allPages, evaluatePageQualityCanvas, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx);
-
-  // Dev: per-page score summary — one line per page using logger data
-  if (process.env.NODE_ENV === 'development') {
-    const logData = log.getLog();
-    console.groupCollapsed(`[PAGINATION] ${allPages.length} pages — score summary`);
-    for (const s of logData.summary) {
-      if (s.blank) {
-        console.log(`  p${s.page} [BLANK]`);
-        continue;
-      }
-      const viols = s.violations.length ? ` \u26A0 ${s.violations.join(', ')}` : '';
-      console.log(`  p${s.page} fill=${s.fillPct}% score=${s.score}${viols}`);
-    }
-    console.groupEnd();
-
-    // Diagnostic: for F-grade pages, show all fill-pass reject reasons
-    const fPages = logData.summary.filter(s => !s.blank && s.qualityGrade === 'F' && !s.chapterEnd);
-    if (fPages.length > 0) {
-      console.groupCollapsed(`[PAGINATION] F-grade pages (${fPages.length}) — fill-pass rejects`);
-      for (const fp of fPages) {
-        const rejects = logData.entries.filter(e => e.page === fp.page && e.type === 'reject');
-        const moves   = logData.entries.filter(e => e.page === fp.page && (e.type === 'move' || e.type === 'split'));
-        console.group(`p${fp.page} fill=${fp.fillPct}% score=${fp.score} | ${moves.length} moves/splits, ${rejects.length} rejects`);
-        for (const r of rejects) {
-          const d = r.data || {};
-          console.log(`  [${r.phase}] reason=${d.reason || '?'} tag=${d.tag || '?'} text="${(d.text || '').substring(0, 60)}" before=${d.before?.score ?? '?'} after=${d.after?.score ?? '?'}`);
-        }
-        console.groupEnd();
-      }
-      console.groupEnd();
-    }
-  }
 
   return { pages: allPages, log: log.getLog(), summaryText: log.formatSummaryText() };
 };
@@ -313,6 +478,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, lo
 const flattenChapterElements = (chapter, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
   const { baseFontSize, baseLineHeight, textAlign, lineHeightPx, contentHeight } = layoutCtx;
   const elements = [];
+  const chapterId = `ch_${(chapter.title || 'unknown').substring(0, 20).replace(/\s+/g, '_')}`;
 
   // Chapter title
   const { titleHtml, ctConfig } = buildChapterTitleHtml(
@@ -327,18 +493,17 @@ const flattenChapterElements = (chapter, layoutCtx, canvasCtx, measureDiv, safeC
     tag: 'TITLE',
     textContent: ''
   });
+  assignBlockId(elements[elements.length - 1], chapterId, 0);
 
-  // Content elements
-  const tmp = document.createElement('div');
-  tmp.innerHTML = chapter.html || '';
-  const children = Array.from(tmp.children).filter(
-    el => el.textContent.trim() || el.tagName === 'HR'
+  // Content elements — Worker-safe: use string-based parser instead of DOM
+  const children = parseHtmlElements(chapter.html || '').filter(
+    el => el.textContent.trim() || el.tag === 'HR'
   );
 
   let paragraphCount = 0;
   for (const el of children) {
     const isFirstParagraph = paragraphCount === 0;
-    if (el.tagName === 'P' || el.tagName === 'DIV') paragraphCount++;
+    if (el.tag === 'P' || el.tag === 'DIV') paragraphCount++;
 
     const html = buildParagraphHtml(
       el, safeConfig, baseFontSize, baseLineHeight, textAlign, isFirstParagraph
@@ -347,21 +512,13 @@ const flattenChapterElements = (chapter, layoutCtx, canvasCtx, measureDiv, safeC
 
     // Detect bold from the ORIGINAL element (before buildParagraphHtml strips it).
     // A paragraph is "bold" (subtitle-like) only if ALL or nearly all text is bold.
-    // Paragraphs that START with bold but contain significant non-bold content
-    // (e.g. inline bold opener merged with regular text) are regular paragraphs.
     let origIsBold = false;
-    if (el.tagName === 'P') {
-      if (/font-weight:\s*(?:bold|[7-9]00)/.test(el.getAttribute('style') || '')) {
-        // Entire paragraph styled bold via inline style
+    if (el.tag === 'P') {
+      if (/font-weight:\s*(?:bold|[7-9]00)/.test(el.style || '')) {
         origIsBold = true;
-      } else if (/^<p[^>]*>\s*<(?:strong|b)\b/i.test(el.outerHTML)) {
-        // Starts with <strong>/<b> — check if predominantly bold
-        const totalText = (el.textContent || '').trim();
-        const boldEls = el.querySelectorAll('strong, b');
-        let boldTextLen = 0;
-        for (const b of boldEls) boldTextLen += (b.textContent || '').trim().length;
-        // Only treat as subtitle if ≥80% of text is bold
-        origIsBold = totalText.length > 0 && (boldTextLen / totalText.length) >= 0.8;
+      } else if (/^<p[^>]*>\s*<(?:strong|b)\b/i.test(el.outerHtml)) {
+        const { boldLen, totalLen } = getBoldTextRatio(el.outerHtml);
+        origIsBold = totalLen > 0 && (boldLen / totalLen) >= 0.8;
       }
     }
 
@@ -369,13 +526,167 @@ const flattenChapterElements = (chapter, layoutCtx, canvasCtx, measureDiv, safeC
       html,
       height,
       isTitle: false,
-      tag: el.tagName,
+      tag: el.tag,
       textContent: el.textContent || '',
       isBold: origIsBold
     });
+    assignBlockId(elements[elements.length - 1], chapterId, elements.length - 1);
   }
 
   return elements;
+};
+
+/**
+ * Detect subtitle-like bold paragraphs.
+ * Treat as "bold paragraph" only when most of the text is actually bold.
+ *
+ * @private
+ */
+// Accepts both DOM elements and descriptor objects { tag, style, outerHtml, textContent }
+const isMostlyBoldParagraph = (el) => {
+  if (!el) return false;
+  const tag = (el.tagName || el.tag || '').toUpperCase();
+  if (tag !== 'P') return false;
+
+  const style = typeof el.getAttribute === 'function' ? (el.getAttribute('style') || '') : (el.style || '');
+  if (/font-weight:\s*(?:bold|[7-9]00)/.test(style)) return true;
+
+  const outer = el.outerHTML || el.outerHtml || '';
+  if (/^<p[^>]*>\s*<(?:strong|b)\b/i.test(outer)) {
+    const { boldLen, totalLen } = getBoldTextRatio(outer);
+    return totalLen > 0 && (boldLen / totalLen) >= 0.8;
+  }
+
+  return false;
+};
+
+/**
+ * Compute last-line metrics for a paragraph using the same wrapping model as pagination.
+ *
+ * @private
+ */
+const getLastLineMetrics = (plainText, canvasCtx) => {
+  const text = (plainText || '').trim();
+  if (!text) {
+    return {
+      lastLineWords: 0,
+      lineStarts: [0],
+      words: [],
+      lastLineText: '',
+      widthRatio: 1,
+      shortLineScore: 0
+    };
+  }
+
+  const fontStr = buildFontString(canvasCtx.baseFontSizePx, canvasCtx.fontFamily);
+  const effectiveWidth = canvasCtx.contentWidth - (canvasCtx.widthSlack || 0);
+  const words = text.split(/\s+/).filter(w => w.length > 0);
+  const lineStarts = getLineBreakPositions(text, effectiveWidth, fontStr);
+  const lastStart = (lineStarts && lineStarts.length > 0)
+    ? lineStarts[lineStarts.length - 1]
+    : 0;
+  const lastLineWords = Math.max(0, words.length - lastStart);
+  const lastLineText = words.slice(lastStart).join(' ');
+
+  let widthRatio = 1;
+  if (lastLineText && effectiveWidth > 0) {
+    const ctx2d = getCanvasCtx2d();
+    if (ctx2d) {
+      ctx2d.font = fontStr;
+      widthRatio = ctx2d.measureText(lastLineText).width / effectiveWidth;
+    }
+  }
+
+  let shortLineScore = 0;
+  if (lastLineWords === 1)      shortLineScore += 1400;
+  else if (lastLineWords === 2) shortLineScore += 900;
+  else if (lastLineWords === 3) shortLineScore += 400;
+  else if (lastLineWords === 4) shortLineScore += 100;
+  if (lastLineWords > 0 && widthRatio < 0.55) shortLineScore += 600;
+
+  return {
+    lastLineWords,
+    lineStarts,
+    words,
+    lastLineText,
+    widthRatio,
+    shortLineScore
+  };
+};
+
+/**
+ * Hard editorial threshold for short final lines.
+ * Deliberately narrower than scoreCandidate: only truly bad endings should mutate layout.
+ *
+ * @private
+ */
+const isSevereShortLastLine = (metrics) => {
+  if (!metrics || metrics.lastLineWords <= 0) return false;
+  if (metrics.lastLineWords === 1) return true;
+  if (metrics.lastLineWords === 2) return metrics.widthRatio < 0.40;
+  if (metrics.lastLineWords === 3) return metrics.widthRatio < 0.22;
+  return metrics.widthRatio < 0.18;
+};
+
+/**
+ * Return the number of words on the last line of a chunk's plain text.
+ * Used after split candidate selection to detect runt last lines.
+ * @private
+ */
+const getChunkLastLineWords = (chunkHtml, canvasCtx) => {
+  if (!chunkHtml) return 0;
+  const el = getFirstElement(chunkHtml);
+  if (!el) return 0;
+  const text = (el.textContent || '').trim();
+  if (!text) return 0;
+  const metrics = getLastLineMetrics(text, canvasCtx);
+  return metrics.lastLineWords;
+};
+
+/**
+ * Detect a visually short last line at the end of a candidate page.
+ * This is intentionally local to pagination passes and must not affect global scoring.
+ *
+ * @private
+ */
+const getTrailingShortLineViolation = (pageHtml, canvasCtx, options = {}) => {
+  const { allowContinuation = true } = options;
+  if (!pageHtml) return null;
+
+  const lastEl = getLastElement(pageHtml);
+  const tagName = lastEl?.tag?.toUpperCase();
+  if (!lastEl || (tagName !== 'P' && tagName !== 'BLOCKQUOTE')) return null;
+  const isContinuation = lastEl.dataset?.continuation === 'true';
+  if (!allowContinuation && isContinuation) return null;
+  if (tagName === 'P' && isMostlyBoldParagraph(lastEl)) return null;
+
+  const text = lastEl.textContent.trim();
+  if (!text) return null;
+
+  const metrics = getLastLineMetrics(text, canvasCtx);
+  if (!isSevereShortLastLine(metrics)) return null;
+
+  return {
+    text,
+    tag: tagName,
+    isContinuation,
+    lastLineWords: metrics.lastLineWords,
+    lastLineText: metrics.lastLineText,
+    widthRatio: metrics.widthRatio,
+    shortLineScore: metrics.shortLineScore
+  };
+};
+
+/**
+ * Hard guard for near-full candidates that would end a page with a short last line.
+ * Kept narrow: only when the page was already reasonably filled and stays near full.
+ *
+ * @private
+ */
+const getNearFullShortLineViolation = (candidateHtml, canvasCtx, currentFill, resultFillPct, options = {}) => {
+  if (currentFill < FILL_PASS_RUNT_MIN_CURRENT_FILL) return null;
+  if (resultFillPct < FILL_PASS_RUNT_MIN_RESULT_FILL) return null;
+  return getTrailingShortLineViolation(candidateHtml, canvasCtx, options);
 };
 
 /**
@@ -394,9 +705,7 @@ const flattenChapterElements = (chapter, layoutCtx, canvasCtx, measureDiv, safeC
  * @private
  */
 const scoreCandidate = (firstChunkHtml, restChunkHtml, fullParaHtml, remainingPx, contentHeight, canvasCtx, delta = 0) => {
-  const tmp = document.createElement('div');
-  tmp.innerHTML = firstChunkHtml;
-  const plainText = tmp.textContent.trim();
+  const plainText = htmlToText(firstChunkHtml).trim();
   const fontStr = buildFontString(canvasCtx.baseFontSizePx, canvasCtx.fontFamily);
   // Use the same effective width as measureHtmlHeight: contentWidth minus widthSlack.
   // splitParagraphByLines wraps at (contentWidth - widthSlack); using full contentWidth
@@ -422,12 +731,13 @@ const scoreCandidate = (firstChunkHtml, restChunkHtml, fullParaHtml, remainingPx
   // 2. Visual width of last line — raised to 55% to catch short Spanish words correctly.
   // This catches 4-word lines like "y en la fe" that slip past the word-count check.
   if (lastLineWords > 0 && effectiveWidth > 0) {
-    const offscreen = document.createElement('canvas');
-    const ctx2d = offscreen.getContext('2d');
-    ctx2d.font = fontStr;
-    const lastLineText = words.slice(lastStart).join(' ');
-    const widthRatio = ctx2d.measureText(lastLineText).width / effectiveWidth;
-    if (widthRatio < 0.55) score += 600;
+    const ctx2d = getCanvasCtx2d();
+    if (ctx2d) {
+      ctx2d.font = fontStr;
+      const lastLineText = words.slice(lastStart).join(' ');
+      const widthRatio = ctx2d.measureText(lastLineText).width / effectiveWidth;
+      if (widthRatio < 0.55) score += 600;
+    }
   }
 
   // 3. Underfill penalty — 1 line short ≈ 4% underfill ≈ 12 pts on typical page.
@@ -460,15 +770,16 @@ const scoreCandidate = (firstChunkHtml, restChunkHtml, fullParaHtml, remainingPx
   // stdDev > 25% of line width triggers a proportional penalty.
   // Uses lineStarts from getLineBreakPositions (already computed above).
   if (lineStarts.length >= 3 && words.length > 0) {
-    const offscreen2 = document.createElement('canvas');
-    const ctx2d2 = offscreen2.getContext('2d');
-    ctx2d2.font = fontStr;
+    const ctx2d2 = getCanvasCtx2d();
     const lineWidths = [];
-    for (let li = 0; li < lineStarts.length; li++) {
-      const start = lineStarts[li];
-      const end = li < lineStarts.length - 1 ? lineStarts[li + 1] : words.length;
-      const lineText = words.slice(start, end).join(' ');
-      lineWidths.push(ctx2d2.measureText(lineText).width);
+    if (ctx2d2) {
+      ctx2d2.font = fontStr;
+      for (let li = 0; li < lineStarts.length; li++) {
+        const start = lineStarts[li];
+        const end = li < lineStarts.length - 1 ? lineStarts[li + 1] : words.length;
+        const lineText = words.slice(start, end).join(' ');
+        lineWidths.push(ctx2d2.measureText(lineText).width);
+      }
     }
     // Exclude the last line — its short length is intentional (paragraph end)
     const measuredLines = lineWidths.slice(0, -1);
@@ -492,6 +803,49 @@ const scoreCandidate = (firstChunkHtml, restChunkHtml, fullParaHtml, remainingPx
 };
 
 /**
+ * Restore text-indent on a moved <p> element when it lost its indent because
+ * it was the `rest` chunk of a prior split (text-indent:0 baked in) but is now
+ * being placed as a standalone paragraph on a new page.
+ *
+ * Only applies when ALL conditions hold:
+ *   1. The element is a <p>
+ *   2. It has text-indent:0 (or no text-indent)
+ *   3. It does NOT have data-continuation="true"
+ *   4. Its first alphabetic character is uppercase (i.e. not a mid-sentence rest)
+ *
+ * @param {string} elHtml - Outer HTML of the element to fix
+ * @param {number} indentEm  - Target indent in em (from safeConfig)
+ * @returns {string} Fixed HTML (or original if no fix needed)
+ */
+const restoreIndentIfNeeded = (elHtml, indentEm) => {
+  if (!/^<p[\s>]/i.test(elHtml)) return elHtml;   // not a <p>
+  if (/data-continuation\s*=\s*["']true["']/i.test(elHtml)) return elHtml; // is continuation
+  // Check current indent
+  const styleM = elHtml.match(/\bstyle\s*=\s*["']([^"']*)["']/i);
+  const styleStr = styleM ? styleM[1] : '';
+  const indentM = styleStr.match(/text-indent\s*:\s*([^;]+)/i);
+  const indentVal = indentM ? parseFloat(indentM[1]) : null;
+  const hasZeroIndent = indentVal === null || indentVal === 0;
+  if (!hasZeroIndent) return elHtml;  // already has indent
+  // Check first alphabetic character
+  const plainText = elHtml.replace(/<[^>]*>/g, '').trim();
+  const firstLetter = plainText.match(/\p{L}/u)?.[0] || '';
+  const startsUpper = firstLetter !== '' && firstLetter === firstLetter.toUpperCase() && firstLetter !== firstLetter.toLowerCase();
+  if (!startsUpper) return elHtml;  // lowercase start — likely a split-rest, leave as-is
+  // Restore indent
+  const targetIndent = `${indentEm}em`;
+  if (indentM) {
+    return elHtml.replace(/\bstyle\s*=\s*"([^"]*)"/, (_, s) =>
+      `style="${s.replace(/text-indent\s*:[^;]+;?/i, `text-indent:${targetIndent};`)}"`
+    );
+  }
+  // No style attribute or no text-indent in style — inject into existing style
+  return elHtml.replace(/\bstyle\s*=\s*"([^"]*)"/, (_, s) =>
+    `style="${s}text-indent:${targetIndent};"`
+  );
+};
+
+/**
  * Split an element into exactly 2 parts.
  * Still uses splitParagraphByLines from paginationEngine which needs measureDiv
  * for HTML DOM manipulation (not for height measurement).
@@ -507,11 +861,13 @@ const splitInTwo = (
 
   // Safety buffer for inline bold/italic: Canvas.measureText can underestimate
   // word widths for styled runs, causing the browser to wrap into more lines
-  // than Canvas predicted. Reserve 1 extra line when inline styles are present.
+  // than Canvas predicted. Reserve 1 extra line when inline styles are present —
+  // but only if it leaves at least 1 full line of space. If subtracting would
+  // leave < lineHeightPx, skip the buffer so the split attempt proceeds and the
+  // split-overfit check (caller) handles any actual overflow.
   const hasInlineStyles = /<(?:strong|b|em|i)\b/i.test(elHtml);
-  const safeRemainingSpace = hasInlineStyles
-    ? remainingSpace - lineHeightPx
-    : remainingSpace;
+  const buffered = hasInlineStyles ? remainingSpace - lineHeightPx : remainingSpace;
+  const safeRemainingSpace = buffered >= lineHeightPx ? buffered : remainingSpace;
 
   const fullPageSplit = splitParagraphByLines(
     elHtml, measureDiv, contentHeight,
@@ -541,8 +897,7 @@ const splitInTwo = (
     );
     let bestScore = scoreCandidate(baseFirst, bestRest, pageChunk, safeRemainingSpace, contentHeight, canvasCtx, 0);
 
-    // Try delta=-1 only: limits whitespace to 1 line max (fill-pass can't compensate
-    // 2-line gaps due to minOrphanLines). Only chosen when last line has 1-2 words.
+    // Try delta=-1: only chosen when it produces a measurably better last line.
     const adjMax = safeRemainingSpace - lineHeightPx;
     if (adjMax >= lineHeightPx) {
       const cand = splitParagraphByLines(
@@ -555,15 +910,47 @@ const splitInTwo = (
           : null;
         const candRest = leftover ? mergeIntoOne(leftover, restChunk) : restChunk;
         const score = scoreCandidate(cand[0], candRest, pageChunk, safeRemainingSpace, contentHeight, canvasCtx, -1);
-        if (score < bestScore) { bestFirst = cand[0]; bestRest = candRest; }
+        if (score < bestScore) { bestFirst = cand[0]; bestRest = candRest; bestScore = score; }
+      }
+    }
+
+    // Try delta=-2: unconditionally override when winner still ends with 1-2 words (runt).
+    // The fill-pass can recover a 2-line gap; a visible runt is worse editorially.
+    const bestLastLineWords = getChunkLastLineWords(bestFirst, canvasCtx);
+    if (bestLastLineWords <= 2) {
+      const adjMax2 = safeRemainingSpace - 2 * lineHeightPx;
+      if (adjMax2 >= lineHeightPx) {
+        const cand2 = splitParagraphByLines(
+          pageChunk, measureDiv, adjMax2,
+          textAlign, hasIndent, indentValue, preserveIndent, quoteOptions
+        );
+        if (cand2 && cand2.length >= 1) {
+          const leftover2 = cand2.length >= 2
+            ? cand2.slice(1).reduce((a, b) => mergeIntoOne(a, b))
+            : null;
+          const candRest2 = leftover2 ? mergeIntoOne(leftover2, restChunk) : restChunk;
+          const newWords = getChunkLastLineWords(cand2[0], canvasCtx);
+          // Only accept if this actually fixes the runt (avoids making it worse)
+          if (newWords > bestLastLineWords) { bestFirst = cand2[0]; bestRest = candRest2; }
+        }
       }
     }
 
     return [bestFirst, bestRest];
   }
 
+  // The element fits in safeRemainingSpace when measured alone by Canvas, but
+  // measure(currentHtml + elHtml) can overflow because <p> margin-top between
+  // adjacent elements is not captured by Canvas.measureText.
+  // Reserve 1 extra line as inter-element margin buffer and snap to a whole-line
+  // multiple so splitParagraphByLines gets a clean budget it can actually satisfy.
+  const marginBuffer = lineHeightPx; // 1 line for inter-element margin
+  const adjustedSpace = safeRemainingSpace - marginBuffer;
+  const snappedSpace = Math.floor(adjustedSpace / lineHeightPx) * lineHeightPx;
+  const splitBudget = snappedSpace >= lineHeightPx ? snappedSpace : safeRemainingSpace;
+
   const directSplit = splitParagraphByLines(
-    elHtml, measureDiv, safeRemainingSpace,
+    elHtml, measureDiv, splitBudget,
     textAlign, hasIndent, indentValue, preserveIndent, quoteOptions
   );
 
@@ -571,9 +958,9 @@ const splitInTwo = (
 
   let bestFirst = directSplit[0];
   let bestRest  = directSplit.slice(1).reduce((acc, chunk) => mergeIntoOne(acc, chunk));
-  let bestScore = scoreCandidate(bestFirst, bestRest, elHtml, safeRemainingSpace, contentHeight, canvasCtx, 0);
+  let bestScore = scoreCandidate(bestFirst, bestRest, elHtml, splitBudget, contentHeight, canvasCtx, 0);
 
-  const adjMax = safeRemainingSpace - lineHeightPx;
+  const adjMax = splitBudget - lineHeightPx;
   if (adjMax >= lineHeightPx) {
     const cand = splitParagraphByLines(
       elHtml, measureDiv, adjMax,
@@ -581,8 +968,27 @@ const splitInTwo = (
     );
     if (cand && cand.length >= 2) {
       const candRest = cand.slice(1).reduce((a, b) => mergeIntoOne(a, b));
-      const score = scoreCandidate(cand[0], candRest, elHtml, safeRemainingSpace, contentHeight, canvasCtx, -1);
-      if (score < bestScore) { bestFirst = cand[0]; bestRest = candRest; }
+      const score = scoreCandidate(cand[0], candRest, elHtml, splitBudget, contentHeight, canvasCtx, -1);
+      if (score < bestScore) { bestFirst = cand[0]; bestRest = candRest; bestScore = score; }
+    }
+  }
+
+  // Try delta=-2: unconditionally override when winner still ends with 1-2 words (runt).
+  const bestLastLineWords = getChunkLastLineWords(bestFirst, canvasCtx);
+  if (bestLastLineWords <= 2) {
+    const adjMax2 = splitBudget - 2 * lineHeightPx;
+    if (adjMax2 >= lineHeightPx) {
+      const cand2 = splitParagraphByLines(
+        elHtml, measureDiv, adjMax2,
+        textAlign, hasIndent, indentValue, preserveIndent, quoteOptions
+      );
+      if (cand2 && cand2.length >= 2) {
+        const newWords = getChunkLastLineWords(cand2[0], canvasCtx);
+        if (newWords > bestLastLineWords) {
+          bestFirst = cand2[0];
+          bestRest = cand2.slice(1).reduce((a, b) => mergeIntoOne(a, b));
+        }
+      }
     }
   }
 
@@ -595,22 +1001,21 @@ const splitInTwo = (
  */
 const mergeIntoOne = (htmlA, htmlB) => {
   try {
-    const divA = document.createElement('div');
-    divA.innerHTML = htmlA;
-    const divB = document.createElement('div');
-    divB.innerHTML = htmlB;
-    const elA = divA.firstElementChild;
-    const elB = divB.firstElementChild;
+    const elA = getFirstElement(htmlA);
+    const elB = getFirstElement(htmlB);
 
     if (elA && elB) {
-      // Use elA's outerHTML to preserve the original paragraph's styles
-      // (especially text-indent). elB is typically a continuation with text-indent:0.
-      elA.innerHTML = elA.innerHTML + ' ' + elB.innerHTML;
-      // text-align-last depends on whether the merged paragraph ends here
-      // or continues on the next page. If it ends mid-sentence, keep justify.
-      const mergedText = (elA.textContent || '').trim();
-      elA.style.textAlignLast = /[.!?»"]\s*$/.test(mergedText) ? 'left' : 'justify';
-      return elA.outerHTML;
+      const mergedInner = elA.innerHTML + ' ' + elB.innerHTML;
+      // Always use text-align-last:left — "justify" stretches the last visible line
+      // of a fragment, making it appear wider than other paragraphs on the page.
+      const styleStr = (elA.style || '')
+        .replace(/text-align-last:[^;]+;?/gi, '')
+        + `text-align-last:left;`;
+      const tag = elA.tag.toLowerCase();
+      const openTag = elA.outerHtml.match(/^<[^>]+>/)?.[0] || `<${tag}>`;
+      const newOpenTag = openTag.replace(/\bstyle="[^"]*"/, `style="${styleStr}"`)
+        || openTag.replace(`<${tag}`, `<${tag} style="${styleStr}"`);
+      return `${newOpenTag}${mergedInner}</${tag}>`;
     }
   } catch (e) {
     // fallback
@@ -642,7 +1047,9 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
     baseFontSize,
     baseLineHeight,
     textAlign,
-    lineHeightPx
+    lineHeightPx,
+    contentWidth: canvasCtx.contentWidth,
+    fontFamily: canvasCtx.fontFamily
   };
 
   let currentFirstElementIndex = 0;
@@ -773,25 +1180,25 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
       const freeLinesAfter = Math.floor((contentHeight - candidateHeight) / lineHeightPx);
       const currentFill = currentPageHeight / contentHeight;
       if (!isLastChapterElement
-          && el.tag === 'P'
+          && (el.tag === 'P' || el.tag === 'BLOCKQUOTE')
           && !el.isBold
           && freeLinesAfter <= 1
           && currentFill >= 0.70
           && currentHtml) {
-        const fontStr = buildFontString(canvasCtx.baseFontSizePx, canvasCtx.fontFamily);
-        const effectiveWidth = canvasCtx.contentWidth - (canvasCtx.widthSlack || 0);
         const plainText = (el.textContent || '').trim();
-        const words = plainText.split(/\s+/).filter(w => w.length > 0);
-        const lineStarts = getLineBreakPositions(plainText, effectiveWidth, fontStr);
-        if (lineStarts && lineStarts.length > 0) {
-          const lastStart = lineStarts[lineStarts.length - 1];
-          const lastLineWords = Math.max(0, words.length - lastStart);
-          if (lastLineWords === 1) {
-            // Flush current page without this paragraph, start fresh page with it
-            log.record('greedy', 'no-fit', pages.length + 1, { tag: el.tag, text: plainText.substring(0, 60), reason: 'runt-flush', lastLineWords });
-            flushCurrent(el.html, elIdx);
-            continue;
-          }
+        const shortLine = getLastLineMetrics(plainText, canvasCtx);
+        if (isSevereShortLastLine(shortLine)) {
+          // Flush current page without this paragraph, start fresh page with it
+          log.record('greedy', 'no-fit', pages.length + 1, {
+            tag: el.tag,
+            text: plainText.substring(0, 60),
+            reason: 'short-line-flush',
+            lastLineWords: shortLine.lastLineWords,
+            widthRatio: +shortLine.widthRatio.toFixed(2),
+            shortLineScore: shortLine.shortLineScore
+          });
+          flushCurrent(el.html, elIdx);
+          continue;
         }
       }
 
@@ -915,8 +1322,18 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
 
           // Accept split only if it produces a meaningfully better layout
           if (badnessSplit < badnessFlush - greedySplitThreshold) {
-            pushPage(currentHtml + firstChunk);
-            currentHtml = restChunk;
+            // Propagate fragment IDs to the rest chunk
+            if (process.env.NODE_ENV === 'development' && el.sourceBlockId) {
+              const restIds = deriveFragmentId(el);
+              el.fragmentIndex = restIds.fragmentIndex;
+              // inject into restChunk HTML so it's traceable
+              const taggedRest = injectBlockIdAttrs(restChunk, restIds);
+              pushPage(currentHtml + firstChunk);
+              currentHtml = taggedRest;
+            } else {
+              pushPage(currentHtml + firstChunk);
+              currentHtml = restChunk;
+            }
             continue;
           }
         }
@@ -950,7 +1367,9 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
       enabled: true, indentLeft: 2, indentRight: 2, showLine: true,
       italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1
     },
-    baseFontSize, baseLineHeight, textAlign, lineHeightPx
+    baseFontSize, baseLineHeight, textAlign, lineHeightPx,
+    contentWidth: canvasCtx.contentWidth,  // pass real width so splitParagraphByLines wraps correctly in worker
+    fontFamily: canvasCtx.fontFamily
   };
 
   // Helper: measure height using Canvas engine
@@ -963,9 +1382,19 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
     if (i < 0 || i >= pages.length - 1) continue;
     if (pages[i].isBlank || pages[i].isTitleOnlyPage || !pages[i].html) continue;
 
+    // Sliding-window source search: if all attempts with the nearest source page
+    // fail (e.g. first element has very high split badness), try the next source in
+    // the same chapter before giving up. Limited to MAX_SOURCE_HOPS extra hops so
+    // the fill-pass doesn't slow down on pathological layouts.
+    const MAX_SOURCE_HOPS = 2;
+    let sourceHopCount = 0;
+    let sourceStartIdx = i + 1; // start searching from here for the next source
+
     for (let attempt = 0; attempt < 30; attempt++) {
       const currentHtml = pages[i].html;
-      const remainingSpace = contentHeight - measure(currentHtml);
+      const currentHeight = measure(currentHtml);
+      const currentFill = currentHeight / contentHeight;
+      const remainingSpace = contentHeight - currentHeight;
       const remainingLines = Math.floor(remainingSpace / lineHeightPx);
 
       if (remainingLines < 1) {
@@ -977,8 +1406,8 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
       // Pages with exactly 1 line free still proceed — they can receive a 1-line split
       // to compensate delta=-1 gaps. The orphan check at the source side enforces quality.
 
-      // Find next non-blank page in same chapter
-      let nextIdx = i + 1;
+      // Find next non-blank page in same chapter, starting from sourceStartIdx
+      let nextIdx = sourceStartIdx;
       while (nextIdx < pages.length && pages[nextIdx]?.isBlank) nextIdx++;
       if (nextIdx >= pages.length) break;
 
@@ -994,17 +1423,16 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
         evaluatePageQualityCanvas(nextPage.html, contentHeight, lineHeightPx, canvasCtx).score;
 
       // Extract first element from next page
-      const tmp = document.createElement('div');
-      tmp.innerHTML = nextPage.html;
-      const firstEl = tmp.firstElementChild;
-      if (!firstEl) break;
+      const nextPageEls = parseHtmlElements(nextPage.html);
+      if (nextPageEls.length === 0) break;
+      const firstEl = nextPageEls[0];
 
-      const tag = firstEl.tagName;
+      const tag = firstEl.tag;
       const isHeader = /^H[1-6]$/i.test(tag);
-      const firstElHtml = firstEl.outerHTML;
+      const firstElHtml = firstEl.outerHtml;
       if (process.env.NODE_ENV === 'development') {
         const srcRawCont = /data-continuation/.test(nextPage.html);
-        const elCont = firstEl.getAttribute('data-continuation');
+        const elCont = firstEl.dataset?.continuation;
         if (srcRawCont || elCont) {
           log.record('fill', 'src-extract-debug', i + 1, { srcPage: nextIdx + 1, srcRawCont, elCont, elOuterStart: firstElHtml.substring(0, 120) });
         }
@@ -1012,18 +1440,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
 
       // Detect bold-paragraph subheaders — only if ≥80% of text is bold.
       // Same logic as flattenChapterElements and fixHeadingsAtBottom.
-      let isBoldPara = false;
-      if (!isHeader && tag === 'P') {
-        if (/font-weight:\s*(?:bold|[7-9]00)/.test(firstEl.getAttribute('style') || '')) {
-          isBoldPara = true;
-        } else if (/^<p[^>]*>\s*<(?:strong|b)\b/i.test(firstElHtml)) {
-          const totalText = (firstEl.textContent || '').trim();
-          const boldEls = firstEl.querySelectorAll('strong, b');
-          let boldLen = 0;
-          for (const b of boldEls) boldLen += (b.textContent || '').trim().length;
-          isBoldPara = totalText.length > 0 && (boldLen / totalText.length) >= 0.8;
-        }
-      }
+      const isBoldPara = !isHeader && isMostlyBoldParagraph(firstEl);
 
 
       // Heading/subheader group move: moving a heading alone to the bottom of a
@@ -1033,38 +1450,51 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
       // path from being tried. Now we go straight into the group logic which handles
       // both full-element groups and heading+split-follow.
       if (isHeader || isBoldPara) {
-        log.record('fill', 'heading-group', i + 1, { tag, text: (firstEl.textContent || '').substring(0, 60), isHeader, isBoldPara, remainingLines });
+        log.record('fill', 'heading-group', i + 1, { tag, text: firstEl.textContent.substring(0, 60), isHeader, isBoldPara, remainingLines });
         // Heading doesn't even fit on the page — no point trying group move
         if (measure(currentHtml + firstElHtml) > contentHeight) break;
 
         let groupHtml = firstElHtml;
         let groupCount = 1;
-        let sib = firstEl.nextElementSibling;
-        while (sib) {
-          const gh = measure(currentHtml + groupHtml + sib.outerHTML);
+        for (let si = 1; si < nextPageEls.length; si++) {
+          const sibHtml = nextPageEls[si].outerHtml;
+          const gh = measure(currentHtml + groupHtml + sibHtml);
           if (gh > contentHeight) break;
-          groupHtml += sib.outerHTML;
+          groupHtml += sibHtml;
           groupCount++;
-          sib = sib.nextElementSibling;
         }
+        // sib is the element right after the heading group (for split-follow below)
+        const sib = nextPageEls.length > groupCount ? nextPageEls[groupCount] : null;
 
         if (groupCount >= 2) {
           const qGroup = evaluatePageQualityCanvas(currentHtml + groupHtml, contentHeight, lineHeightPx, canvasCtx);
           if (!qGroup.violations.includes('heading_at_bottom')) {
             // Build source page without the moved group
-            const tmpSrc = document.createElement('div');
-            tmpSrc.innerHTML = nextPage.html;
-            for (let g = 0; g < groupCount; g++) {
-              if (tmpSrc.firstElementChild) tmpSrc.firstElementChild.remove();
-            }
-            const srcHtml = tmpSrc.innerHTML.trim();
+            let srcHtml = '';
+            for (let g = groupCount; g < nextPageEls.length; g++) srcHtml += nextPageEls[g].outerHtml;
+            srcHtml = srcHtml.trim();
             const qSrc = srcHtml
               ? evaluatePageQualityCanvas(srcHtml, contentHeight, lineHeightPx, canvasCtx)
               : { score: 0, violations: [] };
 
             if (!qSrc.violations.includes('heading_at_bottom')) {
+              const shortLineViolation = getNearFullShortLineViolation(currentHtml + groupHtml, canvasCtx, currentFill, qGroup.fillPct);
+              if (shortLineViolation) {
+                log.record('fill', 'reject', i + 1, {
+                  tag,
+                  text: shortLineViolation.text.substring(0, 60),
+                  reason: 'short-last-line',
+                  lastLineWords: shortLineViolation.lastLineWords,
+                  widthRatio: +shortLineViolation.widthRatio.toFixed(2),
+                  shortLineScore: shortLineViolation.shortLineScore,
+                  currentFill: +currentFill.toFixed(2),
+                  afterFillPct: +(qGroup.fillPct * 100).toFixed(0)
+                });
+                break;
+              }
+
               const groupBadnessAfter = qGroup.score + qSrc.score;
-              const BADNESS_MIN_DELTA = remainingLines >= 8 ? -500 : -100;
+              const BADNESS_MIN_DELTA = remainingLines >= 8 ? -500 : remainingLines >= 3 ? Math.round(-100 - (remainingLines - 3) * 80) : -100;
               if (groupBadnessAfter <= badnessBefore - BADNESS_MIN_DELTA) {
                 pages[i] = { ...pages[i], html: currentHtml + groupHtml };
                 if (srcHtml) {
@@ -1072,7 +1502,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
                 } else {
                   pages.splice(nextIdx, 1);
                 }
-                log.record('fill', 'heading-group', i + 1, { tag, text: (firstEl.textContent || '').substring(0, 60), groupCount, fromPage: nextIdx + 1, before: { score: +badnessBefore.toFixed(0) }, after: { score: +groupBadnessAfter.toFixed(0) } });
+                log.record('fill', 'heading-group', i + 1, { tag, text: firstEl.textContent.substring(0, 60), groupCount, fromPage: nextIdx + 1, before: { score: +badnessBefore.toFixed(0) }, after: { score: +groupBadnessAfter.toFixed(0) } });
                 continue;
               }
             }
@@ -1082,13 +1512,13 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
         // groupCount === 1: heading fits but no full follow element fits.
         // Try splitting the first follow element so heading + partial follow move together.
         if (groupCount === 1 && sib && splitLongParagraphs) {
-          const sibTag = sib.tagName;
+          const sibTag = sib.tag;
           if (sibTag !== 'UL' && sibTag !== 'OL' && !/^H[1-6]$/i.test(sibTag)) {
             const spaceForFollow = contentHeight - measure(currentHtml + firstElHtml);
             if (spaceForFollow >= minOrphanLines * lineHeightPx) {
               const isContChunk = sib.dataset?.continuation === 'true';
               const followSplit = splitInTwo(
-                sib.outerHTML, measureDiv, canvasCtx, spaceForFollow, contentHeight,
+                sib.outerHtml, measureDiv, canvasCtx, spaceForFollow, contentHeight,
                 textAlign, true,
                 safeConfig.paragraph?.firstLineIndent || 1.5,
                 isContChunk, quoteOptions
@@ -1102,23 +1532,17 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
                   const qDest = evaluatePageQualityCanvas(destHtml, contentHeight, lineHeightPx, canvasCtx);
                   if (!qDest.violations.includes('heading_at_bottom')) {
                     // Build source: remove heading + original follow, prepend followRest
-                    const tmpSrc = document.createElement('div');
-                    tmpSrc.innerHTML = nextPage.html;
-                    // Remove heading (first child)
-                    if (tmpSrc.firstElementChild) tmpSrc.firstElementChild.remove();
-                    // Remove original follow element (now the new first child)
-                    if (tmpSrc.firstElementChild) tmpSrc.firstElementChild.remove();
-                    const srcHtml = followRest + tmpSrc.innerHTML.trim();
+                    let srcRemainder = '';
+                    for (let g = 2; g < nextPageEls.length; g++) srcRemainder += nextPageEls[g].outerHtml;
+                    const srcHtml = followRest + srcRemainder.trim();
                     const qSrc = evaluatePageQualityCanvas(srcHtml, contentHeight, lineHeightPx, canvasCtx);
                     if (!qSrc.violations.includes('heading_at_bottom')) {
                       const splitBadnessAfter = qDest.score + qSrc.score;
-                      // Severe underfill (≥8 lines free) is visually worse than a
-                      // fragment continuation, so accept larger degradation.
-                      const BADNESS_MIN_DELTA = remainingLines >= 8 ? -500 : -100;
+                      const BADNESS_MIN_DELTA = remainingLines >= 8 ? -500 : remainingLines >= 3 ? Math.round(-100 - (remainingLines - 3) * 80) : -100;
                       if (splitBadnessAfter <= badnessBefore - BADNESS_MIN_DELTA) {
                         pages[i] = { ...pages[i], html: destHtml };
                         pages[nextIdx] = { ...nextPage, html: srcHtml };
-                        log.record('fill', 'split', i + 1, { tag, text: (firstEl.textContent || '').substring(0, 60), fromPage: nextIdx + 1, followChunkLines, before: { score: +badnessBefore.toFixed(0) }, after: { score: +splitBadnessAfter.toFixed(0) } });
+                        log.record('fill', 'split', i + 1, { tag, text: firstEl.textContent.substring(0, 60), fromPage: nextIdx + 1, followChunkLines, before: { score: +badnessBefore.toFixed(0) }, after: { score: +splitBadnessAfter.toFixed(0) } });
                         continue;
                       }
                     }
@@ -1132,7 +1556,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
         // Group move failed — single heading move will also fail (heading_at_bottom),
         // so break instead of falling through to the single-element path.
         if (remainingLines >= 5) {
-          log.record('fill', 'reject', i + 1, { tag, text: (firstEl.textContent || '').substring(0, 60), reason: 'heading-group-failed', groupCount, remainingLines });
+          log.record('fill', 'reject', i + 1, { tag, text: firstEl.textContent.substring(0, 60), reason: 'heading-group-failed', groupCount, remainingLines });
         }
         break;
       }
@@ -1141,14 +1565,21 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
       const candidateFitHeight = measure(currentHtml + firstElHtml);
       if (candidateFitHeight <= contentHeight) {
 
-        firstEl.remove();
-        const sourceHtml = tmp.innerHTML.trim();
+        // Remove first element from source page
+        const sourceHtml = nextPageEls.slice(1).map(e => e.outerHtml).join('').trim();
 
-        // Don't leave source with fewer lines than minWidowLines
+        // Don't leave source with fewer lines than minWidowLines.
+        // Hop to the next source page before giving up — a different source page
+        // may have a larger first element that leaves the source adequately filled.
         if (sourceHtml) {
           const srcLines = Math.floor(measure(sourceHtml) / lineHeightPx);
           if (srcLines < minWidowLines) {
-            log.record('fill', 'reject', i + 1, { tag, text: (firstEl.textContent || '').substring(0, 60), reason: 'widow-block', srcLines, minWidowLines });
+            log.record('fill', 'reject', i + 1, { tag, text: firstEl.textContent.substring(0, 60), reason: 'widow-block', srcLines, minWidowLines });
+            if (sourceHopCount < MAX_SOURCE_HOPS) {
+              sourceHopCount++;
+              sourceStartIdx = nextIdx + 1;
+              continue;
+            }
             break;
           }
         }
@@ -1160,14 +1591,25 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
           : { score: 0, violations: [] };
         const badnessAfter = qMovedCurrent.score + qMovedSource.score;
 
-        // Allow up to 100 points of degradation — accepts Δ0 (neutral gap-moves),
-        // small degradations that spread whitespace across pages, and moderate cases
-        // like p13 (Δ-65) where the fill-pass cascade will fix the source page next.
-        // Severe underfill (≥8 lines free) is visually worse than fragment penalties,
-        // so accept larger degradation to fill the page.
-        const BADNESS_MIN_DELTA = remainingLines >= 8 ? -500 : -100;
+        // Allow degradation proportional to underfill severity:
+        //   ≥8 lines free (severe)  → -500 (fill is critical, accept large degradation)
+        //   3-7 lines free (medium) → continuous scale from -100 to -500
+        //   1-2 lines free (mild)   → -100
+        // This prevents the binary cliff at 8 lines from blocking good moves at 5-7 lines.
+        const BADNESS_MIN_DELTA = remainingLines >= 8
+          ? -500
+          : remainingLines >= 3
+            ? Math.round(-100 - (remainingLines - 3) * 80) // -100 at 3, -420 at 8 (capped above)
+            : -100;
         if (badnessAfter > badnessBefore - BADNESS_MIN_DELTA) {
-          log.record('fill', 'reject', i + 1, { tag, text: (firstEl.textContent || '').substring(0, 60), reason: 'badness-gate', before: { score: +badnessBefore.toFixed(0) }, after: { score: +badnessAfter.toFixed(0) }, delta: +(badnessBefore - badnessAfter).toFixed(0) });
+          log.record('fill', 'reject', i + 1, { tag, text: firstEl.textContent.substring(0, 60), reason: 'badness-gate', before: { score: +badnessBefore.toFixed(0), fillPct: +(currentFill * 100).toFixed(0) }, after: { score: +badnessAfter.toFixed(0), destFill: +(qMovedCurrent.fillPct * 100).toFixed(0), srcScore: +qMovedSource.score.toFixed(0) }, delta: +(badnessBefore - badnessAfter).toFixed(0), features: { remainingLines, minDelta: BADNESS_MIN_DELTA, threshold: +(badnessBefore - BADNESS_MIN_DELTA).toFixed(0), srcViolations: qMovedSource.violations, destViolations: qMovedCurrent.violations } });
+          // Sliding window: try next source page in same chapter before giving up
+          if (sourceHopCount < MAX_SOURCE_HOPS) {
+            sourceHopCount++;
+            sourceStartIdx = nextIdx + 1;
+            log.record('fill', 'hop', i + 1, { hop: sourceHopCount, newSourceStart: sourceStartIdx });
+            continue;
+          }
           break;
         }
         // Hard constraint: never create heading_at_bottom on DESTINATION page.
@@ -1175,12 +1617,26 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
         // page its badness is ~1474 (severe underfill + heading_at_bottom), so any
         // destination (even one gaining heading_at_bottom +800) looks like an improvement.
         if (qMovedCurrent.violations.includes('heading_at_bottom')) {
-          log.record('fill', 'reject', i + 1, { tag, text: (firstEl.textContent || '').substring(0, 60), reason: 'heading_at_bottom-dest' });
+          log.record('fill', 'reject', i + 1, { tag, text: firstEl.textContent.substring(0, 60), reason: 'heading_at_bottom-dest' });
           break;
         }
         // Hard constraint: never strand a heading at the bottom of source page
         if (qMovedSource.violations.includes('heading_at_bottom')) {
-          log.record('fill', 'reject', i + 1, { tag, text: (firstEl.textContent || '').substring(0, 60), reason: 'heading_at_bottom-source' });
+          log.record('fill', 'reject', i + 1, { tag, text: firstEl.textContent.substring(0, 60), reason: 'heading_at_bottom-source' });
+          break;
+        }
+        const shortLineViolation = getNearFullShortLineViolation(currentHtml + firstElHtml, canvasCtx, currentFill, qMovedCurrent.fillPct);
+        if (shortLineViolation) {
+          log.record('fill', 'reject', i + 1, {
+            tag,
+            text: shortLineViolation.text.substring(0, 60),
+            reason: 'short-last-line',
+            lastLineWords: shortLineViolation.lastLineWords,
+            widthRatio: +shortLineViolation.widthRatio.toFixed(2),
+            shortLineScore: shortLineViolation.shortLineScore,
+            currentFill: +currentFill.toFixed(2),
+            afterFillPct: +(qMovedCurrent.fillPct * 100).toFixed(0)
+          });
           break;
         }
 
@@ -1188,28 +1644,46 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
         // mergeSplitFragments to reunify any adjacent split fragments.
         // This handles both direct moves and the case where a continuation chunk
         // is moved onto a page that already ends with the first-chunk of the same paragraph.
-        log.record('fill', 'move', i + 1, { tag: firstEl.tagName || '?', text: (firstEl.textContent || '').substring(0, 60), fromPage: nextIdx + 1, before: { score: +badnessBefore.toFixed(0) }, after: { score: +badnessAfter.toFixed(0), fillPct: +(qMovedCurrent.fillPct * 100).toFixed(0) } });
+        log.record('fill', 'move', i + 1, { tag: firstEl.tag || '?', text: firstEl.textContent.substring(0, 60), fromPage: nextIdx + 1, before: { score: +badnessBefore.toFixed(0) }, after: { score: +badnessAfter.toFixed(0), fillPct: +(qMovedCurrent.fillPct * 100).toFixed(0) }, beforeHtml: currentHtml, afterHtml: currentHtml + firstElHtml });
 
-        pages[i] = { ...pages[i], html: currentHtml + firstElHtml };
+        // Restore indent when moving a <p> that lost text-indent:0 from a prior split
+        // but is now a standalone paragraph on its new page (uppercase start = new para).
+        const movedElHtml = tag === 'P'
+          ? restoreIndentIfNeeded(firstElHtml, safeConfig.paragraph?.firstLineIndent || 1.5)
+          : firstElHtml;
+
+        pages[i] = { ...pages[i], html: currentHtml + movedElHtml };
         mergeSplitFragments([pages[i]], log);
         if (sourceHtml) {
           pages[nextIdx] = { ...nextPage, html: sourceHtml };
         } else {
           pages.splice(nextIdx, 1);
         }
+        // Reset window after a successful move — the page layout changed so start fresh
+        sourceHopCount = 0;
+        sourceStartIdx = i + 1;
         continue;
       }
 
       // Element doesn't fit whole — try splitting
       if (remainingLines >= 5) {
-        log.record('fill', 'no-fit', i + 1, { tag, text: (firstEl.textContent || '').substring(0, 60), remainingLines, elHeight: +measure(firstElHtml).toFixed(0) });
+        log.record('fill', 'no-fit', i + 1, { tag, text: firstEl.textContent.substring(0, 60), remainingLines, elHeight: +measure(firstElHtml).toFixed(0) });
       }
       if (!splitLongParagraphs || isHeader || tag === 'UL' || tag === 'OL') break;
 
-      // Detect if element is a continuation — use data-continuation attribute (not regex)
-      const isContChunk = firstEl.dataset?.continuation === 'true';
+      // Detect if element is a continuation:
+      // 1. data-continuation="true" attribute (set by splitParagraphByLines on rest chunks)
+      // 2. Lowercase-start heuristic: if the paragraph's first visible character is
+      //    lowercase, it was split mid-sentence and is a continuation (no indent needed).
+      const hasContinuationAttr = firstEl.dataset?.continuation === 'true';
+      // Skip leading punctuation/quotes to find the first actual letter.
+      // Handles cases like "ética..." where a curly-quote masks the lowercase start.
+      const rawText = firstEl.textContent.trim();
+      const firstLetter = rawText.match(/\p{L}/u)?.[0] || '';
+      const startsLowercase = firstLetter === firstLetter.toLowerCase() && firstLetter !== firstLetter.toUpperCase();
+      const isContChunk = hasContinuationAttr || startsLowercase;
       if (process.env.NODE_ENV === 'development') {
-        log.record('fill', 'cont-check', i + 1, { isContChunk, contAttr: firstEl.getAttribute('data-continuation'), text: (firstEl.textContent || '').substring(0, 60) });
+        log.record('fill', 'cont-check', i + 1, { isContChunk, contAttr: firstEl.dataset?.continuation, startsLowercase, text: firstEl.textContent.substring(0, 60) });
       }
       const splitResult = splitInTwo(
         firstElHtml, measureDiv, canvasCtx, remainingSpace, contentHeight,
@@ -1219,15 +1693,33 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
       );
 
       if (!splitResult) {
-        log.record('fill', 'reject', i + 1, { tag, text: (firstEl.textContent || '').substring(0, 60), reason: 'split-null', remainingLines });
+        log.record('fill', 'reject', i + 1, { tag, text: firstEl.textContent.substring(0, 60), reason: 'split-null', remainingLines });
         break;
       }
 
       let [chunk, rest] = splitResult;
 
-      const chunkFitHeight = measure(currentHtml + chunk);
+      // Verify the chunk actually fits when combined with existing content.
+      // If it overflows (inter-element margin not captured by Canvas), retry with
+      // a 1-line smaller budget — up to 3 retries.
+      let chunkFitHeight = measure(currentHtml + chunk);
+      let overflowRetries = 0;
+      while (chunkFitHeight > contentHeight && overflowRetries < 3) {
+        overflowRetries++;
+        const retrySpace = remainingSpace - overflowRetries * lineHeightPx;
+        if (retrySpace < lineHeightPx) break;
+        const retryResult = splitInTwo(
+          firstElHtml, measureDiv, canvasCtx, retrySpace, contentHeight,
+          textAlign, true,
+          safeConfig.paragraph?.firstLineIndent || 1.5,
+          isContChunk, quoteOptions
+        );
+        if (!retryResult) break;
+        [chunk, rest] = retryResult;
+        chunkFitHeight = measure(currentHtml + chunk);
+      }
       if (chunkFitHeight > contentHeight) {
-        log.record('fill', 'reject', i + 1, { tag, text: (firstEl.textContent || '').substring(0, 60), reason: 'split-overfit', chunkFitHeight: +chunkFitHeight.toFixed(0), contentH: +contentHeight.toFixed(0) });
+        log.record('fill', 'reject', i + 1, { tag, text: firstEl.textContent.substring(0, 60), reason: 'split-overfit', chunkFitHeight: +chunkFitHeight.toFixed(0), contentH: +contentHeight.toFixed(0) });
         break;
       }
       let chunkLines = Math.floor(measure(chunk) / lineHeightPx);
@@ -1251,13 +1743,36 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
             chunk = chunkR; rest = restR;
             chunkLines = chunkRLines; restLines = restRLines;
             isRetrySplit = true;
-            log.record('fill', 'split', i + 1, { tag, text: (firstEl.textContent || '').substring(0, 60), reason: 'orphan-retry', chunkLines: chunkRLines, restLines: restRLines, remainingLines });
+            log.record('fill', 'split', i + 1, { tag, text: firstEl.textContent.substring(0, 60), reason: 'orphan-retry', chunkLines: chunkRLines, restLines: restRLines, remainingLines });
           }
         }
       }
       if (restLines < minOrphanLines) {
-        log.record('fill', 'reject', i + 1, { tag, text: (firstEl.textContent || '').substring(0, 60), reason: 'orphan-block', restLines, minOrphanLines, remainingLines });
+        log.record('fill', 'reject', i + 1, { tag, text: firstEl.textContent.substring(0, 60), reason: 'orphan-block', restLines, minOrphanLines, remainingLines });
         break;
+      }
+
+      // Shallow-split avoidance: if rest would have only 1-2 lines (split_shallow),
+      // try reducing chunk by 1 line so rest gets one more line.
+      // Only attempt when the current page has room to spare (>= 3 remaining lines after).
+      if (restLines < 3 && !isRetrySplit && remainingLines > minOrphanLines) {
+        const shallowRetry = splitInTwo(
+          firstElHtml, measureDiv, canvasCtx, remainingSpace - lineHeightPx, contentHeight,
+          textAlign, true,
+          safeConfig.paragraph?.firstLineIndent || 1.5,
+          isContChunk, quoteOptions
+        );
+        if (shallowRetry) {
+          const [chunkS, restS] = shallowRetry;
+          const restSLines = Math.floor(measure(restS) / lineHeightPx);
+          const chunkSLines = Math.floor(measure(chunkS) / lineHeightPx);
+          if (restSLines >= 3 && chunkSLines >= minOrphanLines
+              && measure(currentHtml + chunkS) <= contentHeight) {
+            chunk = chunkS; rest = restS;
+            chunkLines = chunkSLines; restLines = restSLines;
+            log.record('fill', 'split', i + 1, { tag, text: firstEl.textContent.substring(0, 60), reason: 'shallow-retry', chunkLines: chunkSLines, restLines: restSLines });
+          }
+        }
       }
 
       // Only check orphan (chunk going to current page). The rest-chunk widow check
@@ -1268,9 +1783,15 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
       // without violating the orphan rule in all other cases.
       if (chunkLines < minOrphanLines && !(chunkLines === 1 && remainingLines <= 1)) break;
 
-      firstEl.remove();
-      const remainingEls = tmp.innerHTML.trim();
-      const newSourceHtml = remainingEls ? rest + remainingEls : rest;
+      const remainingEls = nextPageEls.slice(1).map(e => e.outerHtml).join('').trim();
+      // The `rest` chunk becomes the first element on the source page.
+      // If it's a <p> with text-indent:0 (baked in from a prior split) but starts with
+      // an uppercase letter, it's a new paragraph — restore its indent now so it doesn't
+      // need a fill/move to trigger restoreIndentIfNeeded.
+      const restoredRest = tag === 'P'
+        ? restoreIndentIfNeeded(rest, safeConfig.paragraph?.firstLineIndent || 1.5)
+        : rest;
+      const newSourceHtml = remainingEls ? restoredRest + remainingEls : restoredRest;
 
       // Check total source page lines (rest + remaining elements)
       const newSourceLines = Math.floor(measure(newSourceHtml) / lineHeightPx);
@@ -1312,18 +1833,44 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
         splitAllowance = Math.min(400, Math.round(200 + emptyRatio * 450));
       } else if (remainingLines <= 1) {
         splitAllowance = 300; // delta=-1 compensation
+      } else if (emptyRatio >= 0.08) {
+        // Medium underfill (8-25% empty, ~1-4 lines free at 55-line pages):
+        // enough space to warrant a moderately imperfect split rather than leaving the page underused.
+        // Continuous scale: 8% → +50, 25% → +150 (bridges into the ≥0.25 tier).
+        splitAllowance = Math.round(50 + (emptyRatio - 0.08) * 588); // 588 = (150-50)/(0.25-0.08)
       } else {
         splitAllowance = 50;
       }
       const splitThreshold = badnessBefore + splitAllowance;
       if (splitBadnessAfter > splitThreshold) {
-        log.record('fill', 'reject', i + 1, { tag, text: (firstEl.textContent || '').substring(0, 60), reason: 'badness-split', before: { score: +badnessBefore.toFixed(0) }, after: { score: +splitBadnessAfter.toFixed(0) }, delta: +(badnessBefore - splitBadnessAfter).toFixed(0) });
+        log.record('fill', 'reject', i + 1, { tag, text: firstEl.textContent.substring(0, 60), reason: 'badness-split', before: { score: +badnessBefore.toFixed(0), fillPct: +(currentFill * 100).toFixed(0) }, after: { score: +splitBadnessAfter.toFixed(0), destFill: +(qSplitCurrent.fillPct * 100).toFixed(0), srcScore: +qSplitSource.score.toFixed(0) }, delta: +(badnessBefore - splitBadnessAfter).toFixed(0), features: { remainingLines, emptyRatio: +emptyRatio.toFixed(2), splitAllowance, threshold: +splitThreshold.toFixed(0), chunkLines, restLines, widowPenalty: widowSoftPenalty, isRetrySplit, destViolations: qSplitCurrent.violations, srcViolations: qSplitSource.violations } });
+        // Sliding window: if badness of this element is too high, try the next source
+        if (sourceHopCount < MAX_SOURCE_HOPS) {
+          sourceHopCount++;
+          sourceStartIdx = nextIdx + 1;
+          log.record('fill', 'hop', i + 1, { hop: sourceHopCount, reason: 'badness-split', newSourceStart: sourceStartIdx });
+          continue;
+        }
         break;
       }
       // Hard constraint: never create heading_at_bottom on destination (split path)
       if (qSplitCurrent.violations.includes('heading_at_bottom')) break;
       // Hard constraint: never strand heading at bottom of source
       if (qSplitSource.violations.includes('heading_at_bottom')) break;
+      const shortLineViolation = getNearFullShortLineViolation(currentHtml + chunk, canvasCtx, currentFill, qSplitCurrent.fillPct);
+      if (shortLineViolation) {
+        log.record('fill', 'reject', i + 1, {
+          tag,
+          text: shortLineViolation.text.substring(0, 60),
+          reason: 'short-last-line',
+          lastLineWords: shortLineViolation.lastLineWords,
+          widthRatio: +shortLineViolation.widthRatio.toFixed(2),
+          shortLineScore: shortLineViolation.shortLineScore,
+          currentFill: +currentFill.toFixed(2),
+          afterFillPct: +(qSplitCurrent.fillPct * 100).toFixed(0)
+        });
+        break;
+      }
 
       // Place the split chunk onto the current page, then immediately try to merge
       // adjacent split fragments. This handles cascading splits (e.g. two consecutive
@@ -1333,11 +1880,15 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
       // mergeSplitFragments() do the merge via its Pass 1 (data-continuation check)
       // or Pass 2 (end-of-sentence heuristic).
       if (process.env.NODE_ENV === 'development') {
-        const dbgDiv = document.createElement('div');
-        dbgDiv.innerHTML = chunk;
-        const dbgEl = dbgDiv.firstElementChild;
-        const chunkIndent = dbgEl ? (dbgEl.getAttribute('style') || '').match(/text-indent:\s*([^;]+)/)?.[1] : '?';
-        log.record('fill', 'split-chunk-debug', i + 1, { isContChunk, chunkIndent, chunkText: (dbgEl?.textContent || '').substring(0, 60) });
+        const dbgEl = getFirstElement(chunk);
+        const chunkIndent = dbgEl ? (dbgEl.style || '').match(/text-indent:\s*([^;]+)/)?.[1] ?? '?' : '?';
+        log.record('fill', 'split-chunk-debug', i + 1, { isContChunk, chunkIndent, chunkText: htmlToText(dbgEl?.innerHTML || '').substring(0, 60), chunkHtmlStart: chunk.substring(0, 200) });
+      }
+      // Propagate fragment IDs on the rest chunk
+      if (process.env.NODE_ENV === 'development' && firstEl.sourceBlockId) {
+        const restIds = deriveFragmentId(firstEl);
+        firstEl.fragmentIndex = restIds.fragmentIndex;
+        rest = injectBlockIdAttrs(rest, restIds);
       }
       pages[i] = { ...pages[i], html: currentHtml + chunk };
       mergeSplitFragments([pages[i]], log);
@@ -1350,11 +1901,100 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
       // Detailed split log: show chunk tail and rest head to detect content gaps
       const chunkPlain = chunk.replace(/<[^>]*>/g, '').trim();
       const restPlain = rest.replace(/<[^>]*>/g, '').trim();
-      log.record('fill', 'split', i + 1, { tag, text: (firstEl.textContent || '').substring(0, 60), fromPage: nextIdx + 1, chunkLines, restLines, chunkTail: chunkPlain.slice(-80), restHead: restPlain.substring(0, 80), before: { score: +badnessBefore.toFixed(0) }, after: { score: +splitBadnessAfter.toFixed(0) } });
+      log.record('fill', 'split', i + 1, { tag, text: firstEl.textContent.substring(0, 60), fromPage: nextIdx + 1, chunkLines, restLines, chunkTail: chunkPlain.slice(-80), restHead: restPlain.substring(0, 80), before: { score: +badnessBefore.toFixed(0) }, after: { score: +splitBadnessAfter.toFixed(0) }, beforeHtml: currentHtml, afterHtml: currentHtml + chunk });
+      // Reset window after successful split
+      sourceHopCount = 0;
+      sourceStartIdx = i + 1;
       break;
     }
   }
   } // end 2-pass loop
+};
+
+/**
+ * Indent repair pass — fixes <p> elements with text-indent:0 that should have
+ * first-line indent.
+ *
+ * Two cases:
+ *   A. Any non-continuation <p> anywhere on a non-chapter-start page that has
+ *      text-indent:0 and starts with an uppercase letter.  The most common source
+ *      is buildParagraphHtml(isFirstParagraph=true) baking in text-indent:0 for
+ *      what was the first paragraph of the chapter — but the fill-pass later moved
+ *      it to a different page.
+ *   B. Any non-continuation <p> at position index>0 on any page with indent:0
+ *      and uppercase start (already caught by restoreIndentIfNeeded during moves,
+ *      but this is the safety net).
+ *
+ * Runs as a global post-process pass so it catches everything that slipped through
+ * the per-operation restoreIndentIfNeeded calls.
+ *
+ * @private
+ */
+const repairMissingIndents = (pages, safeConfig) => {
+  const indentEm = safeConfig.paragraph?.firstLineIndent || 1.5;
+  const targetIndent = `${indentEm}em`;
+
+  for (const page of pages) {
+    if (!page || page.isBlank || !page.html) continue;
+
+    const children = parseHtmlElements(page.html);
+    let changed = false;
+
+    const repairedChildren = children.map((el, idx) => {
+      if ((el.tag || '').toUpperCase() !== 'P') return el;
+
+      // Skip continuation chunks — they deliberately have no indent
+      const isCont = el.dataset?.continuation === 'true';
+      if (isCont) return el;
+
+      // Check current indent value
+      const styleStr = el.style || '';
+      const indentM = styleStr.match(/text-indent\s*:\s*([^;]+)/i);
+      const indentVal = indentM ? parseFloat(indentM[1]) : null;
+      const hasZeroIndent = indentVal === null || indentVal === 0;
+      if (!hasZeroIndent) return el;
+
+      // Exempt: first <p> on any page.
+      // It could be a split-rest (continuation) or the first paragraph of a chapter —
+      // we cannot safely distinguish these without the chapter context here.
+      // The per-operation restoreIndentIfNeeded handles the fill/move path for idx=0.
+      if (idx === 0) return el;
+
+      // Check if first alphabetic character is uppercase (new paragraph, not split-rest)
+      const firstLetter = el.textContent.trim().match(/\p{L}/u)?.[0] || '';
+      const startsUpper = firstLetter !== '' &&
+        firstLetter === firstLetter.toUpperCase() &&
+        firstLetter !== firstLetter.toLowerCase();
+      if (!startsUpper) return el;
+
+      // Restore indent
+      let newOuter;
+      if (indentM) {
+        newOuter = el.outerHtml.replace(
+          /\bstyle\s*=\s*"([^"]*)"/,
+          (_, s) => `style="${s.replace(/text-indent\s*:[^;]+;?/i, `text-indent:${targetIndent};`)}"`
+        );
+      } else if (/\bstyle\s*=\s*"/.test(el.outerHtml)) {
+        newOuter = el.outerHtml.replace(
+          /\bstyle\s*=\s*"([^"]*)"/,
+          (_, s) => `style="${s}text-indent:${targetIndent};"`
+        );
+      } else {
+        // No style attribute — insert one
+        newOuter = el.outerHtml.replace(/^(<p)(\s|>)/, `$1 style="text-indent:${targetIndent};"$2`);
+      }
+
+      if (newOuter !== el.outerHtml) {
+        changed = true;
+        return { ...el, outerHtml: newOuter };
+      }
+      return el;
+    });
+
+    if (changed) {
+      page.html = repairedChildren.map(c => c.outerHtml).join('');
+    }
+  }
 };
 
 /**
@@ -1380,85 +2020,80 @@ const mergeSplitFragments = (pages, log = null) => {
     const page = pages[pageIdx];
     if (!page || page.isBlank || !page.html) continue;
 
-    const div = document.createElement('div');
-    div.innerHTML = page.html;
-    let children = Array.from(div.children);
+    let children = parseHtmlElements(page.html);
+    const mergeBeforeHtml = page.html;
     let changed = false;
 
+    // Helper: rebuild element outerHtml with merged innerHTML and updated text-align-last
+    const buildMerged = (base, addedInner) => {
+      const mergedInner = base.innerHTML + ' ' + addedInner;
+      // Always use text-align-last:left — "justify" stretches the last visible line
+      // of a fragment, making it appear wider than other paragraphs on the page.
+      const newStyle = (base.style || '')
+        .replace(/text-align-last:[^;]+;?/gi, '')
+        .replace(/data-continuation:[^;]+;?/gi, '')
+        + `text-align-last:left;`;
+      // Remove data-continuation attribute and update style
+      const tag = base.tag.toLowerCase();
+      let newOuter = base.outerHtml
+        .replace(/\s*data-continuation="[^"]*"/gi, '')
+        .replace(/\bstyle="[^"]*"/, `style="${newStyle}"`);
+      // Rebuild with merged inner
+      const openTagEnd = newOuter.indexOf('>');
+      if (openTagEnd === -1) return `<${tag}>${mergedInner}</${tag}>`;
+      return newOuter.slice(0, openTagEnd + 1) + mergedInner + `</${tag}>`;
+    };
+
     // Pass 1: merge elements with data-continuation='true' with their predecessor.
-    // Safety: only merge with the immediately preceding same-tag element — if any
-    // other element type is between them, they are NOT split fragments from the same
-    // paragraph (the fill-pass or smooth-pass placed them there intentionally).
     for (let i = 1; i < children.length; i++) {
       const el = children[i];
       if (el.dataset?.continuation !== 'true') continue;
-      const tag = el.tagName;
+      const tag = el.tag;
 
       for (let j = i - 1; j >= 0; j--) {
         const prev = children[j];
-        if (prev.tagName !== tag) break; // stop at any non-matching element — don't skip over
+        if (prev.tag !== tag) break;
 
-        prev.innerHTML = prev.innerHTML + ' ' + el.innerHTML;
-        prev.removeAttribute('data-continuation');
-        // text-align-last: only 'left' if the merged paragraph truly ends here.
-        // If the merged text still ends mid-sentence, the paragraph continues on
-        // the next page — keep 'justify' so the last visible line fills the width.
-        const mergedText = (prev.textContent || '').trim();
-        prev.style.textAlignLast = /[.!?»"]\s*$/.test(mergedText) ? 'left' : 'justify';
-        el.remove();
-        children.splice(i, 1);
-        i--;
+        const merged = { ...prev, outerHtml: buildMerged(prev, el.innerHTML), innerHTML: prev.innerHTML + ' ' + el.innerHTML };
+        children = [...children.slice(0, j), merged, ...children.slice(j + 1, i), ...children.slice(i + 1)];
+        i = j; // re-check from merged position
         changed = true;
-        if (log) log.record('merge', 'pass1-merge', pageIdx + 1, { tag, text: (prev.textContent || '').substring(0, 60) });
+        if (log) log.record('merge', 'pass1-merge', pageIdx + 1, { tag, text: htmlToText(merged.innerHTML).substring(0, 60), beforeHtml: mergeBeforeHtml, afterHtml: children.map(c => c.outerHtml).join('') });
         break;
       }
     }
 
     // Pass 2: merge adjacent <p> elements where the first ends mid-sentence.
-    // This catches splits where neither fragment has data-continuation
-    // (e.g. fill-pass split's chunk appended after a greedy-split's firstChunk).
-    // A <p> that ends without sentence-ending punctuation (.!?»") was truncated
-    // by a split — the next <p> of the same tag is its continuation.
-    children = Array.from(div.children);
     for (let i = 0; i < children.length - 1; i++) {
       const el = children[i];
       const next = children[i + 1];
-      if (el.tagName !== 'P' || next.tagName !== 'P') continue;
+      if (el.tag !== 'P' || next.tag !== 'P') continue;
 
-      // Skip if either is a heading-like element (bold paragraph = subtitle)
-      if (/font-weight:\s*bold/i.test(el.getAttribute('style') || '')) continue;
-      if (/font-weight:\s*bold/i.test(next.getAttribute('style') || '')) continue;
+      if (/font-weight:\s*bold/i.test(el.style || '')) continue;
+      if (/font-weight:\s*bold/i.test(next.style || '')) continue;
 
-      const elText = (el.textContent || '').trim();
-      // Check if element ends mid-sentence (no sentence-ending punctuation)
+      const elText = el.textContent.trim();
       if (!elText || /[.!?»"]\s*$/.test(elText)) continue;
 
-      // Safety: next element should look like a continuation, not a new paragraph.
-      // Accept if: text-indent:0, no text-indent, OR next starts with lowercase
-      // (no real paragraph/sentence starts lowercase — it must be a split fragment).
-      const nextStyle = next.getAttribute('style') || '';
+      const nextStyle = next.style || '';
       const nextHasZeroIndent = /text-indent:\s*0/.test(nextStyle);
       const nextHasNoIndent = !/text-indent/.test(nextStyle);
-      const nextText = (next.textContent || '').trim();
+      const nextText = next.textContent.trim();
       const nextStartsLowercase = /^[a-záéíóúüñ]/.test(nextText);
       if (!nextHasZeroIndent && !nextHasNoIndent && !nextStartsLowercase) {
-        if (log) log.record('merge', 'pass2-skip', pageIdx + 1, { reason: 'indent-check', text: (el.textContent || '').substring(0, 60) });
+        if (log) log.record('merge', 'pass2-skip', pageIdx + 1, { reason: 'indent-check', text: elText.substring(0, 60) });
         continue;
       }
 
-      // Merge
-      el.innerHTML = el.innerHTML + ' ' + next.innerHTML;
-      const mergedText2 = (el.textContent || '').trim();
-      el.style.textAlignLast = /[.!?»"]\s*$/.test(mergedText2) ? 'left' : 'justify';
-      next.remove();
-      children.splice(i + 1, 1);
-      i--; // re-check
+      const merged = { ...el, outerHtml: buildMerged(el, next.innerHTML), innerHTML: el.innerHTML + ' ' + next.innerHTML };
+      children = [...children.slice(0, i), merged, ...children.slice(i + 2)];
+      i--;
       changed = true;
-      if (log) log.record('merge', 'pass2-merge', pageIdx + 1, { text: (el.textContent || '').substring(0, 60) });
+      if (log) log.record('merge', 'pass2-merge', pageIdx + 1, { text: htmlToText(merged.innerHTML).substring(0, 60) });
     }
 
     if (changed) {
-      page.html = div.innerHTML;
+      page.html = children.map(c => c.outerHtml).join('');
     }
   }
 };
@@ -1489,31 +2124,38 @@ const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
     const gap = contentHeight - actualHeight;
     if (gap < MIN_GAP) continue;
 
-    const div = document.createElement('div');
-    div.innerHTML = page.html;
-    const children = Array.from(div.children);
+    let children = parseHtmlElements(page.html);
     if (children.length < 2) continue;
 
     // Don't adjust if last element is a heading (should have been moved already)
     const last = children[children.length - 1];
-    if (/^H[1-6]$/i.test(last.tagName)) continue;
+    if (/^H[1-6]$/i.test(last.tag)) continue;
 
     const numGaps = children.length - 1;
     const maxPerGap = Math.min(gap / numGaps, MAX_PER_GAP);
     if (maxPerGap < 1) continue;
 
     // Capture original margins before any modification
-    const origMargins = children.map(el => parseFloat(el.style.marginBottom) || 0);
+    const origMargins = children.map(el => {
+      const m = (el.style || '').match(/margin-bottom:\s*([\d.]+)px/);
+      return m ? parseFloat(m[1]) : 0;
+    });
 
-    // Binary search for the largest perGap that keeps total height ≤ contentHeight.
-    // Avoids overflow when Canvas and browser disagree on margin interactions.
+    // Build updated HTML by injecting margin-bottom into each element's style
     const applyGap = (g) => {
-      children.forEach((el, idx) => {
-        if (idx < children.length - 1) {
-          el.style.marginBottom = `${(origMargins[idx] + g).toFixed(1)}px`;
+      return children.map((el, idx) => {
+        if (idx >= children.length - 1) return el.outerHtml;
+        const newMargin = (origMargins[idx] + g).toFixed(1);
+        const newStyle = (el.style || '')
+          .replace(/margin-bottom:\s*[\d.]+px;?/g, '')
+          .trimEnd()
+          + `;margin-bottom:${newMargin}px`;
+        if (/\bstyle="/.test(el.outerHtml)) {
+          return el.outerHtml.replace(/\bstyle="[^"]*"/, `style="${newStyle}"`);
         }
-      });
-      return div.innerHTML;
+        // No style attribute — inject one into the opening tag
+        return el.outerHtml.replace(/^(<[a-zA-Z][^\s/>]*)/, `$1 style="${newStyle}"`);
+      }).join('');
     };
 
     let lo = 0;
@@ -1547,25 +2189,21 @@ const fixHeadingsAtBottom = (pages, canvasCtx, layoutCtx, log) => {
     const page = pages[i];
     if (!page || page.isBlank || !page.html) continue;
 
-    const div = document.createElement('div');
-    div.innerHTML = page.html;
-    const children = Array.from(div.children);
+    const children = parseHtmlElements(page.html);
     if (children.length === 0) continue;
 
     const last = children[children.length - 1];
-    const isHeading = /^H[1-6]$/i.test(last.tagName);
+    const isHeading = /^H[1-6]$/i.test(last.tag);
     // Bold paragraph = subtitle-like: only if ≥80% of text is bold.
     // Paragraphs with inline bold opener (e.g. bold question + regular text)
     // are NOT subtitles and should not be moved.
     let isBoldPara = false;
-    if (last.tagName === 'P') {
-      if (/font-weight:\s*(?:bold|[7-9]00)/.test(last.getAttribute('style') || '')) {
+    if ((last.tag || '').toUpperCase() === 'P') {
+      if (/font-weight:\s*(?:bold|[7-9]00)/.test(last.style || '')) {
         isBoldPara = true;
-      } else if (/^<p[^>]*>\s*<(?:strong|b)\b/i.test(last.outerHTML)) {
-        const totalText = (last.textContent || '').trim();
-        const boldEls = last.querySelectorAll('strong, b');
-        let boldLen = 0;
-        for (const b of boldEls) boldLen += (b.textContent || '').trim().length;
+      } else if (/^<p[^>]*>\s*<(?:strong|b)\b/i.test(last.outerHtml)) {
+        const totalText = htmlToText(last.innerHTML).trim();
+        const { boldLen } = getBoldTextRatio(last.outerHtml);
         isBoldPara = totalText.length > 0 && (boldLen / totalText.length) >= 0.8;
       }
     }
@@ -1580,24 +2218,23 @@ const fixHeadingsAtBottom = (pages, canvasCtx, layoutCtx, log) => {
     if (page.chapterTitle !== next.chapterTitle) continue;
 
     // Move heading to top of next page — only if it fits without overflow
-    const headingHtml = last.outerHTML;
+    const headingHtml = last.outerHtml;
     const mergedHtml = headingHtml + (next.html || '');
     if (!canAcceptHtml(mergedHtml, layoutCtx.contentHeight, canvasCtx)) {
       // Heading doesn't fit on next page — leave heading in place.
       // Do NOT mark as isTitleOnlyPage: that flag is only for chapter title pages,
       // and misusing it would cause distributeVerticalSpace and smoothPageBalance
       // to skip this page entirely, leaving large whitespace gaps uncorrected.
-      log.record('heading-fix', 'reject', i + 1, { tag: last.tagName, text: (last.textContent || '').substring(0, 60), reason: 'next-page-full' });
+      log.record('heading-fix', 'reject', i + 1, { tag: last.tag, text: htmlToText(last.innerHTML).substring(0, 60), reason: 'next-page-full' });
       continue;
     }
 
-    last.remove();
-    const remainingHtml = div.innerHTML.trim();
+    const remainingHtml = children.slice(0, children.length - 1).map(c => c.outerHtml).join('').trim();
 
     pages[i] = { ...page, html: remainingHtml, isBlank: !remainingHtml };
     pages[ni] = { ...next, html: mergedHtml };
 
-    log.record('heading-fix', 'move', i + 1, { tag: last.tagName, text: (last.textContent || '').substring(0, 60), toPage: ni + 1 });
+    log.record('heading-fix', 'move', i + 1, { tag: last.tag, text: htmlToText(last.innerHTML).substring(0, 60), toPage: ni + 1, beforeHtml: page.html, afterHtml: remainingHtml });
   }
 };
 
@@ -1627,6 +2264,11 @@ const cleanupNearlyEmptyPages = (pages, layoutCtx, canvasCtx) => {
     // Try merging into previous page
     const mergedHtml = prevPage.html + page.html;
     if (canAcceptHtml(mergedHtml, contentHeight, canvasCtx)) {
+      const prevFill = measure(prevPage.html) / contentHeight;
+      const mergedFill = measure(mergedHtml) / contentHeight;
+      const shortLineViolation = getNearFullShortLineViolation(mergedHtml, canvasCtx, prevFill, mergedFill);
+      if (shortLineViolation) continue;
+
       pages[i - 1] = { ...prevPage, html: mergedHtml };
       page.html = '';
       page.isBlank = true;
@@ -1737,19 +2379,19 @@ const smoothPageBalance = (pages, layoutCtx, canvasCtx, log) => {
     const fromIdx = q1.fillPct > q2.fillPct ? i      : nextIdx;
     const toIdx   = q1.fillPct > q2.fillPct ? nextIdx : i;
 
-    const tmp = document.createElement('div');
-    tmp.innerHTML = pages[fromIdx].html;
+    const fromEls = parseHtmlElements(pages[fromIdx].html);
+    if (fromEls.length === 0) break;
 
     // Forward move (toIdx > fromIdx): take LAST element of fromPage, PREPEND to toPage.
     // Backward move (toIdx < fromIdx): take FIRST element of fromPage, APPEND to toPage.
     // This preserves reading order: content flows from the bottom of one page to the top
     // of the next (or from the top of one page to the bottom of the previous).
-    const elToMove = toIdx > fromIdx ? tmp.lastElementChild : tmp.firstElementChild;
+    const elToMove = toIdx > fromIdx ? fromEls[fromEls.length - 1] : fromEls[0];
     if (!elToMove) break;
 
-    const elHtml = elToMove.outerHTML;
-    elToMove.remove();
-    const fromRest = tmp.innerHTML.trim();
+    const elHtml = elToMove.outerHtml;
+    const fromRestEls = toIdx > fromIdx ? fromEls.slice(0, fromEls.length - 1) : fromEls.slice(1);
+    const fromRest = fromRestEls.map(e => e.outerHtml).join('').trim();
     if (!fromRest) break; // Would empty fromPage — skip
 
     const toNewHtml = toIdx > fromIdx
@@ -1765,10 +2407,30 @@ const smoothPageBalance = (pages, layoutCtx, canvasCtx, log) => {
     // severely underfilled (huge badness delta can override a +800 heading penalty).
     if (qFrom.violations.includes('heading_at_bottom')) break;
     if (qTo.violations.includes('heading_at_bottom')) break;
+    const changedEndHtml = toIdx > fromIdx ? fromRest : toNewHtml;
+    const changedEndBeforeFill = toIdx > fromIdx
+      ? (fromIdx === i ? q1.fillPct : q2.fillPct)
+      : (toIdx === i ? q1.fillPct : q2.fillPct);
+    const changedEndAfterFill = toIdx > fromIdx ? qFrom.fillPct : qTo.fillPct;
+    const shortLineViolation = getNearFullShortLineViolation(changedEndHtml, canvasCtx, changedEndBeforeFill, changedEndAfterFill);
+    if (shortLineViolation) {
+      const shortLinePage = toIdx > fromIdx ? fromIdx + 1 : toIdx + 1;
+      log.record('smooth', 'reject', shortLinePage, {
+        fromPage: fromIdx + 1,
+        toPage: toIdx + 1,
+        reason: 'short-last-line',
+        text: shortLineViolation.text.substring(0, 60),
+        lastLineWords: shortLineViolation.lastLineWords,
+        widthRatio: +shortLineViolation.widthRatio.toFixed(2),
+        shortLineScore: shortLineViolation.shortLineScore
+      });
+      break;
+    }
 
     const badnessAfter = qFrom.score + qTo.score;
 
     if (badnessAfter < badnessBefore - SMOOTH_BADNESS_MIN_DELTA) {
+      const smoothBeforeHtml = pages[fromIdx].html;
       pages[fromIdx] = { ...pages[fromIdx], html: fromRest };
 
       // Reunify split fragments if the moved element is a continuation chunk.
@@ -1778,35 +2440,101 @@ const smoothPageBalance = (pages, layoutCtx, canvasCtx, log) => {
       // This avoids leaving two adjacent <p> elements that look like a new paragraph.
       let finalToHtml = toNewHtml;
       if (toIdx < fromIdx) {
-        const movedDiv = document.createElement('div');
-        movedDiv.innerHTML = elHtml;
-        const movedEl = movedDiv.firstElementChild;
+        const movedEl = getFirstElement(elHtml);
         const isCont = movedEl?.dataset?.continuation === 'true'
-          && (movedEl.tagName === 'P' || movedEl.tagName === 'BLOCKQUOTE');
+          && (movedEl.tag === 'P' || movedEl.tag === 'BLOCKQUOTE');
         if (isCont) {
-          const toDiv = document.createElement('div');
-          toDiv.innerHTML = toNewHtml;
+          const toEls = parseHtmlElements(toNewHtml);
           // The appended continuation is the last child; its predecessor should be the first chunk
-          const lastChild = toDiv.lastElementChild;
-          const secondLast = lastChild?.previousElementSibling;
-          if (secondLast && secondLast.tagName === lastChild.tagName) {
-            const reunified = mergeIntoOne(secondLast.outerHTML, lastChild.outerHTML);
-            secondLast.remove();
-            lastChild.remove();
-            toDiv.innerHTML += reunified;
-            finalToHtml = toDiv.innerHTML;
+          const lastChild = toEls[toEls.length - 1];
+          const secondLast = toEls[toEls.length - 2];
+          if (secondLast && secondLast.tag === lastChild?.tag) {
+            const reunified = mergeIntoOne(secondLast.outerHtml, lastChild.outerHtml);
+            finalToHtml = toEls.slice(0, toEls.length - 2).map(e => e.outerHtml).join('') + reunified;
           }
         }
       }
 
       pages[toIdx] = { ...pages[toIdx], html: finalToHtml };
-      log.record('smooth', 'move', fromIdx + 1, { toPage: toIdx + 1, attempt, before: { score: +badnessBefore.toFixed(0), fillPct: +(q1.fillPct * 100).toFixed(0) }, after: { score: +badnessAfter.toFixed(0), fillPct: +(qTo.fillPct * 100).toFixed(0) } });
+      log.record('smooth', 'move', fromIdx + 1, { toPage: toIdx + 1, attempt, before: { score: +badnessBefore.toFixed(0), fillPct: +(q1.fillPct * 100).toFixed(0) }, after: { score: +badnessAfter.toFixed(0), fillPct: +(qTo.fillPct * 100).toFixed(0) }, beforeHtml: smoothBeforeHtml, afterHtml: fromRest });
       // If receiver is now above 70%, balance is good enough — stop moving
       if (qTo.fillPct >= 0.70) break;
     } else {
       break; // no improvement — stop attempts for this pair
     }
     } // end attempt loop
+  }
+};
+
+/**
+ * Final safety net for visually short trailing lines.
+ * Flushes the last block forward when a near-full page still ends badly and the
+ * source page remains reasonably filled after the move.
+ *
+ * @private
+ */
+const fixShortLastLines = (pages, layoutCtx, canvasCtx, log) => {
+  const { contentHeight, lineHeightPx } = layoutCtx;
+  const measure = (html) => measureHtmlHeight(html, canvasCtx);
+
+  for (let pass = 0; pass < 2; pass++) {
+    let changedAny = false;
+
+    for (let i = 0; i < pages.length - 1; i++) {
+      const page = pages[i];
+      if (!page || page.isBlank || page.isTitleOnlyPage || page.isFirstChapterPage || !page.html) continue;
+
+      const pageHeight = measure(page.html);
+      const pageFill = pageHeight / contentHeight;
+      if (pageFill < FILL_PASS_RUNT_MIN_RESULT_FILL) continue;
+
+      const shortLineViolation = getTrailingShortLineViolation(page.html, canvasCtx);
+      if (!shortLineViolation) continue;
+
+      let nextIdx = i + 1;
+      while (nextIdx < pages.length && pages[nextIdx]?.isBlank) nextIdx++;
+      if (nextIdx >= pages.length) continue;
+
+      const nextPage = pages[nextIdx];
+      if (!nextPage || !nextPage.html || nextPage.isTitleOnlyPage || nextPage.isFirstChapterPage) continue;
+      if (page.chapterTitle !== nextPage.chapterTitle) continue;
+
+      const pageEls = parseHtmlElements(page.html);
+      const lastEl = pageEls[pageEls.length - 1];
+      const tagName = (lastEl?.tag || '').toUpperCase();
+      if (!lastEl || /^H[1-6]$/i.test(tagName)) continue;
+      if (tagName === 'P' && isMostlyBoldParagraph(lastEl)) continue;
+
+      const movedHtml = lastEl.outerHtml;
+      const newCurrentHtml = pageEls.slice(0, pageEls.length - 1).map(e => e.outerHtml).join('').trim();
+      if (!newCurrentHtml) continue;
+
+      const newCurrentFill = measure(newCurrentHtml) / contentHeight;
+      if (newCurrentFill < SHORT_LAST_LINE_POSTPASS_MIN_SOURCE_FILL) continue;
+
+      const qCurrent = evaluatePageQualityCanvas(newCurrentHtml, contentHeight, lineHeightPx, canvasCtx);
+      if (qCurrent.violations.includes('heading_at_bottom')) continue;
+
+      const nextHtml = movedHtml + (nextPage.html || '');
+      if (!canAcceptHtml(nextHtml, contentHeight, canvasCtx)) continue;
+
+      pages[i] = { ...page, html: newCurrentHtml };
+      pages[nextIdx] = { ...nextPage, html: nextHtml };
+      mergeSplitFragments([pages[i], pages[nextIdx]], log);
+      changedAny = true;
+
+      log.record('short-line-fix', 'move', i + 1, {
+        toPage: nextIdx + 1,
+        text: shortLineViolation.text.substring(0, 60),
+        lastLineWords: shortLineViolation.lastLineWords,
+        widthRatio: +shortLineViolation.widthRatio.toFixed(2),
+        shortLineScore: shortLineViolation.shortLineScore,
+        beforeFillPct: +(pageFill * 100).toFixed(0),
+        afterFillPct: +(newCurrentFill * 100).toFixed(0)
+      });
+    }
+
+    if (!changedAny) break;
   }
 };
 
@@ -1860,7 +2588,7 @@ const checkSplitBalance = (prevHtml, restHtml, lineHeightPx, canvasCtx) => {
  * @param {object} canvasCtx
  * @returns {{ score: number, fillPct: number, violations: string[] }}
  */
-const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvasCtx, isFragment = false) => {
+const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvasCtx, isFragment = false, options = {}) => {
   if (!pageHtml) return { score: Infinity, fillPct: 0, violations: [] };
 
   // fs = fragment scale: when isFragment=true the html is a split remainder that will
@@ -1869,6 +2597,11 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
   // quality of the split itself, not the final fill state).
   const fs = isFragment ? 0.3 : 1.0;
 
+  // isChapterLastPage: last page of a chapter can never receive more content from
+  // subsequent chapters — fill penalties are structural noise, not actionable signal.
+  // Orphan/widow/heading_at_bottom penalties still apply (they ARE fixable within the chapter).
+  const isChapterLastPage = options.isChapterLastPage === true;
+
   const measure = (html) => measureHtmlHeight(html, canvasCtx);
   const pageHeight = measure(pageHtml);
   const remainingSpace = contentHeight - pageHeight;
@@ -1876,41 +2609,38 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
   let score = 0;
 
   // Whitespace penalty — line-based tiers (TeX-style)
-  // 80/line for 1-2 lines: enough "inertia" to avoid micro-optimisations.
-  // Steps up at 3+ and 5+ lines to force the fill-pass to act on serious underfill.
-  // Scaled by fs when evaluating a fragment (incomplete page).
-  const unusedLines = Math.floor(Math.max(0, remainingSpace) / lineHeightPx);
-  if (unusedLines > 4)      score += 500 * fs; // severe underfill (5+ lines)
-  else if (unusedLines > 2) score += 200 * fs; // moderate underfill (3-4 lines)
-  else                      score += unusedLines * 80 * fs; // 1-2 lines: 80/160
+  // Suppressed for chapter-last pages: they cannot be filled further without
+  // crossing chapter boundaries (which is forbidden by design).
+  if (!isChapterLastPage) {
+    const unusedLines = Math.floor(Math.max(0, remainingSpace) / lineHeightPx);
+    if (unusedLines > 4)      score += 500 * fs; // severe underfill (5+ lines)
+    else if (unusedLines > 2) score += 200 * fs; // moderate underfill (3-4 lines)
+    else                      score += unusedLines * 80 * fs; // 1-2 lines: 80/160
+  }
 
-  // fillPct deviation penalty — pages deviating from targetFillPct score higher.
-  // Discourages both underfill and overfill relative to target.
-  // Scaled by fs when evaluating a fragment (fill will change as content is added).
+  // fillPct deviation penalty — suppressed for chapter-last pages (same reason).
   const targetFill = canvasCtx?.targetFillPct ?? 0.92;
   const fillPct = pageHeight / contentHeight;
-  score += Math.abs(fillPct - targetFill) * 200 * fs;
+  if (!isChapterLastPage) {
+    score += Math.abs(fillPct - targetFill) * 200 * fs;
+  }
 
   // Parse structure
-  const div = document.createElement('div');
-  div.innerHTML = pageHtml;
-  const children = Array.from(div.children);
+  const children = parseHtmlElements(pageHtml);
 
   if (children.length > 0) {
     const lastEl = children[children.length - 1];
-    const lastTag = lastEl.tagName || '';
+    const lastTag = (lastEl.tag || '').toUpperCase();
 
     // Heading at bottom penalty — nearly as bad as widow/orphan.
     // Only catches predominantly-bold paragraphs (≥80% bold text = subtitle-like).
     let isBoldParaAtBottom = false;
     if (lastTag === 'P') {
-      if (/font-weight:\s*(?:bold|[7-9]00)/i.test(lastEl.getAttribute('style') || '')) {
+      if (/font-weight:\s*(?:bold|[7-9]00)/i.test(lastEl.style || '')) {
         isBoldParaAtBottom = true;
-      } else if (/^<p[^>]*>\s*<(?:strong|b)\b/i.test(lastEl.outerHTML)) {
-        const totalText = (lastEl.textContent || '').trim();
-        const boldEls = lastEl.querySelectorAll('strong, b');
-        let boldLen = 0;
-        for (const b of boldEls) boldLen += (b.textContent || '').trim().length;
+      } else if (/^<p[^>]*>\s*<(?:strong|b)\b/i.test(lastEl.outerHtml)) {
+        const totalText = htmlToText(lastEl.innerHTML).trim();
+        const { boldLen } = getBoldTextRatio(lastEl.outerHtml);
         isBoldParaAtBottom = totalText.length > 0 && (boldLen / totalText.length) >= 0.8;
       }
     }
@@ -1924,10 +2654,10 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
     // Widow: last paragraph on page with only 1 line.
     for (let ci = 0; ci < children.length; ci++) {
       const el = children[ci];
-      if (el.tagName?.toUpperCase() !== 'P') continue;
+      if ((el.tag || '').toUpperCase() !== 'P') continue;
 
-      const isContinuation = el.dataset.continuation === 'true';
-      const elLines = Math.floor(measure(el.outerHTML) / lineHeightPx);
+      const isContinuation = el.dataset?.continuation === 'true';
+      const elLines = Math.floor(measure(el.outerHtml) / lineHeightPx);
 
       // Orphan: continuation chunk with only 1 line (any position on page)
       // Scaled by fs — on a fragment, this is not a real orphan yet.
@@ -1960,17 +2690,17 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
     }
 
     // Runt-line penalty: last paragraph on page is a split continuation fragment
-    // (data-continuation=true) ending with 1 word or 2 very short words (< 25% width).
-    // Only split fragments are pagination artefacts — natural whole-paragraph endings
-    // are the author's text and must not be penalised.
-    // Penalty 300/200 scaled by fs so fragment lookaheads don't over-fire.
-    const lastPEl = children.slice().reverse().find(c => c.tagName?.toUpperCase() === 'P');
-    if (lastPEl && lastPEl.dataset.continuation === 'true') {
-      const lastPLines = Math.floor(measure(lastPEl.outerHTML) / lineHeightPx);
+    // (data-continuation=true) ending with 1 word or 2 very short words (<25% line width).
+    // Only penalises split artefacts — whole paragraphs are the author's text and must
+    // not be penalised here (doing so cascades across all fill-pass scoring globally).
+    // Both scaled by fs so fragment lookaheads (isFragment=true) don't over-fire.
+    const lastPEl = [...children].reverse().find(c => (c.tag || '').toUpperCase() === 'P');
+    if (lastPEl && lastPEl.dataset?.continuation === 'true') {
+      const lastPLines = Math.floor(measure(lastPEl.outerHtml) / lineHeightPx);
       if (lastPLines >= 2) {
         const fontStr = buildFontString(canvasCtx.baseFontSizePx, canvasCtx.fontFamily);
         const effectiveWidth = canvasCtx.contentWidth - (canvasCtx.widthSlack || 0);
-        const plainText = (lastPEl.textContent || '').trim();
+        const plainText = htmlToText(lastPEl.innerHTML).trim();
         const words = plainText.split(/\s+/).filter(w => w.length > 0);
         const lineStarts = getLineBreakPositions(plainText, effectiveWidth, fontStr);
         if (lineStarts && lineStarts.length > 0) {
@@ -1980,13 +2710,14 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
           if (lastLineWords === 1) {
             runtPenalty = 300;
           } else if (lastLineWords === 2) {
-            const offscreen = document.createElement('canvas');
-            const ctx2d = offscreen.getContext('2d');
-            ctx2d.font = fontStr;
-            const lastLineText = words.slice(lastStart).join(' ');
-            const widthRatio = effectiveWidth > 0
-              ? ctx2d.measureText(lastLineText).width / effectiveWidth : 1;
-            if (widthRatio < 0.25) runtPenalty = 200;
+            const ctx2d = getCanvasCtx2d();
+            if (ctx2d) {
+              ctx2d.font = fontStr;
+              const lastLineText = words.slice(lastStart).join(' ');
+              const widthRatio = effectiveWidth > 0
+                ? ctx2d.measureText(lastLineText).width / effectiveWidth : 1;
+              if (widthRatio < 0.25) runtPenalty = 200;
+            }
           }
           if (runtPenalty > 0) {
             score += runtPenalty * fs;
@@ -2002,6 +2733,30 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
     fillPct,   // 0.0–1.0 ratio (fillPct computed above for deviation penalty)
     violations
   };
+};
+
+/**
+ * Tag the last non-blank page of each chapter with isChapterLastPage=true.
+ * This lets evaluatePageQualityCanvas suppress fill-penalties for those pages —
+ * they can never receive more content without crossing chapter boundaries.
+ * Must be called after all structural mutations (fill-pass, smooth, cleanup).
+ *
+ * @private
+ */
+const tagChapterLastPages = (pages) => {
+  // Clear stale tags first (fill-pass may have merged/emptied pages)
+  for (const p of pages) delete p.isChapterLastPage;
+
+  // Walk backwards: first non-blank page per chapterTitle = last page of that chapter
+  const seen = new Set();
+  for (let i = pages.length - 1; i >= 0; i--) {
+    const p = pages[i];
+    if (p.isBlank || !p.html || !p.chapterTitle) continue;
+    if (!seen.has(p.chapterTitle)) {
+      p.isChapterLastPage = true;
+      seen.add(p.chapterTitle);
+    }
+  }
 };
 
 /**

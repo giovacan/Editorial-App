@@ -103,7 +103,7 @@ function MagnifierPanel({
           <div
             ref={magnifierContentRef}
             className="preview-content"
-            style={{ height: `${effectiveContentHeight}px` }}
+            style={{ height: `${effectiveContentHeight + 2}px` }}
             dangerouslySetInnerHTML={{ __html: debugHtml || '' }}
           />
           {pageNumHtml}

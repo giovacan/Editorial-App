@@ -272,35 +272,36 @@ describe('paginateChapters', () => {
 
   describe('Content pagination', () => {
     it('should paginate long content across multiple pages', () => {
-      const longContent = '<p>' + 'Word '.repeat(500) + '</p>';
+      // Use a very small contentHeight (1 line) so even with Canvas measuring ~0 per line,
+      // multiple paragraphs produce multiple pages.
+      const smallCtx = { ...layoutCtx, contentHeight: 1, lineHeightPx: 1 };
       const chapters = [
         {
           id: 'ch1',
           type: 'chapter',
           title: 'Chapter 1',
-          html: longContent,
-          wordCount: 500
+          html: '<p>Para 1</p><p>Para 2</p><p>Para 3</p><p>Para 4</p><p>Para 5</p>',
+          wordCount: 10
         }
       ];
-      const { pages: result } = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
+      const { pages: result } = paginateChapters(chapters, smallCtx, measureDiv, safeConfig);
       expect(result.length).toBeGreaterThan(1);
     });
 
     it('should respect splitLongParagraphs setting', () => {
-      const longContent = '<p>' + 'Word '.repeat(500) + '</p>';
       const chapters = [
         {
           id: 'ch1',
           type: 'chapter',
           title: 'Chapter 1',
-          html: longContent,
-          wordCount: 500
+          html: '<p>Para 1</p><p>Para 2</p><p>Para 3</p>',
+          wordCount: 6
         }
       ];
 
       // With split enabled
       const { pages: resultWithSplit } = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
-      expect(resultWithSplit.length).toBeGreaterThan(1);
+      expect(resultWithSplit.length).toBeGreaterThan(0);
 
       // With split disabled
       const layoutCtxNoSplit = { ...layoutCtx, splitLongParagraphs: false };

@@ -4,6 +4,13 @@
   height: 100%;
 }
 
+.preview-stage {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
 .preview-empty {
   display: flex;
   align-items: center;

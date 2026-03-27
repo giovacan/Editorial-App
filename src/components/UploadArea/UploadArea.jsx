@@ -12,9 +12,11 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
   const [detectedChaptersLocal, setDetectedChaptersLocal] = useState([]);
   const [pendingChapters, setPendingChapters] = useState(null);
   const [showChapterDetection, setShowChapterDetection] = useState(false);
+  const [chapterDetectionConfirmed, setChapterDetectionConfirmed] = useState(false);
   const fileInputRef = useRef(null);
 
   const setConfirmedChapterTitles = useEditorStore(s => s.setConfirmedChapterTitles);
+  const paginationActive = useEditorStore(s => s.paginationProgress.isActive);
 
   // Lazy-load mammoth for DOCX support
   useEffect(() => {
@@ -88,16 +90,26 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
 
   const handleChaptersConfirm = (confirmedList) => {
     setConfirmedChapterTitles(confirmedList.filter(ch => ch.confirmed).map(ch => ch.detectedTitle));
-    setShowChapterDetection(false);
     if (onChaptersDetected) onChaptersDetected(confirmedList);
     if (pendingChapters) { onContentLoaded(pendingChapters); setPendingChapters(null); }
+    // Dialog stays open — closes automatically when pagination finishes
+    setChapterDetectionConfirmed(true);
   };
 
   const handleChaptersCancel = () => {
     setShowChapterDetection(false);
+    setChapterDetectionConfirmed(false);
     setPendingChapters(null);
     setConfirmedChapterTitles([]);
   };
+
+  // Close dialog automatically when pagination finishes (after confirm was clicked)
+  useEffect(() => {
+    if (!paginationActive && chapterDetectionConfirmed && showChapterDetection) {
+      setShowChapterDetection(false);
+      setChapterDetectionConfirmed(false);
+    }
+  }, [paginationActive, chapterDetectionConfirmed, showChapterDetection]);
 
   const handleProcessText = () => {
     if (!pasteText.trim()) { alert('Ingresa contenido antes de procesar'); return; }

@@ -682,6 +682,177 @@ const extractStyles = (style) => ({
   minHeightUnit: (style.minHeight || '').replace(/[\d.-]/g, '') || 'px',
 });
 
+/**
+ * Worker-safe: parse a CSS inline style string into the same object shape
+ * as extractStyles(el.style). Used when document is unavailable (Web Worker).
+ */
+const parseStyleString = (cssText) => {
+  const get = (prop) => {
+    const re = new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`, 'i');
+    return (cssText || '').match(re)?.[1]?.trim() || '';
+  };
+  return {
+    fontSize: parseFloat(get('font-size')) || null,
+    fontSizeUnit: (get('font-size') || '').replace(/[\d.]/g, '') || 'pt',
+    lineHeight: parseFloat(get('line-height')) || null,
+    fontWeight: get('font-weight') || 'normal',
+    fontStyle: get('font-style') || 'normal',
+    textIndent: parseEmValue(get('text-indent')),
+    marginTop: parseFloat(get('margin-top')) || 0,
+    marginTopUnit: (get('margin-top') || '').replace(/[\d.-]/g, '') || 'px',
+    marginBottom: parseFloat(get('margin-bottom')) || 0,
+    marginBottomUnit: (get('margin-bottom') || '').replace(/[\d.-]/g, '') || 'px',
+    paddingTop: parseFloat(get('padding-top')) || 0,
+    paddingBottom: parseFloat(get('padding-bottom')) || 0,
+    paddingLeft: parseFloat(get('padding-left')) || 0,
+    paddingRight: parseFloat(get('padding-right')) || 0,
+    marginLeft: parseFloat(get('margin-left')) || 0,
+    marginLeftUnit: (get('margin-left') || '').replace(/[\d.-]/g, '') || 'px',
+    marginRight: parseFloat(get('margin-right')) || 0,
+    marginRightUnit: (get('margin-right') || '').replace(/[\d.-]/g, '') || 'px',
+    borderLeftWidth: parseFloat(get('border-left-width')) || 0,
+    letterSpacing: parseFloat(get('letter-spacing')) || 0,
+    letterSpacingUnit: (get('letter-spacing') || '').replace(/[\d.-]/g, '') || 'px',
+    wordSpacing: parseFloat(get('word-spacing')) || 0,
+    wordSpacingUnit: (get('word-spacing') || '').replace(/[\d.-]/g, '') || 'px',
+    display: get('display') || '',
+    minHeight: parseFloat(get('min-height')) || 0,
+    minHeightUnit: (get('min-height') || '').replace(/[\d.-]/g, '') || 'px',
+  };
+};
+
+/**
+ * Worker-safe: tokenize inline HTML into text runs without DOM.
+ * Handles <strong>, <b>, <em>, <i>, <span style="...">, <br>.
+ */
+const extractTextRunsFromHtml = (html, inherited = { bold: false, italic: false, fontSize: null }) => {
+  const runs = [];
+  let i = 0;
+  const tagStack = [{ bold: inherited.bold, italic: inherited.italic, fontSize: inherited.fontSize }];
+  const pushText = (text) => {
+    if (!text) return;
+    const collapsed = text.replace(/\s+/g, ' ');
+    if (!collapsed.trim() && runs.length === 0) return;
+    const top = tagStack[tagStack.length - 1];
+    if (!collapsed.trim()) {
+      runs.push({ text: ' ', bold: top.bold, italic: top.italic, fontSize: top.fontSize });
+    } else {
+      runs.push({ text: collapsed, bold: top.bold, italic: top.italic, fontSize: top.fontSize });
+    }
+  };
+  while (i < html.length) {
+    if (html[i] !== '<') {
+      let j = i;
+      while (j < html.length && html[j] !== '<') j++;
+      pushText(html.slice(i, j));
+      i = j;
+      continue;
+    }
+    const end = html.indexOf('>', i);
+    if (end === -1) { i++; continue; }
+    const tag = html.slice(i, end + 1);
+    const tagNameMatch = tag.match(/^<\/?([a-zA-Z][^\s/>]*)/);
+    const tagName = tagNameMatch?.[1]?.toUpperCase() || '';
+    const isClose = tag.startsWith('</');
+    const isSelfClose = tag.endsWith('/>');
+
+    if (tagName === 'BR') {
+      const top = tagStack[tagStack.length - 1];
+      if (runs.length > 0) runs.push({ text: ' ', bold: top.bold, italic: top.italic, fontSize: top.fontSize });
+    } else if (!isClose && !isSelfClose && !BLOCK_TAGS.has(tagName)) {
+      const top = tagStack[tagStack.length - 1];
+      let bold = top.bold;
+      let italic = top.italic;
+      let fontSize = top.fontSize;
+      if (tagName === 'STRONG' || tagName === 'B') bold = true;
+      if (tagName === 'EM' || tagName === 'I') bold = false, italic = true;
+      const styleMatch = tag.match(/\bstyle="([^"]*)"/i);
+      if (styleMatch) {
+        const css = styleMatch[1];
+        const fsMatch = css.match(/font-size:\s*([\d.]+)(px|pt|em)/i);
+        if (fsMatch) {
+          const val = parseFloat(fsMatch[1]);
+          const unit = fsMatch[2].toLowerCase();
+          if (unit === 'px') fontSize = val;
+          else if (unit === 'pt') fontSize = val * PX_PER_PT;
+          else if (unit === 'em' && top.fontSize) fontSize = val * top.fontSize;
+        }
+        if (/font-weight:\s*(bold|[7-9]\d\d)/i.test(css)) bold = true;
+        if (/font-style:\s*italic/i.test(css)) italic = true;
+      }
+      tagStack.push({ bold, italic, fontSize });
+    } else if (isClose && !BLOCK_TAGS.has(tagName) && tagStack.length > 1) {
+      tagStack.pop();
+    }
+    i = end + 1;
+  }
+  return runs;
+};
+
+/**
+ * Worker-safe: tokenize multi-element HTML string into element descriptors.
+ * Used as fallback for parseMultiElementHtml when document is unavailable.
+ */
+const parseMultiElementHtmlWorker = (html) => {
+  if (!html || !html.trim()) return [];
+  const elements = [];
+  let i = 0;
+  while (i < html.length) {
+    // Skip whitespace between elements
+    while (i < html.length && /\s/.test(html[i])) i++;
+    if (i >= html.length) break;
+    if (html[i] !== '<') {
+      // Bare text node
+      let j = i;
+      while (j < html.length && html[j] !== '<') j++;
+      const text = html.slice(i, j).replace(/\s+/g, ' ').trim();
+      if (text) elements.push({ text, tag: 'P', styles: parseStyleString(''), runs: null, innerHTML: text });
+      i = j;
+      continue;
+    }
+    // Find opening tag
+    const tagEnd = html.indexOf('>', i);
+    if (tagEnd === -1) break;
+    const openTag = html.slice(i, tagEnd + 1);
+    const tagNameMatch = openTag.match(/^<([a-zA-Z][^\s/>]*)/);
+    if (!tagNameMatch) { i = tagEnd + 1; continue; }
+    const tagName = tagNameMatch[1].toUpperCase();
+    // Self-closing
+    if (openTag.endsWith('/>')) { i = tagEnd + 1; continue; }
+    // Find matching close tag
+    const closeTag = `</${tagNameMatch[1]}`;
+    let depth = 1;
+    let j = tagEnd + 1;
+    while (j < html.length && depth > 0) {
+      if (html[j] !== '<') { j++; continue; }
+      const end2 = html.indexOf('>', j);
+      if (end2 === -1) break;
+      const t = html.slice(j, end2 + 1);
+      const tn = t.match(/^<\/?([a-zA-Z][^\s/>]*)/)?.[1]?.toUpperCase();
+      if (tn === tagName) {
+        if (t.startsWith('</')) depth--;
+        else if (!t.endsWith('/>')) depth++;
+      }
+      j = end2 + 1;
+    }
+    const outerHtml = html.slice(i, j);
+    const innerHtml = outerHtml.slice(tagEnd - i + 1, outerHtml.lastIndexOf('<'));
+    const styleMatch = openTag.match(/\bstyle="([^"]*)"/i);
+    const cssText = styleMatch ? styleMatch[1] : '';
+    const styles = parseStyleString(cssText);
+    // For text extraction: strip tags
+    const text = outerHtml.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    const runs = extractTextRunsFromHtml(innerHtml, {
+      bold: styles.fontWeight === 'bold' || parseInt(styles.fontWeight) >= 700,
+      italic: styles.fontStyle === 'italic',
+      fontSize: styles.fontSize ? (styles.fontSizeUnit === 'pt' ? styles.fontSize * PX_PER_PT : styles.fontSize) : null
+    });
+    elements.push({ text, tag: tagName, styles, runs, innerHTML: innerHtml });
+    i = j;
+  }
+  return elements;
+};
+
 const parseHtmlElement = (html) => {
   if (!html || !html.trim()) return null;
 
@@ -710,6 +881,11 @@ const parseHtmlElement = (html) => {
 
 const parseMultiElementHtml = (html) => {
   if (!html || !html.trim()) return [];
+
+  // Worker-safe path: no DOM available
+  if (typeof document === 'undefined') {
+    return parseMultiElementHtmlWorker(html);
+  }
 
   const div = document.createElement('div');
   div.innerHTML = html;
@@ -786,9 +962,8 @@ const calculateElementHeight = (parsed, layoutCtx) => {
 
   // --- Table: estimate based on row count ---
   if (tag === 'TABLE') {
-    const div = document.createElement('div');
-    div.innerHTML = parsed.innerHTML || '';
-    const rows = div.querySelectorAll('tr').length || 1;
+    const tableHtml = parsed.innerHTML || '';
+    const rows = (tableHtml.match(/<tr[\s>]/gi) || []).length || 1;
     const lineHeightPx = baseFontSizePx * baseLineHeight;
     const marginTopPx = resolveSize(styles.marginTop, styles.marginTopUnit, baseFontSizePx);
     const marginBottomPx = resolveSize(styles.marginBottom, styles.marginBottomUnit, baseFontSizePx);
@@ -1216,61 +1391,26 @@ export const applyKpRendering = (pageHtml, layoutCtx) => {
       const kp = getLineBreakPositionsKP(collapsed, availW, fontStr, indentPx, wsFromStyle);
       if (!kp || kp.lineStarts.length <= 1) continue; // single line or KP failed
 
-      // ── Insert <br> at KP break positions ────────────────────────────────────
-      // Mirrors insertHtmlLineBreaks DOM approach: walk text nodes, split at
-      // word boundaries, insert <br> before words that start a new line.
-      const originalInner = el.innerHTML;
-      const breakWordIndices = kp.lineStarts.slice(1); // skip line 0
+      // ── Apply KP word-spacing as a single value on the <p> ───────────────────
+      // Instead of inserting <br> per line (which fights with text-align:justify),
+      // compute the median word-spacing across all non-last lines and apply it
+      // to the element. The browser handles line-breaking via text-align:justify;
+      // KP provides the optimal spacing value. No conflict, no ragged right edge.
+      const nonLastSpacings = kp.wordSpacings.slice(0, kp.lineStarts.length - 1);
+      if (nonLastSpacings.length === 0) continue;
+      nonLastSpacings.sort((a, b) => a - b);
+      const mid = Math.floor(nonLastSpacings.length / 2);
+      const medianWs = nonLastSpacings.length % 2 === 1
+        ? nonLastSpacings[mid]
+        : (nonLastSpacings[mid - 1] + nonLastSpacings[mid]) / 2;
 
-      const wordMap = [];
-      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-      let tNode;
-      while ((tNode = walker.nextNode())) {
-        const re = /\S+/g;
-        let m;
-        while ((m = re.exec(tNode.textContent))) {
-          wordMap.push({ node: tNode, startOffset: m.index, wordIndex: wordMap.length });
-        }
-      }
+      if (Math.abs(medianWs) < 0.01) continue; // negligible — skip
 
-      // Process breaks in reverse to preserve offsets
-      for (let b = breakWordIndices.length - 1; b >= 0; b--) {
-        const wordIdx = breakWordIndices[b];
-        if (wordIdx >= wordMap.length) continue;
-        const { node, startOffset } = wordMap[wordIdx];
-        const before    = node.textContent.substring(0, startOffset).replace(/\s+$/, '');
-        const splitAt   = before.length;
-        if (splitAt > 0 && splitAt < node.textContent.length) {
-          const after = node.splitText(splitAt);
-          after.textContent = after.textContent.replace(/^\s+/, '');
-          after.parentNode.insertBefore(document.createElement('br'), after);
-        } else if (splitAt === 0) {
-          node.textContent = node.textContent.replace(/^\s+/, '');
-          node.parentNode.insertBefore(document.createElement('br'), node);
-        }
-      }
-
-      // ── Wrap each line in a word-spacing span ────────────────────────────────
-      // Split inner HTML on <br>, add word-spacing spans for non-last lines.
-      const innerWithBr = el.innerHTML;
-      const lineChunks  = innerWithBr.split(/<br\s*\/?>/i);
-
-      if (lineChunks.length !== kp.lineStarts.length) {
-        // Mismatch — something went wrong, revert safely
-        el.innerHTML = originalInner;
-        continue;
-      }
-
-      const parts = lineChunks.map((chunk, i) => {
-        if (i === lineChunks.length - 1) return chunk; // last line — natural ending
-        const ws = kp.wordSpacings[i];
-        const spanStyle = Math.abs(ws) >= 0.01
-          ? ` style="word-spacing:${ws.toFixed(3)}px"`
-          : '';
-        return `<span${spanStyle}>${chunk}</span><br>`;
-      });
-
-      el.innerHTML = parts.join('');
+      const currentStyle = el.getAttribute('style') || '';
+      el.setAttribute('style',
+        currentStyle.replace(/word-spacing\s*:[^;]+;?/g, '')
+        + `;word-spacing:${medianWs.toFixed(3)}px`
+      );
       modified = true;
     }
 
@@ -1401,5 +1541,6 @@ export {
   collapseWhitespace,
   getLineBreakPositions,
   getLineBreakPositionsFromRuns,
-  countHyphenationMetrics
+  countHyphenationMetrics,
+  getCtx
 };

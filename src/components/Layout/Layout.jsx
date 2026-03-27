@@ -6,7 +6,6 @@ import { useConfigHistory } from '../../hooks/useConfigHistory';
 import { addRecentBook } from '../../utils/recentBooks';
 import ExportPreviewModal from '../ExportPreviewModal/ExportPreviewModal';
 import Header from '../Header/Header';
-import PaginationProgressBar from '../PaginationProgressBar/PaginationProgressBar';
 import SidebarLeft from '../SidebarLeft/SidebarLeft';
 import SidebarRight from '../SidebarRight/SidebarRight';
 import UploadArea from '../UploadArea/UploadArea';
@@ -190,8 +189,6 @@ function Layout() {
         onRestore={handleRestore}
         lastSaveTime={lastSaveTime}
       />
-      <PaginationProgressBar />
-
       <main className="app-main">
         <SidebarLeft />
 
