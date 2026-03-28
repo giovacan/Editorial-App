@@ -79,6 +79,10 @@ const getCanvasCtx2d = (() => {
 const FILL_PASS_RUNT_MIN_CURRENT_FILL = 0.70;
 const FILL_PASS_RUNT_MIN_RESULT_FILL = 0.88;
 const SHORT_LAST_LINE_POSTPASS_MIN_SOURCE_FILL = 0.80;
+// Minimum computeRuntLinePenalty score to trigger a hard guard (layout mutation rejection).
+// 900 = "2 words that are already narrow" — captures 1-word (2000) and narrow 2-word (1500),
+// while leaving mildly short 3-4 word lines to the soft scoring path.
+const RUNT_HARD_PENALTY_THRESHOLD = 900;
 
 /**
  * Main entry point — same interface as before.
@@ -499,32 +503,18 @@ const getLastLineMetrics = (plainText, canvasCtx) => {
 };
 
 /**
- * Hard editorial threshold for short final lines.
- * Used as a binary gate for layout mutations (smooth pass, fill-pass guards).
- * Intentionally narrower than computeRuntLinePenalty: only truly bad endings
- * should trigger structural moves; mild runts are priced by the scorer, not gated.
- *
- * @private
- */
-const isSevereShortLastLine = (metrics) => {
-  if (!metrics || metrics.lastLineWords <= 0) return false;
-  if (metrics.lastLineWords === 1) return true;
-  if (metrics.lastLineWords === 2) return metrics.widthRatio < 0.40;
-  if (metrics.lastLineWords === 3) return metrics.widthRatio < 0.22;
-  return metrics.widthRatio < 0.18;
-};
-
-/**
  * Shared runt-line penalty table.
- * Used by both scoreCandidate (split scorer) and evaluatePageQualityCanvas (page scorer)
- * so that both functions agree on which last lines are bad and by how much.
+ * Single source of truth for both the soft scoring path (scoreCandidate,
+ * evaluatePageQualityCanvas) and the hard guard path (isSevereShortLastLine).
  *
  * Returns a raw penalty weight (0 = no penalty). Callers multiply by their own
  * scale factor (fs, delta bias, etc.) before adding to their total score.
+ * The hard gate uses RUNT_HARD_PENALTY_THRESHOLD to derive a binary decision
+ * from the same table — see isSevereShortLastLine below.
  *
- * Thresholds intentionally match scoreCandidate's Spanish-tuned values:
+ * Thresholds tuned for Spanish (many short words):
  *   - widthRatio < 0.55 catches "y en la fe" (4 short words, ~30% width)
- *   - 1-word = worst, 4-word = mild
+ *   - 1-word = worst (2000), 4-word = mild (100–700)
  *
  * @param {number} lastLineWords  — number of words on the last line
  * @param {number} widthRatio     — last line width / effective content width (0–1)
@@ -538,9 +528,21 @@ const computeRuntLinePenalty = (lastLineWords, widthRatio) => {
   else if (lastLineWords === 2) penalty +=  900;
   else if (lastLineWords === 3) penalty +=  400;
   else if (lastLineWords === 4) penalty +=  100;
-  // Visual width check uses same 55% threshold as scoreCandidate
   if (lastLineWords > 0 && widthRatio < 0.55) penalty += 600;
   return penalty;
+};
+
+/**
+ * Binary gate for layout mutations (smooth pass, fill-pass guards).
+ * Returns true when computeRuntLinePenalty reaches RUNT_HARD_PENALTY_THRESHOLD —
+ * the same severity table drives both the soft score and this hard reject,
+ * so the two paths can never disagree on which runts are "serious".
+ *
+ * @private
+ */
+const isSevereShortLastLine = (metrics) => {
+  if (!metrics || metrics.lastLineWords <= 0) return false;
+  return computeRuntLinePenalty(metrics.lastLineWords, metrics.widthRatio ?? 1) >= RUNT_HARD_PENALTY_THRESHOLD;
 };
 
 /**
