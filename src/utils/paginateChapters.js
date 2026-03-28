@@ -560,51 +560,6 @@ const getChunkLastLineWords = (chunkHtml, canvasCtx) => {
   return metrics.lastLineWords;
 };
 
-/**
- * Detect a visually short last line at the end of a candidate page.
- * This is intentionally local to pagination passes and must not affect global scoring.
- *
- * @private
- */
-const getTrailingShortLineViolation = (pageHtml, canvasCtx, options = {}) => {
-  const { allowContinuation = true } = options;
-  if (!pageHtml) return null;
-
-  const lastEl = getLastElement(pageHtml);
-  const tagName = lastEl?.tag?.toUpperCase();
-  if (!lastEl || (tagName !== 'P' && tagName !== 'BLOCKQUOTE')) return null;
-  const isContinuation = lastEl.dataset?.continuation === 'true';
-  if (!allowContinuation && isContinuation) return null;
-  if (tagName === 'P' && isMostlyBoldParagraph(lastEl)) return null;
-
-  const text = lastEl.textContent.trim();
-  if (!text) return null;
-
-  const metrics = getLastLineMetrics(text, canvasCtx);
-  if (!isSevereShortLastLine(metrics)) return null;
-
-  return {
-    text,
-    tag: tagName,
-    isContinuation,
-    lastLineWords: metrics.lastLineWords,
-    lastLineText: metrics.lastLineText,
-    widthRatio: metrics.widthRatio,
-    shortLineScore: metrics.shortLineScore
-  };
-};
-
-/**
- * Hard guard for near-full candidates that would end a page with a short last line.
- * Kept narrow: only when the page was already reasonably filled and stays near full.
- *
- * @private
- */
-const getNearFullShortLineViolation = (candidateHtml, canvasCtx, currentFill, resultFillPct, options = {}) => {
-  if (currentFill < FILL_PASS_RUNT_MIN_CURRENT_FILL) return null;
-  if (resultFillPct < FILL_PASS_RUNT_MIN_RESULT_FILL) return null;
-  return getTrailingShortLineViolation(candidateHtml, canvasCtx, options);
-};
 
 /**
  * Score a split candidate. Lower = better.
@@ -1373,15 +1328,13 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
               : { score: 0, violations: [] };
 
             if (!qSrc.violations.includes('heading_at_bottom')) {
-              const shortLineViolation = getNearFullShortLineViolation(currentHtml + groupHtml, canvasCtx, currentFill, qGroup.fillPct);
-              if (shortLineViolation) {
+              if (currentFill >= FILL_PASS_RUNT_MIN_CURRENT_FILL
+                  && qGroup.fillPct >= FILL_PASS_RUNT_MIN_RESULT_FILL
+                  && qGroup.violations.includes('runt_line')) {
                 log.record('fill', 'reject', i + 1, {
                   tag,
-                  text: shortLineViolation.text.substring(0, 60),
+                  text: (currentHtml + groupHtml).substring(0, 60),
                   reason: 'short-last-line',
-                  lastLineWords: shortLineViolation.lastLineWords,
-                  widthRatio: +shortLineViolation.widthRatio.toFixed(2),
-                  shortLineScore: shortLineViolation.shortLineScore,
                   currentFill: +currentFill.toFixed(2),
                   afterFillPct: +(qGroup.fillPct * 100).toFixed(0)
                 });
@@ -1520,15 +1473,13 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
           log.record('fill', 'reject', i + 1, { tag, text: firstEl.textContent.substring(0, 60), reason: 'heading_at_bottom-source' });
           break;
         }
-        const shortLineViolation = getNearFullShortLineViolation(currentHtml + firstElHtml, canvasCtx, currentFill, qMovedCurrent.fillPct);
-        if (shortLineViolation) {
+        if (currentFill >= FILL_PASS_RUNT_MIN_CURRENT_FILL
+            && qMovedCurrent.fillPct >= FILL_PASS_RUNT_MIN_RESULT_FILL
+            && qMovedCurrent.violations.includes('runt_line')) {
           log.record('fill', 'reject', i + 1, {
             tag,
-            text: shortLineViolation.text.substring(0, 60),
+            text: firstEl.textContent.substring(0, 60),
             reason: 'short-last-line',
-            lastLineWords: shortLineViolation.lastLineWords,
-            widthRatio: +shortLineViolation.widthRatio.toFixed(2),
-            shortLineScore: shortLineViolation.shortLineScore,
             currentFill: +currentFill.toFixed(2),
             afterFillPct: +(qMovedCurrent.fillPct * 100).toFixed(0)
           });
@@ -1752,15 +1703,13 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
       if (qSplitCurrent.violations.includes('heading_at_bottom')) break;
       // Hard constraint: never strand heading at bottom of source
       if (qSplitSource.violations.includes('heading_at_bottom')) break;
-      const shortLineViolation = getNearFullShortLineViolation(currentHtml + chunk, canvasCtx, currentFill, qSplitCurrent.fillPct);
-      if (shortLineViolation) {
+      if (currentFill >= FILL_PASS_RUNT_MIN_CURRENT_FILL
+          && qSplitCurrent.fillPct >= FILL_PASS_RUNT_MIN_RESULT_FILL
+          && qSplitCurrent.violations.includes('runt_line')) {
         log.record('fill', 'reject', i + 1, {
           tag,
-          text: shortLineViolation.text.substring(0, 60),
+          text: firstEl.textContent.substring(0, 60),
           reason: 'short-last-line',
-          lastLineWords: shortLineViolation.lastLineWords,
-          widthRatio: +shortLineViolation.widthRatio.toFixed(2),
-          shortLineScore: shortLineViolation.shortLineScore,
           currentFill: +currentFill.toFixed(2),
           afterFillPct: +(qSplitCurrent.fillPct * 100).toFixed(0)
         });
@@ -2161,8 +2110,11 @@ const cleanupNearlyEmptyPages = (pages, layoutCtx, canvasCtx) => {
     if (canAcceptHtml(mergedHtml, contentHeight, canvasCtx)) {
       const prevFill = measure(prevPage.html) / contentHeight;
       const mergedFill = measure(mergedHtml) / contentHeight;
-      const shortLineViolation = getNearFullShortLineViolation(mergedHtml, canvasCtx, prevFill, mergedFill);
-      if (shortLineViolation) continue;
+      if (prevFill >= FILL_PASS_RUNT_MIN_CURRENT_FILL
+          && mergedFill >= FILL_PASS_RUNT_MIN_RESULT_FILL) {
+        const qMerged = evaluatePageQualityCanvas(mergedHtml, contentHeight, lineHeightPx, canvasCtx);
+        if (qMerged.violations.includes('runt_line')) continue;
+      }
 
       pages[i - 1] = setPageHtml(prevPage, mergedHtml);
       Object.assign(page, setPageHtml(page, '', { isBlank: true }));
@@ -2302,21 +2254,20 @@ const smoothPageBalance = (pages, layoutCtx, canvasCtx, log) => {
     // severely underfilled (huge badness delta can override a +800 heading penalty).
     if (qFrom.violations.includes('heading_at_bottom')) break;
     if (qTo.violations.includes('heading_at_bottom')) break;
-    const changedEndHtml = toIdx > fromIdx ? fromRest : toNewHtml;
     const changedEndBeforeFill = toIdx > fromIdx
       ? (fromIdx === i ? q1.fillPct : q2.fillPct)
       : (toIdx === i ? q1.fillPct : q2.fillPct);
     const changedEndAfterFill = toIdx > fromIdx ? qFrom.fillPct : qTo.fillPct;
-    const shortLineViolation = getNearFullShortLineViolation(changedEndHtml, canvasCtx, changedEndBeforeFill, changedEndAfterFill);
-    if (shortLineViolation) {
+    const changedEndQ = toIdx > fromIdx ? qFrom : qTo;
+    if (changedEndBeforeFill >= FILL_PASS_RUNT_MIN_CURRENT_FILL
+        && changedEndAfterFill >= FILL_PASS_RUNT_MIN_RESULT_FILL
+        && changedEndQ.violations.includes('runt_line')) {
       const shortLinePage = toIdx > fromIdx ? fromIdx + 1 : toIdx + 1;
       log.record('smooth', 'reject', shortLinePage, {
         fromPage: fromIdx + 1,
         toPage: toIdx + 1,
         reason: 'short-last-line',
-        text: shortLineViolation.text.substring(0, 60),
-        lastLineWords: shortLineViolation.lastLineWords,
-        widthRatio: +shortLineViolation.widthRatio.toFixed(2),
+        text: '',
         shortLineScore: shortLineViolation.shortLineScore
       });
       break;
@@ -2383,8 +2334,8 @@ const fixShortLastLines = (pages, layoutCtx, canvasCtx, log) => {
       const pageFill = pageHeight / contentHeight;
       if (pageFill < FILL_PASS_RUNT_MIN_RESULT_FILL) continue;
 
-      const shortLineViolation = getTrailingShortLineViolation(page.html, canvasCtx);
-      if (!shortLineViolation) continue;
+      const qPage = evaluatePageQualityCanvas(page.html, contentHeight, lineHeightPx, canvasCtx);
+      if (!qPage.violations.includes('runt_line')) continue;
 
       let nextIdx = i + 1;
       while (nextIdx < pages.length && pages[nextIdx]?.isBlank) nextIdx++;
