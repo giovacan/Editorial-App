@@ -500,7 +500,9 @@ const getLastLineMetrics = (plainText, canvasCtx) => {
 
 /**
  * Hard editorial threshold for short final lines.
- * Deliberately narrower than scoreCandidate: only truly bad endings should mutate layout.
+ * Used as a binary gate for layout mutations (smooth pass, fill-pass guards).
+ * Intentionally narrower than computeRuntLinePenalty: only truly bad endings
+ * should trigger structural moves; mild runts are priced by the scorer, not gated.
  *
  * @private
  */
@@ -510,6 +512,35 @@ const isSevereShortLastLine = (metrics) => {
   if (metrics.lastLineWords === 2) return metrics.widthRatio < 0.40;
   if (metrics.lastLineWords === 3) return metrics.widthRatio < 0.22;
   return metrics.widthRatio < 0.18;
+};
+
+/**
+ * Shared runt-line penalty table.
+ * Used by both scoreCandidate (split scorer) and evaluatePageQualityCanvas (page scorer)
+ * so that both functions agree on which last lines are bad and by how much.
+ *
+ * Returns a raw penalty weight (0 = no penalty). Callers multiply by their own
+ * scale factor (fs, delta bias, etc.) before adding to their total score.
+ *
+ * Thresholds intentionally match scoreCandidate's Spanish-tuned values:
+ *   - widthRatio < 0.55 catches "y en la fe" (4 short words, ~30% width)
+ *   - 1-word = worst, 4-word = mild
+ *
+ * @param {number} lastLineWords  — number of words on the last line
+ * @param {number} widthRatio     — last line width / effective content width (0–1)
+ * @returns {number} raw penalty (0 if no runt)
+ * @private
+ */
+const computeRuntLinePenalty = (lastLineWords, widthRatio) => {
+  if (lastLineWords <= 0) return 0;
+  let penalty = 0;
+  if      (lastLineWords === 1) penalty += 1400;
+  else if (lastLineWords === 2) penalty +=  900;
+  else if (lastLineWords === 3) penalty +=  400;
+  else if (lastLineWords === 4) penalty +=  100;
+  // Visual width check uses same 55% threshold as scoreCandidate
+  if (lastLineWords > 0 && widthRatio < 0.55) penalty += 600;
+  return penalty;
 };
 
 /**
@@ -605,32 +636,27 @@ const scoreCandidate = (firstChunkHtml, restChunkHtml, fullParaHtml, remainingPx
   const lastLineWords = Math.max(0, words.length - lastStart);
 
   let score = 0;
-  // Spanish has many short words — 3-4 words like "y de la fe" can be < 20% of line width.
-  // Penalize by word count AND visual width for maximum coverage.
-  if (lastLineWords === 1)      score += 1400;
-  else if (lastLineWords === 2) score += 900;
-  else if (lastLineWords === 3) score += 400; // "y de la" at 18% width looks empty
-  else if (lastLineWords === 4) score += 100; // mild — still depends on word length
 
-  // 2. Visual width of last line — raised to 55% to catch short Spanish words correctly.
-  // This catches 4-word lines like "y en la fe" that slip past the word-count check.
+  // 1. Runt last-line penalty — shared table with evaluatePageQualityCanvas.
+  // widthRatio computed here so computeRuntLinePenalty gets an accurate value.
+  let widthRatioForRunt = 1;
   if (lastLineWords > 0 && effectiveWidth > 0) {
     const ctx2d = getCanvasCtx2d();
     if (ctx2d) {
       ctx2d.font = fontStr;
       const lastLineText = words.slice(lastStart).join(' ');
-      const widthRatio = ctx2d.measureText(lastLineText).width / effectiveWidth;
-      if (widthRatio < 0.55) score += 600;
+      widthRatioForRunt = ctx2d.measureText(lastLineText).width / effectiveWidth;
     }
   }
+  score += computeRuntLinePenalty(lastLineWords, widthRatioForRunt);
 
-  // 3. Underfill penalty — 1 line short ≈ 4% underfill ≈ 12 pts on typical page.
+  // 2. Underfill penalty — 1 line short ≈ 4% underfill ≈ 12 pts on typical page.
   // Keep this LOW so it never outweighs a genuine last-line improvement.
   const chunkH = measureHtmlHeight(firstChunkHtml, canvasCtx);
   const fill = remainingPx > 0 ? chunkH / remainingPx : 1;
   score += Math.max(0, 1 - fill) * 300;
 
-  // 4. Hyphenation quality scoring.
+  // 3. Hyphenation quality scoring.
   // Professional typesetting limits consecutive hyphenated lines to 2 max.
   // Penalise:
   //   - 3+ consecutive hyphenated lines: +150 per extra line beyond 2
@@ -647,7 +673,7 @@ const scoreCandidate = (firstChunkHtml, restChunkHtml, fullParaHtml, remainingPx
     }
   }
 
-  // 5. Paragraph shape scoring (line-width variance).
+  // 4. Paragraph shape scoring (line-width variance).
   // A paragraph where line widths vary wildly looks jagged and unprofessional.
   // Measure the width of each line and penalise high standard deviation.
   // Only applies to multi-line chunks (≥3 lines) — single-line splits have no shape.
@@ -679,7 +705,7 @@ const scoreCandidate = (firstChunkHtml, restChunkHtml, fullParaHtml, remainingPx
     }
   }
 
-  // 6. Stability bias — strong preference for delta=0 when last line is already OK.
+  // 5. Stability bias — strong preference for delta=0 when last line is already OK.
   // This prevents delta=-1 from being chosen unless there's a real quality gain.
   if (delta === 0) score -= 200;
 
@@ -2573,19 +2599,15 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
         if (lineStarts && lineStarts.length > 0) {
           const lastStart = lineStarts[lineStarts.length - 1];
           const lastLineWords = Math.max(0, words.length - lastStart);
-          let runtPenalty = 0;
-          if (lastLineWords === 1) {
-            runtPenalty = 300;
-          } else if (lastLineWords === 2) {
-            const ctx2d = getCanvasCtx2d();
-            if (ctx2d) {
-              ctx2d.font = fontStr;
-              const lastLineText = words.slice(lastStart).join(' ');
-              const widthRatio = effectiveWidth > 0
-                ? ctx2d.measureText(lastLineText).width / effectiveWidth : 1;
-              if (widthRatio < 0.25) runtPenalty = 200;
-            }
+          // Compute widthRatio for computeRuntLinePenalty (same threshold as scoreCandidate)
+          let widthRatioRunt = 1;
+          const ctx2dRunt = getCanvasCtx2d();
+          if (ctx2dRunt && effectiveWidth > 0) {
+            ctx2dRunt.font = fontStr;
+            const lastLineText = words.slice(lastStart).join(' ');
+            widthRatioRunt = ctx2dRunt.measureText(lastLineText).width / effectiveWidth;
           }
+          const runtPenalty = computeRuntLinePenalty(lastLineWords, widthRatioRunt);
           if (runtPenalty > 0) {
             score += runtPenalty * fs;
             violations.push('runt_line');
