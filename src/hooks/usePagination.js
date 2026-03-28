@@ -347,9 +347,23 @@ export const usePagination = (bookData, config, measureRef) => {
         return;
       }
 
-      // Reserve space for header — 3.0 lines covers 2-line headers + padding + border.
-      // TODO: replace with measureHtmlHeight(buildHeaderHtmlPure(...), canvasCtx) for exact measurement.
-      const headerSpaceEstimate = safeConfig.header?.enabled ? Math.round(lineHeightPx * 3.0) : 0;
+      // Reserve exact space for header — derived from known typographic values, no DOM needed.
+      // Header is always 1 line tall. Total vertical budget consumed by the header block:
+      //   headerLineH   = headerFontSizePx * baseLineHeight   (1 text line at header font size)
+      //   paddingBottom = headerFontSizePx * 0.5              (padding-bottom: 0.5em in header font)
+      //   border        = headerConfig.showLine ? 1 : 0       (border-bottom: 1px solid)
+      //   marginBottom  = baseFontSizePx * 0.5                (margin-bottom: 0.5em on wrapper, in body font)
+      const headerSpaceEstimate = (() => {
+        if (!safeConfig.header?.enabled) return 0;
+        const headerConfig = safeConfig.header;
+        const fontSizePercent = headerConfig.fontSize || 70;
+        const headerFontSizePx = baseFontSizePx * (fontSizePercent / 100);
+        const headerLineH    = headerFontSizePx * baseLineHeight;
+        const paddingBottom  = headerFontSizePx * 0.5;
+        const border         = headerConfig.showLine !== false ? 1 : 0;
+        const marginBottom   = baseFontSizePx * 0.5;
+        return Math.ceil(headerLineH + paddingBottom + border + marginBottom);
+      })();
       const minOrphanLines = safeConfig.pagination?.minOrphanLines ?? 2;
       // Floor to line grid, then subtract 1 line as a safety buffer.
       // The browser's typographic engine renders text with fractional pixels that
