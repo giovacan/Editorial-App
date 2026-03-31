@@ -83,10 +83,11 @@ const TemplatePreviewLarge = memo(function TemplatePreviewLarge({
 /**
  * Subtopic configuration panel
  */
-const SubtopicConfigPanel = memo(function SubtopicConfigPanel({ 
-  config, 
-  onChange 
+const SubtopicConfigPanel = memo(function SubtopicConfigPanel({
+  config,
+  onChange
 }) {
+  if (!config) return null;
   const handleSubtopicBehaviorChange = (behavior) => {
     onChange({ ...config, subtopicBehavior: behavior });
   };
@@ -327,7 +328,7 @@ function HeaderTemplateSelector({
     onChange(templateId);
     // Apply template defaults to header config
     const template = templates.find(t => t.id === templateId);
-    if (template) {
+    if (template && typeof onHeaderConfigChange === 'function') {
       onHeaderConfigChange({
         ...headerConfig,
         subtopicBehavior: template.subtopicBehavior || 'none',

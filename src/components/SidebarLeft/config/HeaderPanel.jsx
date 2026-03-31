@@ -44,6 +44,10 @@ function HeaderPanel({ safeConfig, setConfig }) {
                 });
               }}
               templates={Object.values(HEADER_TEMPLATES)}
+              headerConfig={safeConfig.header}
+              onHeaderConfigChange={(updatedHeaderConfig) => setConfig({
+                header: { ...safeConfig.header, ...updatedHeaderConfig }
+              })}
             />
           </fieldset>
 

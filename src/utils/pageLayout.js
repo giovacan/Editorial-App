@@ -209,8 +209,8 @@ export function getPageLayout({
   const headerLineHeightPx   = headerFontSizePx * (safeConfig.lineHeight || bookConfig.lineHeight);
   const headerMarginBottomPx = (safeConfig.header?.marginBottom ?? 0.5) * headerFontSizePx;
   const headerBoxHeight      = headerLineHeightPx + headerMarginBottomPx;
-  // y: 35% from physical page top — centered in the upper margin strip
-  const headerBoxY           = marginTop * 0.35;
+  // y: starts at marginTop — header is a flow element inside the page padding, not absolutely positioned
+  const headerBoxY           = marginTop;
 
   // Derived geometry
   const contentWidth = pageWidthPx - marginLeft - marginRight;
