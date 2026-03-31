@@ -151,11 +151,21 @@ export const useHeaderFooter = (config, currentPageData, totalPages, bookTitle) 
  * @param {number} baseFontSize - scaledFontPt = config.fontSize * previewScale
  * @returns {string} HTML string, or '' if header should not be shown
  */
-export const buildHeaderHtmlPure = (page, config, bookTitle, baseFontSize) => {
+/**
+ * Pure: returns resolved text for each header cell on this page.
+ * Extracts the content-resolution logic so PDF renderer and other consumers
+ * can access it directly without building HTML.
+ *
+ * @param {object} page      - {pageNumber, chapterTitle, currentSubheader, isBlank, isFirstChapterPage}
+ * @param {object} config    - safeConfig
+ * @param {string} bookTitle
+ * @returns {{ left: string, center: string, right: string, show: boolean }}
+ */
+export function resolveHeaderContent(page, config, bookTitle) {
   const headerConfig = config?.header || {};
   const showHeaders  = config?.showHeaders !== false && headerConfig.enabled !== false;
-  if (!showHeaders || page?.isBlank) return '';
-  if (headerConfig.skipFirstChapterPage && page?.isFirstChapterPage) return '';
+  if (!showHeaders || page?.isBlank) return { left: '', center: '', right: '', show: false };
+  if (headerConfig.skipFirstChapterPage && page?.isFirstChapterPage) return { left: '', center: '', right: '', show: false };
 
   const pageNumber   = page?.pageNumber || 1;
   const isEvenPage   = pageNumber % 2 === 0;
@@ -220,23 +230,27 @@ export const buildHeaderHtmlPure = (page, config, bookTitle, baseFontSize) => {
       break;
   }
 
-  if (!shouldShowHeader) return '';
+  if (!shouldShowHeader) return { left: '', center: '', right: '', show: false };
 
-  let headerLeft = '', headerCenter = '', headerRight = '';
+  let left = '', center = '', right = '';
 
   if (headerConfig.template) {
-    headerLeft   = getContent(pageConfig?.leftContent);
-    headerCenter = getContent(pageConfig?.centerContent);
-    headerRight  = getContent(pageConfig?.rightContent);
+    left   = getContent(pageConfig?.leftContent);
+    center = getContent(pageConfig?.centerContent);
+    right  = getContent(pageConfig?.rightContent);
   } else {
     // Legacy mode (no template)
-    headerCenter = isEvenPage ? (bookTitle || '') : '';
-    headerRight  = !isEvenPage ? (chapterTitle || '') : '';
+    center = isEvenPage ? (bookTitle || '') : '';
+    right  = !isEvenPage ? (chapterTitle || '') : '';
   }
 
-  if (!headerLeft && !headerCenter && !headerRight) return '';
+  return { left, center, right, show: !!(left || center || right) };
+}
 
-  return buildHeaderHtml(headerLeft, headerCenter, headerRight, headerConfig, baseFontSize);
+export const buildHeaderHtmlPure = (page, config, bookTitle, baseFontSize) => {
+  const { left, center, right, show } = resolveHeaderContent(page, config, bookTitle);
+  if (!show) return '';
+  return buildHeaderHtml(left, center, right, config?.header || {}, baseFontSize);
 };
 
 export const buildHeaderHtml = (headerLeft, headerCenter, headerRight, headerConfig, baseFontSize) => {

@@ -12,25 +12,37 @@ const TemplatePreviewLarge = memo(function TemplatePreviewLarge({
   // Simulate content for preview - shows content based on position
   const getPreviewContent = (content) => {
     switch (content) {
-      case 'title': return 'Mi Libro';
-      case 'chapter': return 'Capítulo 3';
+      case 'title':     return 'Mi Libro';
+      case 'chapter':   return 'Capítulo 3';
       case 'subheader': return 'Sección 2.1';
-      case 'page': return '42';
-      default: return '';
+      case 'page':      return '42';
+      default:          return '';
     }
   };
 
+  const CONTENT_LABELS = {
+    title: 'Título', chapter: 'Capítulo', subheader: 'Subtema', page: 'Pág', none: '—',
+  };
+
   const renderPreviewPage = (pageConfig, side) => {
-    const leftContent = getPreviewContent(pageConfig.leftContent);
+    const leftContent   = getPreviewContent(pageConfig.leftContent);
     const centerContent = getPreviewContent(pageConfig.centerContent);
-    const rightContent = getPreviewContent(pageConfig.rightContent);
-    
+    const rightContent  = getPreviewContent(pageConfig.rightContent);
+    const badge         = side === 'even' ? 'PAR' : 'IMPAR';
+
     return (
       <div className={`preview-page-large preview-${side}`}>
+        <div className="preview-page-badge">{badge}</div>
         <div className="preview-header-large">
-          <span className="preview-header-left">{leftContent}</span>
-          <span className="preview-header-center">{centerContent}</span>
-          <span className="preview-header-right">{rightContent}</span>
+          <span className="preview-header-left" title={CONTENT_LABELS[pageConfig.leftContent]}>
+            {leftContent}
+          </span>
+          <span className="preview-header-center" title={CONTENT_LABELS[pageConfig.centerContent]}>
+            {centerContent}
+          </span>
+          <span className="preview-header-right" title={CONTENT_LABELS[pageConfig.rightContent]}>
+            {rightContent}
+          </span>
         </div>
         {template.showLine && (
           <div className={`preview-line-large preview-line-${template.lineStyle}`} />

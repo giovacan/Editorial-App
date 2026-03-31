@@ -394,7 +394,7 @@ export const exportPdfNative = async (bookData, config, paginatedPages, dims, on
           const g = parseInt(lineColorHex.slice(3,5) || 'AA', 16);
           const b = parseInt(lineColorHex.slice(5,7) || 'AA', 16);
           doc.setDrawColor(r, g, b);
-          doc.setLineWidth(0.2);
+          doc.setLineWidth((config?.header?.lineWidth ?? 0.5) * 0.352778); // pt → mm
           doc.line(marginLeftMm, yMm, marginLeftMm + contentWidthMm, yMm);
         }
         yMm += headerLineH * 0.4; // gap below header (≈ 0.5em)

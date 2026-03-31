@@ -204,6 +204,14 @@ export function getPageLayout({
   const hasHeaderContent = !!headerHtml;
   const skipHeader       = (safeConfig.header?.skipFirstChapterPage && safePageData.isFirstChapterPage) || false;
 
+  // Header physical geometry (lives inside top margin, never invades contentBox)
+  const headerFontSizePx     = baseFontSize * ((safeConfig.header?.fontSize ?? 70) / 100);
+  const headerLineHeightPx   = headerFontSizePx * (safeConfig.lineHeight || bookConfig.lineHeight);
+  const headerMarginBottomPx = (safeConfig.header?.marginBottom ?? 0.5) * headerFontSizePx;
+  const headerBoxHeight      = headerLineHeightPx + headerMarginBottomPx;
+  // y: 35% from physical page top — centered in the upper margin strip
+  const headerBoxY           = marginTop * 0.35;
+
   // Derived geometry
   const contentWidth = pageWidthPx - marginLeft - marginRight;
 
@@ -232,6 +240,12 @@ export function getPageLayout({
       folioBox: {
         fromEdge: folioFromEdge,
       },
+      headerBox: {
+        x:      marginLeft,
+        y:      headerBoxY,
+        width:  contentWidth,
+        height: headerBoxHeight,
+      },
     },
     typography: {
       fontSize,
@@ -254,6 +268,22 @@ export function getPageLayout({
       content:    headerHtml,
       hasContent: hasHeaderContent,
       skip:       skipHeader,
+      position: {
+        x:      marginLeft,
+        y:      headerBoxY,
+        width:  contentWidth,
+        height: headerBoxHeight,
+      },
+      style: {
+        fontSize:      headerFontSizePx,
+        fontFamily:    safeConfig.header?.fontFamily || fontFamily,
+        letterSpacing: safeConfig.header?.letterSpacing ?? 0,
+        uppercase:     safeConfig.header?.fontFamily === 'small-caps',
+        showLine:      safeConfig.header?.showLine ?? true,
+        lineStyle:     safeConfig.header?.lineStyle  || 'solid',
+        lineWidth:     safeConfig.header?.lineWidth  ?? 0.5,
+        lineColor:     safeConfig.header?.lineColor  || 'black',
+      },
     },
     flags: {
       isEvenPage:   isCurrentPageEven,
