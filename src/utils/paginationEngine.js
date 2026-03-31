@@ -142,9 +142,9 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
     }
 
     if (isBlockquote) {
-      chunkHtml = `<blockquote class="quote ${quoteTemplate}" style="${finalStyle}">${chunkHtml}</blockquote>`;
+      chunkHtml = `<blockquote class="quote ${quoteTemplate}" style="${finalStyle}"${newRemainingHtml ? ' data-split-head="true"' : ''}>${chunkHtml}</blockquote>`;
     } else {
-      chunkHtml = `<p style="${finalStyle}">${chunkHtml}</p>`;
+      chunkHtml = `<p style="${finalStyle}"${newRemainingHtml ? ' data-split-head="true"' : ''}>${chunkHtml}</p>`;
     }
 
     lines.push(chunkHtml);
@@ -226,10 +226,10 @@ export const buildParagraphHtml = (el, config, baseFontSize, baseLineHeight, tex
       const template = parentBlockquote.classList.contains('quote')
         ? Array.from(parentBlockquote.classList).find(c => ['classic', 'bar', 'italic', 'indent', 'minimal'].includes(c)) || 'classic'
         : 'classic';
-      return `<p style="${getQuoteStyle(qConfig, template, baseFontSize, baseLineHeight, textAlign)}text-indent:${isFirstParagraph ? '0' : indent + 'em'};text-align-last:left;overflow-wrap:break-word;">${innerHtml}</p>`;
+      return `<p${isFirstParagraph ? ' data-first-paragraph="true"' : ''} style="${getQuoteStyle(qConfig, template, baseFontSize, baseLineHeight, textAlign)}text-indent:${isFirstParagraph ? '0' : indent + 'em'};text-align-last:left;overflow-wrap:break-word;">${innerHtml}</p>`;
     } else {
       const spacingBetween = config.paragraph?.spacingBetween || 0;
-      return `<p style="margin:${spacingBetween > 0 ? spacingBetween + 'em' : '0'} 0;padding:0;text-align:${textAlign};text-indent:${isFirstParagraph ? '0' : indent + 'em'};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;">${innerHtml}</p>`;
+      return `<p${isFirstParagraph ? ' data-first-paragraph="true"' : ''} style="margin:${spacingBetween > 0 ? spacingBetween + 'em' : '0'} 0;padding:0;text-align:${textAlign};text-indent:${isFirstParagraph ? '0' : indent + 'em'};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;">${innerHtml}</p>`;
     }
   } else if (tag.match(/^H[1-6]$/i)) {
     const level = tag.slice(1).toLowerCase();

@@ -4,8 +4,7 @@ import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import useEditorStore from '../../store/useEditorStore';
 import { usePagination, usePageNavigation } from '../../hooks/usePagination';
 import { useMagnifier } from '../../hooks/useMagnifier';
-import { useHeaderFooter, buildHeaderHtml } from '../../hooks/useHeaderFooter';
-import { calculateContentDimensions } from '../../utils/textMeasurer';
+import { usePageRenderLayoutFromStore } from '../../hooks/usePageRenderLayout';
 import { DEFAULT_CONFIG } from './utils/previewConfig';
 import { applyKpRendering } from '../../utils/textLayoutEngine';
 import { JUSTIFY_SLACK_RATIO } from '../../utils/layoutIr';
@@ -13,23 +12,18 @@ import { addDebugTags } from './utils/debugTags';
 import PreviewControls from './PreviewControls';
 import MagnifierPanel from './MagnifierPanel';
 import PreviewDebugPanel from './PreviewDebugPanel';
+import LayoutGuidesOverlay from './LayoutGuidesOverlay';
 import TOCPanel from './TOCPanel';
 import ValidationErrorDialog from '../ValidationErrorDialog/ValidationErrorDialog';
 import PaginationProgressBar from '../PaginationProgressBar/PaginationProgressBar';
 import './Preview.css';
 
-const AVAILABLE_SIDEBAR_WIDTH = 220;
 const PX_PER_MM = 3.7795;
-const PX_PER_INCH = 96;
-
-function getGutterInInches(value, unit) {
-  if (unit === 'mm') return value / 25.4;
-  if (unit === 'cm') return value / 2.54;
-  return value;
-}
+const SIDEBAR_CONTENT_WIDTH = 220;
 
 function Preview() {
   const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [showLayoutGuides, setShowLayoutGuides] = useState(false);
   const showTOCPanel = useEditorStore(s => s.showTOCPanel);
 
   const bookData = useEditorStore(useShallow((s) => s.bookData));
@@ -104,8 +98,10 @@ function Preview() {
     pageFormat = KDP_STANDARDS.getPageFormat(safeConfig.pageFormat || bookConfig.recommendedFormat);
   }
 
-  const { pages = [], layoutDims, validationState, showErrorDialog, currentError, handleErrorAction, closeErrorDialog } =
-    usePagination(bookData, config, measureRef);
+  const previewScale = Math.min(0.42, SIDEBAR_CONTENT_WIDTH / (pageFormat.width * PX_PER_MM));
+
+  const { pages = [], validationState, showErrorDialog, currentError, handleErrorAction, closeErrorDialog } =
+    usePagination(bookData, config, measureRef, previewScale);
 
   const frontMatterPages = useEditorStore((s) => s.frontMatterPages) || [];
   const tocConfig = useEditorStore((s) => s.tocConfig);
@@ -133,12 +129,6 @@ function Preview() {
   const paginationProgressObj = useEditorStore((s) => s.paginationProgress);
   const isPaginationRunning = paginationProgressObj?.isActive ?? false;
   const paginationPercent = paginationProgressObj?.percent ?? 0;
-  const totalPageCount = allPages.length;
-
-  const gutterValue = safeConfig.gutterStrategy === 'custom'
-    ? getGutterInInches(safeConfig.gutterManual, safeConfig.gutterUnit || 'in')
-    : KDP_STANDARDS.getDynamicGutter(safeConfig.pageFormat, safeBookData.bookType, totalPageCount);
-
   const { currentPage, goToPage, goToNextPage, goToPrevPage, goToFirstPage, goToLastPage, totalPages } =
     usePageNavigation(allPages.length);
 
@@ -168,78 +158,46 @@ function Preview() {
     adjustWordSpacing(magnifierContentRef.current);
   }, [currentPage, debugHtml, isFrontMatterPage, safeConfig.paragraph?.align]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const isCurrentPageEven = currentPageData.pageNumber % 2 === 0;
-  const isTitleOnlyPage = currentPageData.isTitleOnlyPage === true;
-  const effectiveGutter = layoutDims?.gutterValue ?? gutterValue;
-  const gutterForPage = isTitleOnlyPage ? 0 : effectiveGutter;
+  const {
+    pageWidthPx, pageHeightPx,
+    marginTop, marginBottom, marginLeft, marginRight,
+    effectiveContentHeight,
+    fontSize, fontFamily, lineHeightPx, textAlign, baseFontSize,
+    showPageNumber, displayNum, pageNumStyle,
+    showHeaders, hasHeaderContent, skipHeader, headerHtml,
+  } = usePageRenderLayoutFromStore({
+    pageData:    currentPageData,
+    config:      safeConfig,
+    bookConfig,
+    pageFormat,
+    previewScale,
+    totalPages,
+    bookTitle:   safeBookData.title,
+  });
 
-  const previewScale = Math.min(0.42, AVAILABLE_SIDEBAR_WIDTH / (pageFormat.width * PX_PER_MM));
-  const applyDynamicMargins = (safeConfig.marginStrategy || 'auto') === 'auto';
-
-  const { pageWidthPx, pageHeightPx, marginTop, marginBottom, marginLeft, marginRight, contentHeight } =
-    calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterForPage, isCurrentPageEven, totalPages, applyDynamicMargins);
-
-  const effectiveContentHeight = layoutDims?.contentHeight ?? contentHeight;
-  const fontSize = (safeConfig.fontSize || bookConfig.fontSize) * (PX_PER_INCH / 72) * previewScale;
-  const fontFamily = safeConfig.fontFamily || bookConfig.fontFamily;
-  const lineHeightRatio = safeConfig.lineHeight || bookConfig.lineHeight;
-  const lineHeightPx = layoutDims?.lineHeightPx ?? Math.ceil(fontSize * lineHeightRatio);
-  const textAlign = safeConfig.paragraph?.align || 'justify';
-  const showNums = safeConfig.showPageNumbers !== false;
+  // Visual gap between last text line and page number / header in preview.
+  // 1 line of breathing room — does NOT affect engine contentHeight.
+  const pageNumGapPx = lineHeightPx;
 
   // ── KP Rendering ─────────────────────────────────────────────────────────────
   // Frontmatter pages (title, TOC) skip KP rendering — their HTML uses flex
   // layout that would be corrupted by the word-spacing pass.
-  const renderedHtml = debugHtml;
+  const renderedHtml = useMemo(() => {
+    if (!debugHtml || currentPageData?.isBlank || isFrontMatterPage || textAlign !== 'justify') return debugHtml;
+    const cw = pageWidthPx - marginLeft - marginRight;
+    return applyKpRendering(debugHtml, {
+      baseFontSizePx: fontSize,
+      fontFamily,
+      contentWidth: cw,
+      widthSlack: cw * JUSTIFY_SLACK_RATIO,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debugHtml, currentPageData?.isBlank, isFrontMatterPage, textAlign, pageWidthPx, marginLeft, marginRight, fontSize, fontFamily]);
 
   const { showMagnifier, setShowMagnifier, magnifierZoom, setMagnifierZoom, magnifierPanelRef,
     magnifierPos, updateMagnifierPosition, handleMouseEnterPreview, handleMouseLeavePreview,
     handleMouseEnterMagnifier, handleMouseLeaveMagnifier } = useMagnifier(previewPageRef);
 
-  const { showHeaders, headerLeft, headerCenter, headerRight, headerConfig } =
-    useHeaderFooter(safeConfig, currentPageData, totalPages, safeBookData.title);
-
-  const baseFontSize = (safeConfig.fontSize || bookConfig.fontSize) * previewScale;
-  const headerHtml = buildHeaderHtml(headerLeft, headerCenter, headerRight, headerConfig, baseFontSize);
-  const skipHeader = headerConfig.skipFirstChapterPage && currentPageData.isFirstChapterPage;
-  const hasHeaderContent = headerLeft || headerCenter || headerRight;
-
-  // FM pages show their roman numeral if displayPageNumber is set (non-empty); cover has ''
-  const showFolio = tocConfig?.showFolio !== false; // default true
-  const hasFmNumber = isFrontMatterPage && !!currentPageData.displayPageNumber && showFolio;
-  const showPageNumber = showNums && !currentPageData.isBlank && (
-    hasFmNumber ||
-    (!isFrontMatterPage) ||
-    (currentPageData.isExtraEndPage && currentPageData.shouldShowPageNumber)
-  );
-
-  const pageNumberPos = safeConfig.pageNumberPos || 'bottom';
-  const pageNumberAlign = safeConfig.pageNumberAlign || 'center';
-  const pageNumY = safeConfig.pageNumberMargin ?? 12;
-
-  let pageNumHorizontalStyle = {};
-  switch (pageNumberAlign) {
-    case 'paragraph-edge':
-      pageNumHorizontalStyle = isCurrentPageEven ? { left: `${marginLeft}px` } : { right: `${marginRight}px` };
-      break;
-    case 'paragraph':
-      pageNumHorizontalStyle = isCurrentPageEven ? { left: `${marginLeft + 12}px` } : { right: `${marginRight + 12}px` };
-      break;
-    case 'outer':
-      pageNumHorizontalStyle = isCurrentPageEven ? { left: '12px' } : { right: '12px' };
-      break;
-    default:
-      pageNumHorizontalStyle = { left: '50%', transform: 'translateX(-50%)' };
-  }
-
-  const pageNumStyle = {
-    position: 'absolute',
-    ...(pageNumberPos === 'top' ? { top: `${pageNumY}px` } : { bottom: `${pageNumY}px` }),
-    ...pageNumHorizontalStyle,
-    fontSize: `${fontSize * 0.8}px`
-  };
-
-  const displayNum = currentPageData.displayPageNumber ?? currentPageData.pageNumber;
   const pageNumHtml = showPageNumber ? (
     <span className="page-number" style={pageNumStyle}>{displayNum}</span>
   ) : null;
@@ -265,6 +223,8 @@ function Preview() {
         setMagnifierZoom={setMagnifierZoom}
         showDebugPanel={showDebugPanel}
         setShowDebugPanel={setShowDebugPanel}
+        showLayoutGuides={showLayoutGuides}
+        setShowLayoutGuides={setShowLayoutGuides}
       />
 
       {showDebugPanel && (
@@ -298,7 +258,7 @@ function Preview() {
           onMouseLeave={handleMouseLeavePreview}
         >
           {!isFrontMatterPage && showHeaders && !currentPageData.isBlank && !skipHeader && hasHeaderContent && (
-            <div className="preview-header" dangerouslySetInnerHTML={{ __html: headerHtml }} style={{ marginBottom: '0.5em' }} />
+            <div className="preview-header" dangerouslySetInnerHTML={{ __html: headerHtml }} style={{ marginBottom: `${pageNumGapPx}px` }} />
           )}
           <div
             ref={(el) => {
@@ -309,7 +269,7 @@ function Preview() {
                   const pageType = currentPageData?.isTOCPage ? 'TOC'
                     : currentPageData?.isTitlePage ? 'TITLE'
                     : currentPageData?.isFrontMatter ? 'FM' : 'CONTENT';
-                  if (overflow > 2) {
+                  if (overflow > 6) {
                     console.warn(`[OVERFLOW][${pageType}] Page ${currentPage + 1}: scrollH=${el.scrollHeight}px clientH=${el.clientHeight}px overflow=${overflow.toFixed(1)}px (${(overflow / lineHeightPx).toFixed(1)} lines)`);
                   } else if (pageType === 'TOC') {
                     console.log(`[TOC-RENDER] Page ${currentPage + 1}: scrollH=${el.scrollHeight}px clientH=${el.clientHeight}px ok (remain=${(el.clientHeight - el.scrollHeight).toFixed(1)}px)`);
@@ -321,6 +281,15 @@ function Preview() {
             style={{ height: `${effectiveContentHeight + 2}px` }}
             dangerouslySetInnerHTML={{ __html: renderedHtml || '' }}
           />
+          {showLayoutGuides && !currentPageData.isBlank && !isFrontMatterPage && (
+            <LayoutGuidesOverlay
+              contentRef={previewContentRef}
+              marginTop={marginTop}
+              marginLeft={marginLeft}
+              effectiveContentHeight={effectiveContentHeight}
+              contentWidth={pageWidthPx - marginLeft - marginRight}
+            />
+          )}
           {pageNumHtml}
           </div>
         </div>

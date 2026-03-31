@@ -111,7 +111,7 @@ const validatePages = (pages) => {
   return validPages;
 };
 
-export const usePagination = (bookData, config, measureRef) => {
+export const usePagination = (bookData, config, measureRef, externalPreviewScale) => {
   const [pages, setPages] = useState([]);
   const [calculatedPageCount, setCalculatedPageCount] = useState(0);
   const [layoutDims, setLayoutDims] = useState(null);
@@ -127,6 +127,25 @@ export const usePagination = (bookData, config, measureRef) => {
     () => KDP_STANDARDS.getBookTypeConfig(safeBookData.bookType),
     [safeBookData.bookType]
   );
+
+  // Derive previewScale once: use external if provided, otherwise compute from format
+  const pageFormatForScale = useMemo(() => {
+    if (safeConfig.pageFormat === 'custom') {
+      const customDims = KDP_STANDARDS.getCustomPageDimensions(
+        safeConfig.customPageFormat?.width || 6,
+        safeConfig.customPageFormat?.height || 9,
+        safeConfig.customPageFormat?.unit || 'in'
+      );
+      return { width: customDims.widthMm };
+    }
+    const format = KDP_STANDARDS.getPageFormat(safeConfig.pageFormat || bookConfig.recommendedFormat);
+    return { width: format.width };
+  }, [safeConfig.pageFormat, safeConfig.customPageFormat, bookConfig]);
+
+  const previewScale = useMemo(() => {
+    if (externalPreviewScale != null) return externalPreviewScale;
+    return Math.min(0.42, AVAILABLE_SIDEBAR_WIDTH / (pageFormatForScale.width * PX_PER_MM));
+  }, [externalPreviewScale, pageFormatForScale.width]);
 
   const pageFormat = useMemo(() => {
     if (safeConfig.pageFormat === 'custom') {
@@ -307,8 +326,6 @@ export const usePagination = (bookData, config, measureRef) => {
         console.warn('Error resetting measureDiv:', e);
       }
 
-      const previewScale = Math.min(0.42, AVAILABLE_SIDEBAR_WIDTH / (pageFormat.width * PX_PER_MM));
-
       const totalContentLength = safeBookData.chapters.reduce((sum, ch) => sum + (ch.html?.length || 0), 0);
       const estimatedPages = Math.ceil(totalContentLength / 3000);
 
@@ -361,14 +378,13 @@ export const usePagination = (bookData, config, measureRef) => {
         const headerLineH    = headerFontSizePx * baseLineHeight;
         const paddingBottom  = headerFontSizePx * 0.5;
         const border         = headerConfig.showLine !== false ? 1 : 0;
-        const marginBottom   = baseFontSizePx * 0.5;
+        const marginBottom   = baseFontSizePx * baseLineHeight; // 1 line gap between header and text
         return Math.ceil(headerLineH + paddingBottom + border + marginBottom);
       })();
       const minOrphanLines = safeConfig.pagination?.minOrphanLines ?? 2;
-      // Floor to line grid, then subtract 1 line as a safety buffer.
-      // The browser's typographic engine renders text with fractional pixels that
-      // can accumulate to push the last line ~1px beyond the Canvas-calculated height.
-      // Reserving one line prevents that last line from being clipped by overflow:hidden.
+      // Floor to line grid, then subtract 1 line as safety buffer.
+      // Reserves one line-height to absorb browser subpixel rendering differences
+      // and prevent the last text line from being clipped by overflow:hidden.
       const rawContentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight) - headerSpaceEstimate;
       const contentHeight = Math.floor(rawContentHeight / lineHeightPx) * lineHeightPx - lineHeightPx;
 
@@ -476,8 +492,7 @@ export const usePagination = (bookData, config, measureRef) => {
         const validatedPages = validatePages(generatedPages);
         // Batch both state updates together to avoid re-render between them
         // which would trigger effect cleanup and set cancelled=true
-        console.log(`[PAGINATION] Guardando layoutDims: contentHeight=${contentHeight}px, engineGutter=${engineGutter}`);
-        setLayoutDims({
+        const dimsSnapshot = {
           contentHeight,
           contentWidth,
           lineHeightPx,
@@ -485,7 +500,10 @@ export const usePagination = (bookData, config, measureRef) => {
           baseLineHeight,
           previewScale,
           gutterValue: engineGutter,
-        });
+        };
+        console.log(`[PAGINATION] Guardando layoutDims: contentHeight=${contentHeight}px, engineGutter=${engineGutter}`);
+        setLayoutDims(dimsSnapshot);
+        useEditorStore.getState().setLayoutDims(dimsSnapshot);
         setPages(validatedPages);
         useEditorStore.getState().setPaginatedPages(validatedPages);
         

@@ -33,12 +33,15 @@ function inspectParagraphs(pageHtml) {
     .map((block, index) => {
       const indentMatch = (block.style || '').match(/text-indent\s*:\s*([^;]+)/i);
       const indentValue = indentMatch ? indentMatch[1].trim() : null;
+      const fullText = htmlToText(block.outerHtml).replace(/\s+/g, ' ').trim();
       return {
         index,
         isContinuation: block.dataset?.continuation === 'true',
+        isSplitHead: block.dataset?.splitHead === 'true',
         indentValue,
         indentNum: indentValue ? parseFloat(indentValue) : null,
-        text: htmlToText(block.outerHtml).replace(/\s+/g, ' ').trim().substring(0, 80)
+        text: fullText.substring(0, 80),
+        fullText
       };
     });
 }
@@ -185,15 +188,6 @@ export function createPaginationLogger() {
         // Count elements in the page HTML (worker-safe, no DOM)
         const elCount = parseAllElements(p.html || '').length;
 
-        // Build enriched canvasCtx with _measureFn for line-level analysis
-        const enrichedCtx = canvasCtx?.ctx2d ? {
-          ...canvasCtx,
-          _measureFn: (text) => {
-            canvasCtx.ctx2d.font = `${canvasCtx.baseFontSizePx}px ${canvasCtx.fontFamily || 'Georgia, serif'}`;
-            return canvasCtx.ctx2d.measureText(text).width;
-          }
-        } : null;
-
         // qualityGrade: A/B/C/D/F based on score thresholds matching evaluatePageQualityCanvas
         // A=16, B=116, C=316, D=500, F=anything worse
         const sc = Math.round(q.score);
@@ -229,7 +223,7 @@ export function createPaginationLogger() {
           chapterEnd: isChapterEnd,
           unstable: splits > 0 || moves > 1,
           indentAnomalies,
-          lineAnalysis: analyzePageLines(p.html, enrichedCtx),
+          lineAnalysis: analyzePageLines(p.html, canvasCtx),
           html: p.html || ''   // kept for formatPageView — stripped from JSON output if large
         };
       });
@@ -274,6 +268,55 @@ export function createPaginationLogger() {
         }
       }
 
+      // Parity check — chapter starts that ended up on left (even) pages
+      const parityErrors = entries.filter(e => e.phase === 'parity' && e.type === 'error');
+      if (parityErrors.length > 0) {
+        lines.push('');
+        lines.push('⚠ PARITY ERRORS (chapters on LEFT page):');
+        for (const e of parityErrors) {
+          lines.push(`  p${e.page} idx=${e.data.index} pos=${e.data.position} — "${e.data.chapter}"`);
+        }
+      } else {
+        lines.push('');
+        lines.push('PARITY: All chapters on right (odd) pages ✓');
+      }
+
+      // Post-repair indent diagnostic — shows final indent state of first 3 <p>
+      // on each chapter-start page after repairMissingIndents runs.
+      const postRepairDiags = entries.filter(e => e.type === 'diag' && e.data?.note === 'post-repair-indent');
+      if (postRepairDiags.length > 0) {
+        lines.push('');
+        lines.push('POST-REPAIR INDENT (first <p> per chapter-start page):');
+        // Group by page number
+        const byPage = {};
+        for (const d of postRepairDiags) {
+          if (!byPage[d.page]) byPage[d.page] = [];
+          byPage[d.page].push(d);
+        }
+        for (const [pg, diags] of Object.entries(byPage).sort((a, b) => +a[0] - +b[0])) {
+          lines.push(`  p${pg}:`);
+          for (const d of diags) {
+            const flags = [
+              d.data.isFirstP ? '1stP' : null,
+              d.data.isCont ? 'cont' : null,
+              d.data.isSplitHead ? 'splitHead' : null,
+            ].filter(Boolean).join('+') || 'normal';
+            const pageFlag = d.data.isFirstChapterPage ? '' : ' (fullPage)';
+            lines.push(`    [${d.data.pIdx}] indent="${d.data.indent}" (${flags})${pageFlag} — "${d.data.text}"`);
+          }
+        }
+      }
+
+      // Indent repair log — paragraphs where repairMissingIndents added indent
+      const repairAdded = entries.filter(e => e.phase === 'repair' && e.type === 'added-indent');
+      if (repairAdded.length > 0) {
+        lines.push('');
+        lines.push(`INDENT REPAIR (${repairAdded.length} additions by repairMissingIndents):`);
+        for (const e of repairAdded) {
+          lines.push(`  p${e.page} idx=${e.data.idx} isFirstChapterPage=${e.data.isFirstChapterPage} — "${e.data.text}"`);
+        }
+      }
+
       // Fill-pass reject details for F-grade non-chapter-end pages — FIRST for visibility
       const realPagesEarly = summary.filter(s => !s.blank);
       const fPagesEarly = realPagesEarly.filter(s => s.qualityGrade === 'F' && !s.chapterEnd);
@@ -311,6 +354,28 @@ export function createPaginationLogger() {
         }
       }
 
+      // Chapter boundary map — show every page (blank, title, content) around chapter transitions
+      const chapterBoundaries = [];
+      for (let si = 0; si < summary.length; si++) {
+        const s = summary[si];
+        const prev = summary[si - 1];
+        const isBoundary = s.blank || (prev && (prev.chapterEnd || prev.blank)) || (prev && prev.chapter !== s.chapter);
+        if (!isBoundary) continue;
+        // Show a window of 2 pages before and 2 after
+        const window = [];
+        for (let wi = Math.max(0, si - 2); wi <= Math.min(summary.length - 1, si + 2); wi++) {
+          const ws = summary[wi];
+          const tag = ws.blank ? 'BLANK' : ws.chapter?.substring(0, 20) || '?';
+          window.push(`p${ws.page}(${ws.blank ? 'blank' : ws.fillPct + '%,' + (ws.chapterEnd ? 'end' : 'cont')})[${tag}]`);
+        }
+        chapterBoundaries.push(window.join(' → '));
+      }
+      if (chapterBoundaries.length > 0) {
+        lines.push('');
+        lines.push('CHAPTER BOUNDARIES (all pages including blank):');
+        for (const b of chapterBoundaries) lines.push('  ' + b);
+      }
+
       lines.push('');
       lines.push('Page | Fill% | Score | Grd | Splits | Moves | Violations');
       lines.push('-----+-------+-------+-----+--------+-------+-----------');
@@ -326,6 +391,22 @@ export function createPaginationLogger() {
         lines.push(
           `${String(s.page).padStart(4)} | ${String(s.fillPct + '%').padStart(5)} | ${String(s.score).padStart(5)} | ${String(s.qualityGrade || '?').padStart(3)} | ${String(s.splits).padStart(6)} | ${String(s.moves).padStart(5)} | ${viol}`
         );
+      }
+
+      // Interior short-line report
+      const pagesWithShortLines = summary.filter(
+        s => !s.blank && s.violations?.includes('interior_short_line')
+      );
+      if (pagesWithShortLines.length > 0) {
+        lines.push('');
+        lines.push(`INTERIOR SHORT LINES (${pagesWithShortLines.length} pages):`);
+        for (const s of pagesWithShortLines) {
+          const affected = (s.lineAnalysis || [])
+            .filter(la => la.interiorShortLines > 0)
+            .map(la => `p${la.index}(${la.interiorShortLines}sh,${la.lineCount}ln,${la.lastLineWords}w)`)
+            .join(', ');
+          lines.push(`  p${s.page} [${s.chapter || '?'}] ${affected || '?'}`);
+        }
       }
 
       // Grade distribution summary
@@ -454,7 +535,7 @@ export function createPaginationLogger() {
         // Fill bar row
         const bars = groupPages.map(s => {
           if (!s) return ' '.repeat(COL_W);
-          const filled = Math.round((s.fillPct / 100) * COL_W);
+          const filled = Math.min(COL_W, Math.max(0, Math.round((s.fillPct / 100) * COL_W)));
           return '█'.repeat(filled) + '░'.repeat(COL_W - filled);
         });
         lines.push('─'.repeat(COL_W) + '─┼─' + '─'.repeat(COL_W) + '─┼─' + '─'.repeat(COL_W));
@@ -497,8 +578,12 @@ function renderPageLines(s, colW) {
 
   return elements.map((el) => {
     const text = el.text || '';
-    // Truncate text to fit within colW minus marker prefix (3 chars: "XX ")
-    const maxText = colW - 3;
+    // lineAnalysis entry for this element (by paragraph index)
+    const la = s.lineAnalysis ? s.lineAnalysis.find(l => l.index === el.index) : null;
+    // Prefix lineCount when available: "[3L]"
+    const lineInfo = (la && la.lineCount > 0) ? `[${la.lineCount}L]` : '';
+    // Truncate text to fit within colW minus marker prefix (3 chars: "XX ") minus lineInfo
+    const maxText = colW - 3 - lineInfo.length;
     const snippet = text.length > maxText ? text.substring(0, maxText - 1) + '…' : text;
 
     let marker;
@@ -521,12 +606,13 @@ function renderPageLines(s, colW) {
           marker = '  '; // first on page — no indent expected
         } else {
           marker = '¶ ';
-          // Annotate runts and widows from lineAnalysis if available
-          if (s.lineAnalysis) {
-            const la = s.lineAnalysis.find(l => l.index === el.index);
-            if (la?.isRunt)              marker = '¶R';
-            if (la?.isWidow)             marker = '·W';
-            if (la?.isOrphan && !la?.isWidow) marker = '·O';
+          // Annotate runts, widows, orphans, and interior short lines from lineAnalysis
+          if (la) {
+            if (la.isRunt)                                          marker = '¶R';
+            if (la.isWidow)                                         marker = '·W';
+            if (la.isOrphan && !la.isWidow)                         marker = '·O';
+            if (la.interiorShortLines > 0 && !la.isRunt
+                && !la.isWidow && !la.isOrphan)                     marker = '¶S';
           }
         }
         break;
@@ -536,7 +622,7 @@ function renderPageLines(s, colW) {
 
     // Pad marker to exactly 2 chars
     const m = (marker + '  ').substring(0, 2);
-    const line = `${m} ${snippet}`;
+    const line = `${m} ${lineInfo}${snippet}`;
     return line.padEnd(colW).substring(0, colW);
   });
 }
@@ -550,7 +636,6 @@ function renderPageLines(s, colW) {
 function parseAllElements(pageHtml) {
   if (!pageHtml) return [];
   return parseTopLevelBlocks(pageHtml)
-    .filter((block) => ['P', 'DIV', 'BLOCKQUOTE', 'UL', 'OL'].includes(block.tag) || /^H[1-6]$/.test(block.tag))
     .map((block, index) => {
       const indentMatch = (block.style || '').match(/text-indent\s*:\s*([^;]+)/i);
       const indentValue = indentMatch ? indentMatch[1].trim() : null;
@@ -644,44 +729,24 @@ export function injectBlockIdAttrs(html, ids) {
  * @returns {Array<{ index, text, lineCount, lastLineWords, lastLineWidthRatio, isRunt, isWidow, isOrphan }>}
  */
 export function analyzePageLines(pageHtml, canvasCtx) {
-  if (!IS_DEV || !pageHtml || !canvasCtx?._measureFn) return [];
+  if (!IS_DEV || !pageHtml || !canvasCtx?._computeLineMetricsFn) return [];
   const paragraphs = inspectParagraphs(pageHtml);
   if (paragraphs.length === 0) return [];
-  const effectiveWidth = (canvasCtx.contentWidth || 0) - (canvasCtx.widthSlack || 0);
-  if (effectiveWidth <= 0) return [];
 
   return paragraphs.map((p, idx) => {
-    const words = p.text.split(/\s+/).filter(Boolean);
-    const lines = [];
-    let current = [];
-    let lineW = 0;
-    for (const word of words) {
-      const ww = canvasCtx._measureFn(word);
-      const spW = current.length > 0 ? canvasCtx._measureFn(' ') : 0;
-      if (current.length > 0 && lineW + spW + ww > effectiveWidth) {
-        lines.push(current.join(' '));
-        current = [word];
-        lineW = ww;
-      } else {
-        current.push(word);
-        lineW += spW + ww;
-      }
-    }
-    if (current.length > 0) lines.push(current.join(' '));
-
-    const lastLine = lines[lines.length - 1] || '';
-    const lastLineWords = lastLine.split(/\s+/).filter(Boolean).length;
-    const lastLineW = lastLine ? canvasCtx._measureFn(lastLine) / effectiveWidth : 0;
-
+    const isLastOnPage = idx === paragraphs.length - 1;
+    const isSplitFrag = p.isContinuation || p.isSplitHead;
+    const m = canvasCtx._computeLineMetricsFn(p.fullText || p.text, isSplitFrag, isLastOnPage);
     return {
-      index: idx,
-      text: p.text.substring(0, 80),
-      lineCount: lines.length,
-      lastLineWords,
-      lastLineWidthRatio: Math.round(lastLineW * 100) / 100,
-      isRunt:   lastLineWords <= 2 && lastLineW < 0.35,
-      isWidow:  p.isContinuation && lines.length === 1,
-      isOrphan: idx === paragraphs.length - 1 && lines.length === 1
+      index:              idx,
+      text:               p.text,
+      lineCount:          m.lineCount,
+      lastLineWords:      m.lastLineWords,
+      lastLineWidthRatio: m.lastLineWidthRatio,
+      interiorShortLines: m.interiorShortLines,
+      isRunt:             m.isRunt,
+      isWidow:            m.isWidow,
+      isOrphan:           m.isOrphan
     };
   });
 }

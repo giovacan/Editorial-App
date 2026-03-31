@@ -12,6 +12,7 @@
 
 import { useMemo } from 'react';
 import { buildHeaderHtmlPure } from '../../hooks/useHeaderFooter';
+import { computeFolioStyle, computeShowFolio, computeFolioFromEdge } from '../../hooks/usePageRenderLayout';
 import { applyKpRendering } from '../../utils/textLayoutEngine';
 import { JUSTIFY_SLACK_RATIO } from '../../utils/layoutIr';
 import './PageFrame.css';
@@ -50,24 +51,19 @@ export default function PageFrame({
   const pageNum   = page?.pageNumber;
   const isBlank   = page?.isBlank;
   const isFrontMatterPage = !!(page?.isTOCPage || page?.isTitlePage || page?.isFrontMatter);
+  const isTitleOnlyPage   = page?.isTitleOnlyPage === true;
+  const isEvenPage        = (pageNum || 1) % 2 === 0;
   const showNums  = config?.showPageNumbers !== false;
   const showFolio = tocConfig?.showFolio !== false;
 
-  // FM pages: show displayPageNumber if non-empty and showFolio is on
   const hasFmNumber = isFrontMatterPage && !!page?.displayPageNumber && showFolio;
-  // Content pages: show pageNumber normally
-  const showPageNum = showNums && !isBlank && (
-    hasFmNumber ||
-    (!isFrontMatterPage && !!pageNum) ||
-    (page?.isExtraEndPage && page?.shouldShowPageNumber)
-  );
-
-  // Display value: roman numeral for FM, arabic for content
+  const showPageNum = computeShowFolio({
+    showNums, isBlank: !!isBlank, isTitleOnlyPage, isFrontMatterPage, hasFmNumber,
+    isExtraEndPage: !!page?.isExtraEndPage, shouldShowPageNumber: !!page?.shouldShowPageNumber,
+  });
   const displayNum = page?.displayPageNumber ?? pageNum;
 
   // ── KP Rendering ─────────────────────────────────────────────────────────────
-  // Apply Knuth-Plass optimal line breaks + word-spacing as a rendering-only
-  // transform. The pages[] data (rawHtml) stays clean for pagination measurement.
   const contentWidth = pageWidthPx - marginLeft - marginRight;
   const html = useMemo(() => {
     if (!rawHtml || isBlank || textAlign !== 'justify') return rawHtml;
@@ -80,36 +76,22 @@ export default function PageFrame({
   }, [rawHtml, isBlank, textAlign, fontSize, fontFamily, contentWidth]);
 
   // ── Header ──────────────────────────────────────────────────────────────────
-  const headerConfig = config?.header || {};
-  const headerHtml   = buildHeaderHtmlPure(page, config, bookTitle, baseFontSize);
-  const showHeader   = !!headerHtml;
+  const headerHtml = buildHeaderHtmlPure(page, config, bookTitle, baseFontSize);
+  const showHeader = !!headerHtml;
 
   // ── Page number position ────────────────────────────────────────────────────
-  const isEvenPage       = (pageNum || 1) % 2 === 0;
-  const pageNumberPos    = config?.pageNumberPos    || 'bottom';
-  const pageNumberAlign  = config?.pageNumberAlign  || 'center';
-  const pageNumMarginPx  = config?.pageNumberMargin ?? 12;
-
-  let pageNumHorizontalStyle = {};
-  switch (pageNumberAlign) {
-    case 'paragraph-edge':
-      pageNumHorizontalStyle = isEvenPage ? { left: `${marginLeft}px` } : { right: `${marginRight}px` };
-      break;
-    case 'paragraph':
-      pageNumHorizontalStyle = isEvenPage ? { left: `${marginLeft + 12}px` } : { right: `${marginRight + 12}px` };
-      break;
-    case 'outer':
-      pageNumHorizontalStyle = isEvenPage ? { left: '12px' } : { right: '12px' };
-      break;
-    default:
-      pageNumHorizontalStyle = { left: '50%', transform: 'translateX(-50%)' };
-  }
-
+  // Folio: 1.5 lines below content bottom — canonical formula from pageLayout.js
+  const folioFromEdge = computeFolioFromEdge(pageHeightPx, marginTop, effectiveContentHeight, lineHeightPx);
   const pageNumStyle = {
-    position: 'absolute',
-    ...(pageNumberPos === 'top' ? { top: `${pageNumMarginPx}px` } : { bottom: `${pageNumMarginPx}px` }),
-    ...pageNumHorizontalStyle,
-    fontSize: `${fontSize * 0.8}px`,
+    ...computeFolioStyle({
+      pos:            config?.pageNumberPos    || 'bottom',
+      align:          config?.pageNumberAlign  || 'center',
+      marginFromEdge: folioFromEdge,
+      isEvenPage,
+      marginLeft,
+      marginRight,
+      fontSize,
+    }),
     color: '#333',
   };
 

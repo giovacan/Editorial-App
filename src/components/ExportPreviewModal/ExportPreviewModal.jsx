@@ -4,7 +4,6 @@ import useEditorStore from '../../store/useEditorStore';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import { calculateContentDimensions, PX_PER_MM, PX_PER_INCH } from '../../utils/textMeasurer';
 import { exportEpub, exportHtml } from '../Layout/utils/exporters';
-import { exportPdfNative } from '../Layout/utils/pdfNativeRenderer';
 import PageFrame from '../PageFrame/PageFrame';
 import './ExportPreviewModal.css';
 
@@ -68,9 +67,6 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
     pageFormat = KDP_STANDARDS.getPageFormat(safeConfig.pageFormat || bookConfig.recommendedFormat);
   }
 
-  // ── Compute page dimensions at PREVIEW_SCALE (same scale used by pagination) ─
-  const PREVIEW_SCALE = storeDims?.previewScale ?? 0.42;
-
   // Full book = FM pages (portada, TDC) + content pages (numbers offset by FM count)
   const allPages = useMemo(() => {
     if (frontMatterPages.length > 0) {
@@ -93,6 +89,10 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
   const applyDynamicMargins = (safeConfig.marginStrategy || 'auto') === 'auto';
   const effectiveGutter     = storeDims?.gutterValue ?? gutterValue;
 
+  // ── Compute page dimensions at PREVIEW_SCALE ───────────────────────────────────
+  // Use scale from store (synced with Preview.jsx dynamic scaling) or default
+  const PREVIEW_SCALE = storeDims?.previewScale ?? 0.42;
+
   const fontSize   = (safeConfig.fontSize || bookConfig.fontSize) * (PX_PER_INCH / 72) * PREVIEW_SCALE;
   const lineHeightPx = storeDims?.lineHeightPx ?? Math.ceil(fontSize * (safeConfig.lineHeight || bookConfig.lineHeight));
   const fontFamily = safeConfig.fontFamily || bookConfig.fontFamily;
@@ -103,15 +103,13 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
   //   - isTitleOnlyPage → gutter = 0 (symmetric margins, same as Preview)
   //   - isEven derived from actual pageNumber (not hardcoded by spread slot)
   const computeDimsForPage = useCallback((page) => {
-    // FM pages (portada, TDC) are symmetric — no gutter shift
     const isTitleOnly  = page?.isTitleOnlyPage === true || page?.isTitlePage === true || page?.isTOCPage === true;
     const isEven       = page ? (page.pageNumber % 2 === 0) : false;
     const gutterForPage = isTitleOnly ? 0 : effectiveGutter;
     const d = calculateContentDimensions(pageFormat, bookConfig, PREVIEW_SCALE, gutterForPage, isEven, totalPages, applyDynamicMargins);
     const effectiveContentHeight = storeDims?.contentHeight ?? d.contentHeight;
     return { ...d, fontSize, fontFamily, lineHeightPx, textAlign, effectiveContentHeight, baseFontSize };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectiveGutter, totalPages, fontSize, lineHeightPx, fontFamily, textAlign, baseFontSize, applyDynamicMargins]);
+  }, [storeDims, pageFormat, effectiveGutter, totalPages, fontSize, lineHeightPx, fontFamily, textAlign, baseFontSize, applyDynamicMargins]);
 
   // Reference dims (odd/right page, no title) used for scale calculation
   const refDims      = calculateContentDimensions(pageFormat, bookConfig, PREVIEW_SCALE, effectiveGutter, false, totalPages, applyDynamicMargins);
@@ -204,13 +202,37 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
           effectiveContentHeight: storeDims?.contentHeight ?? refDims.contentHeight,
           previewScale:         PREVIEW_SCALE,
         };
-        await exportPdfNative(
-          safeBookData,
-          safeConfig,
-          allPages,
-          pdfDims,
-          (current, total) => setExportProgress({ current, total }),
-        );
+
+        const response = await fetch('http://127.0.0.1:5002/editorial-app-test/us-central1/generatePdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            bookData: safeBookData,
+            config: safeConfig,
+            paginatedPages: allPages,
+            dims: pdfDims,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Error al generar PDF: ' + response.statusText);
+        }
+
+        const result = await response.json();
+
+        const { pdf, filename } = result.data;
+        const binaryString = atob(pdf);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const blob = new Blob([bytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
       }
       if (format === 'epub') exportEpub(safeBookData);
       if (format === 'html') exportHtml(safeBookData);

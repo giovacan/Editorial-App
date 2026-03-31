@@ -46,6 +46,17 @@ import {
 
 import { createPaginationLogger, assignBlockId, deriveFragmentId, injectBlockIdAttrs, resetBlockCounter } from './paginationLogger.js';
 
+// Canvas measures content height precisely, but the browser DOM renders the same
+// HTML taller due to subpixel line-height accumulation and font rounding.
+// The error scales with font size and line count — using a fixed px value
+// under-corrects at larger fonts and over-corrects at tiny scales.
+// 30% of one lineHeightPx is the empirically-derived safe buffer:
+//   - At lineHeightPx=15 (a5, 1.5lh): DOM_SLACK ≈ 4.5px  (~3 lines of subpixel error)
+//   - At lineHeightPx=20 (6x9, 1.5lh): DOM_SLACK ≈ 6px
+// Computed once per pagination run, after layoutCtx is available.
+// Initial value 0 — overwritten at the start of paginateChapters.
+let DOM_SLACK = 0;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // DOM-free HTML helpers — Worker-safe string-based replacements for
 // document.createElement('div') + innerHTML patterns used throughout this file.
@@ -130,8 +141,16 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
       italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1
     }
   };
+  // Inject canonical line-metrics fn for the logger (avoids circular import)
+  canvasCtx._computeLineMetricsFn = (plainText, isContinuation, isLastOnPage) =>
+    computeParaLineMetrics(plainText, canvasCtx, isContinuation, isLastOnPage);
 
   const { contentHeight, lineHeightPx, baseFontSize: baseFontSizeTop, baseLineHeight: baseLineHeightTop, minOrphanLines: minOrphanLinesTop } = layoutCtx;
+
+  // Set DOM_SLACK proportional to lineHeightPx so it scales with font size.
+  // 30% of one line covers the subpixel accumulation gap between Canvas and DOM rendering.
+  DOM_SLACK = Math.round(lineHeightPx * 0.3);
+
   const pageFormat = safeConfig?.pageFormat || layoutCtx.pageFormat || 'unknown';
   log.setConfig({ pageFormat, fontSize: baseFontSizeTop, lineHeight: baseLineHeightTop, contentHeight, contentWidth: layoutCtx.contentWidth, minOrphanLines: minOrphanLinesTop, lineHeightPx });
 
@@ -239,7 +258,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
   // the "first paragraph" of a chapter (baked-in text-indent:0) but ended up on
   // a page other than the chapter-start page after fill/split operations.
   // Also fixes any non-continuation <p> at the start of a page that has indent:0.
-  repairMissingIndents(allPages, safeConfig);
+  repairMissingIndents(allPages, safeConfig, log);
 
   // Tag last page of each chapter — suppresses fill-penalties in scoring
   // for pages that can never be filled further (chapter boundary constraint).
@@ -305,6 +324,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
         smoothPageBalance(relaxedPages, relaxedLayoutCtx, canvasCtx, log);
         mergeSplitFragments(relaxedPages, log);
         fixShortLastLines(relaxedPages, relaxedLayoutCtx, canvasCtx, log);
+        repairMissingIndents(relaxedPages, safeConfig, log);
         tagChapterLastPages(relaxedPages);
 
         // Score the relaxed result (consistent: same isChapterLastPage suppression)
@@ -335,7 +355,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
         enforceChapterStartParity(allPages, safeConfig);
         mergeSplitFragments(allPages, log);
         fixShortLastLines(allPages, layoutCtx, canvasCtx, log);
-        repairMissingIndents(allPages, safeConfig);
+        repairMissingIndents(allPages, safeConfig, log);
         tagChapterLastPages(allPages);
         distributeVerticalSpace(allPages, layoutCtx, canvasCtx);
       }
@@ -349,6 +369,56 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
   for (const p of allPages) {
     if (!p.isBlank) p.pageNumber = pageNum;
     pageNum++;
+  }
+
+  // DEV: parity check — every isFirstChapterPage must be on an odd physical position
+  if (process.env.NODE_ENV === 'development') {
+    for (let pi = 0; pi < allPages.length; pi++) {
+      const page = allPages[pi];
+      if (!page?.isFirstChapterPage) continue;
+      const position = pi + 1; // 1-indexed
+      if (position % 2 === 0) {
+        log.record('parity', 'error', page.pageNumber || position, {
+          note: 'chapter-on-left-page',
+          index: pi, position,
+          chapter: (page.chapterTitle || '').substring(0, 50)
+        });
+      }
+    }
+  }
+
+  // DEV: log indent state of first 3 <p> on each chapter-start page — AFTER all passes.
+  // Covers both layouts: isFirstChapterPage (spaced) and page-after-titleOnly (fullPage).
+  if (process.env.NODE_ENV === 'development') {
+    for (let pi = 0; pi < allPages.length; pi++) {
+      const page = allPages[pi];
+      if (page.isBlank || !page.html) continue;
+      let prevNonBlank = null;
+      for (let pj = pi - 1; pj >= 0; pj--) {
+        if (!allPages[pj]?.isBlank) { prevNonBlank = allPages[pj]; break; }
+      }
+      const isChapterContent = page.isFirstChapterPage || prevNonBlank?.isTitleOnlyPage === true;
+      if (!isChapterContent) continue;
+      const blocks = getPageBlocks(page);
+      const pBlocks = blocks.filter(b => (b.tag || '').toUpperCase() === 'P').slice(0, 3);
+      pBlocks.forEach((b, bi) => {
+        const styleStr = b.style || b.outerHtml?.match(/style="([^"]*)"/)?.[1] || '';
+        const indentM = styleStr.match(/text-indent\s*:\s*([^;}"]+)/i);
+        const isCont = b.dataset?.continuation === 'true';
+        const isSplitHead = b.dataset?.splitHead === 'true';
+        const isFirstP = b.dataset?.firstParagraph === 'true';
+        log.record('greedy', 'diag', page.pageNumber, {
+          note: 'post-repair-indent',
+          pIdx: bi,
+          indent: indentM?.[1] ?? '(none)',
+          isCont,
+          isSplitHead,
+          isFirstP,
+          isFirstChapterPage: !!page.isFirstChapterPage,
+          text: (b.textContent || '').trim().substring(0, 60)
+        });
+      });
+    }
   }
 
   // Generate structured summary via logger
@@ -384,13 +454,24 @@ const flattenChapterElements = (chapter, layoutCtx, canvasCtx, measureDiv, safeC
   assignBlockId(elements[elements.length - 1], chapterId, 0);
 
   // Content elements — Worker-safe: use string-based parser instead of DOM
-  const children = parseHtmlElements(chapter.html || '').filter(
+  // isFirstParagraph is derived from the UNFILTERED position so that an empty
+  // first paragraph doesn't cause the second paragraph to lose its indent.
+  const allChildren = parseHtmlElements(chapter.html || '');
+  let firstParagraphIdx = -1;
+  for (let ci = 0; ci < allChildren.length; ci++) {
+    if (allChildren[ci].tag === 'P' || allChildren[ci].tag === 'DIV') {
+      firstParagraphIdx = ci;
+      break;
+    }
+  }
+  const children = allChildren.filter(
     el => el.textContent.trim() || el.tag === 'HR'
   );
 
   let paragraphCount = 0;
   for (const el of children) {
-    const isFirstParagraph = paragraphCount === 0;
+    const originalIdx = allChildren.indexOf(el);
+    const isFirstParagraph = originalIdx === firstParagraphIdx;
     if (el.tag === 'P' || el.tag === 'DIV') paragraphCount++;
 
     const html = buildParagraphHtml(
@@ -543,6 +624,78 @@ const computeRuntLinePenalty = (lastLineWords, widthRatio) => {
 const isSevereShortLastLine = (metrics) => {
   if (!metrics || metrics.lastLineWords <= 0) return false;
   return computeRuntLinePenalty(metrics.lastLineWords, metrics.widthRatio ?? 1) >= RUNT_HARD_PENALTY_THRESHOLD;
+};
+
+/**
+ * Compute full per-line metrics for a single paragraph's plain text.
+ * Single source of truth used by evaluatePageQualityCanvas AND the logger.
+ * Worker-safe — Canvas only, no DOM.
+ *
+ * @param {string}  plainText       - Collapsed plain text (no HTML tags)
+ * @param {object}  canvasCtx       - { baseFontSizePx, fontFamily, contentWidth, widthSlack }
+ * @param {boolean} isContinuation  - true if <p data-continuation="true">
+ * @param {boolean} isLastOnPage    - true if this is the last element on the page
+ * @returns {{ lineCount, lastLineWords, lastLineWidthRatio, interiorShortLines,
+ *             isOrphan, isWidow, isRunt, lineStarts, words }}
+ */
+const computeParaLineMetrics = (plainText, canvasCtx, isContinuation = false, isLastOnPage = false) => {
+  const text = (plainText || '').trim();
+  if (!text || !canvasCtx) {
+    return { lineCount: 0, lastLineWords: 0, lastLineWidthRatio: 1,
+             interiorShortLines: 0, isOrphan: false, isWidow: false,
+             isRunt: false, lineStarts: [0], words: [] };
+  }
+
+  const fontStr = buildFontString(canvasCtx.baseFontSizePx, canvasCtx.fontFamily);
+  const effectiveWidth = canvasCtx.contentWidth - (canvasCtx.widthSlack || 0);
+  const words = text.split(/\s+/).filter(w => w.length > 0);
+  const lineStarts = getLineBreakPositions(text, effectiveWidth, fontStr);
+  const lineCount = lineStarts.length;
+
+  // Last line metrics (same logic as getLastLineMetrics)
+  const lastStart = lineStarts[lineCount - 1] ?? 0;
+  const lastLineWords = Math.max(0, words.length - lastStart);
+  const lastLineText = words.slice(lastStart).join(' ');
+  let lastLineWidthRatio = 1;
+  if (lastLineText && effectiveWidth > 0) {
+    const ctx2d = getCanvasCtx2d();
+    if (ctx2d) {
+      ctx2d.font = fontStr;
+      lastLineWidthRatio = ctx2d.measureText(lastLineText).width / effectiveWidth;
+    }
+  }
+
+  // Interior short lines: non-last lines with 1 word, or 2 words at < 30% width.
+  // Only for continuation fragments — whole-paragraph short lines are authorial.
+  let interiorShortLines = 0;
+  if (isContinuation && lineCount >= 3) {
+    const ctx2d = getCanvasCtx2d();
+    for (let li = 0; li < lineCount - 1; li++) {
+      const start = lineStarts[li];
+      const end = li + 1 < lineCount ? lineStarts[li + 1] : words.length;
+      const lineWordCount = end - start;
+      if (lineWordCount === 1) {
+        interiorShortLines++;
+      } else if (lineWordCount === 2 && ctx2d && effectiveWidth > 0) {
+        ctx2d.font = fontStr;
+        const lineText = words.slice(start, end).join(' ');
+        const ratio = ctx2d.measureText(lineText).width / effectiveWidth;
+        if (ratio < 0.30) interiorShortLines++;
+      }
+    }
+  }
+
+  return {
+    lineCount,
+    lastLineWords,
+    lastLineWidthRatio,
+    interiorShortLines,
+    isOrphan: isContinuation && lineCount <= 1,
+    isWidow:  isLastOnPage && lineCount <= 1,
+    isRunt:   lastLineWords <= 2 && lastLineWidthRatio < 0.35,
+    lineStarts,
+    words
+  };
 };
 
 /**
@@ -1020,12 +1173,7 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
       log.record('greedy', 'diag', pages.length + 1, { tag: el.tag, text: (el.textContent || '').substring(0, 60), elLines, freeLines, candidateH: +candidateHeight.toFixed(1), contentH: +contentHeight.toFixed(1), gap: +(candidateHeight - contentHeight).toFixed(1), fits: candidateHeight <= contentHeight });
     }
 
-    // For the chapter's final paragraph, allow absorbing up to half a line of
-    // overfill. The safetyMargin already reserves a full lineHeightPx buffer,
-    // so this is safe and avoids sending a nearly-fitting paragraph to an empty page.
-    const fitTolerance = isLastChapterElement ? lineHeightPx * 0.5 : 0;
-
-    if (candidateHeight <= contentHeight + fitTolerance) {
+    if (candidateHeight <= contentHeight - DOM_SLACK) {
       // Runt-flush guard: if adding this paragraph fills the page completely (≤1 free line
       // remaining on the COMBINED page) and its last line is a single word, it will sit
       // isolated at the bottom — visually identical to a widow but in a whole paragraph.
@@ -1035,7 +1183,7 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
       // candidateHeight = measure(currentHtml + el.html) — already computed above the fit check.
       // Use it directly as the authoritative "page height after adding this element".
       const currentPageHeight = currentHtml ? measure(currentHtml) : 0;
-      const freeLinesAfter = Math.floor((contentHeight - candidateHeight) / lineHeightPx);
+      const freeLinesAfter = Math.floor((contentHeight - DOM_SLACK - candidateHeight) / lineHeightPx);
       const currentFill = currentPageHeight / contentHeight;
       if (!isLastChapterElement
           && (el.tag === 'P' || el.tag === 'BLOCKQUOTE')
@@ -1061,19 +1209,14 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
       }
 
       currentHtml += el.html;
-      if (fitTolerance > 0 && candidateHeight > contentHeight) {
-        log.record('greedy', 'fit', pages.length + 1, { tag: el.tag, text: (el.textContent || '').substring(0, 60), overflowPx: +(candidateHeight - contentHeight).toFixed(1), tolerancePx: +fitTolerance.toFixed(1) });
-      }
-      // DEBUG: track elements with inline bold that fit silently
-      if (el.tag === 'P' && el.html.includes('<strong')) {
-        log.record('greedy', 'fit', pages.length + 1, { tag: el.tag, text: (el.textContent || '').substring(0, 80), isBold: el.isBold, candidateH: +candidateHeight.toFixed(0), contentH: +contentHeight.toFixed(0), elHeight: +el.height.toFixed(0), note: 'has-inline-bold' });
-      }
       continue;
     }
 
-    // Doesn't fit — measure current page height
+    // Doesn't fit — measure current page height.
+    // Subtract DOM_SLACK so the split budget matches the DOM-safe boundary
+    // (same slack applied in the fit-check above).
     const actualCurrentHeight = measure(currentHtml);
-    const remainingSpace = contentHeight - actualCurrentHeight;
+    const remainingSpace = contentHeight - DOM_SLACK - actualCurrentHeight;
     const remainingLines = Math.floor(remainingSpace / lineHeightPx);
 
     log.record('greedy', 'no-fit', pages.length + 1, { tag: el.tag, text: (el.textContent || '').substring(0, 60), isBold: el.isBold, candidateH: +candidateHeight.toFixed(0), contentH: +contentHeight.toFixed(0), remainLines: remainingLines, splitEnabled: splitLongParagraphs });
@@ -1244,7 +1387,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
       const currentHtml = pages[i].html;
       const currentHeight = measure(currentHtml);
       const currentFill = currentHeight / contentHeight;
-      const remainingSpace = contentHeight - currentHeight;
+      const remainingSpace = contentHeight - DOM_SLACK - currentHeight;
       const remainingLines = Math.floor(remainingSpace / lineHeightPx);
 
       if (remainingLines < 1) {
@@ -1411,7 +1554,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
 
       // Try fitting the whole element (Canvas measurement)
       const candidateFitHeight = measure(currentHtml + firstElHtml);
-      if (candidateFitHeight <= contentHeight) {
+      if (candidateFitHeight <= contentHeight - DOM_SLACK) {
 
         // Remove first element from source page
         const sourceHtml = serializeBlocks(nextPageEls.slice(1)).trim();
@@ -1550,7 +1693,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
       // a 1-line smaller budget — up to 3 retries.
       let chunkFitHeight = measure(currentHtml + chunk);
       let overflowRetries = 0;
-      while (chunkFitHeight > contentHeight && overflowRetries < 3) {
+      while (chunkFitHeight > contentHeight - DOM_SLACK && overflowRetries < 3) {
         overflowRetries++;
         const retrySpace = remainingSpace - overflowRetries * lineHeightPx;
         if (retrySpace < lineHeightPx) break;
@@ -1564,7 +1707,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
         [chunk, rest] = retryResult;
         chunkFitHeight = measure(currentHtml + chunk);
       }
-      if (chunkFitHeight > contentHeight) {
+      if (chunkFitHeight > contentHeight - DOM_SLACK) {
         log.record('fill', 'reject', i + 1, { tag, text: firstEl.textContent.substring(0, 60), reason: 'split-overfit', chunkFitHeight: +chunkFitHeight.toFixed(0), contentH: +contentHeight.toFixed(0) });
         break;
       }
@@ -1774,12 +1917,23 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
  *
  * @private
  */
-const repairMissingIndents = (pages, safeConfig) => {
+const repairMissingIndents = (pages, safeConfig, log = null) => {
   const indentEm = safeConfig.paragraph?.firstLineIndent || 1.5;
   const targetIndent = `${indentEm}em`;
 
-  for (const page of pages) {
+  for (let pi = 0; pi < pages.length; pi++) {
+    const page = pages[pi];
     if (!page || page.isBlank || !page.html) continue;
+
+    // A page is the "first content page" of a chapter in two cases:
+    //   1. isFirstChapterPage=true  — title + content on same page (spaced/halfPage/continuous layout)
+    //   2. The immediately preceding non-blank page has isTitleOnlyPage=true — fullPage layout where
+    //      the title occupies its own page and the first paragraph is on the next page.
+    let prevNonBlank = null;
+    for (let pj = pi - 1; pj >= 0; pj--) {
+      if (!pages[pj]?.isBlank) { prevNonBlank = pages[pj]; break; }
+    }
+    const isFirstContentPage = page.isFirstChapterPage || prevNonBlank?.isTitleOnlyPage === true;
 
     const children = getPageBlocks(page);
     let changed = false;
@@ -1791,6 +1945,10 @@ const repairMissingIndents = (pages, safeConfig) => {
       const isCont = el.dataset?.continuation === 'true';
       if (isCont) return el;
 
+      // Exempt: paragraph marked as first-paragraph at build time by buildParagraphHtml.
+      // This is the authoritative signal — independent of page flags or position.
+      if (el.dataset?.firstParagraph === 'true') return el;
+
       // Check current indent value
       const styleStr = el.style || '';
       const indentM = styleStr.match(/text-indent\s*:\s*([^;]+)/i);
@@ -1798,11 +1956,16 @@ const repairMissingIndents = (pages, safeConfig) => {
       const hasZeroIndent = indentVal === null || indentVal === 0;
       if (!hasZeroIndent) return el;
 
-      // Exempt: first <p> on any page.
-      // It could be a split-rest (continuation) or the first paragraph of a chapter —
-      // we cannot safely distinguish these without the chapter context here.
-      // The per-operation restoreIndentIfNeeded handles the fill/move path for idx=0.
-      if (idx === 0) return el;
+      // Exempt: first <p> (non-continuation, non-splitHead) on a chapter-start page.
+      // Covers both layout variants: spaced (isFirstChapterPage) and fullPage (prevNonBlank.isTitleOnlyPage).
+      if (isFirstContentPage) {
+        const firstContentPIdx = children.findIndex(
+          c => (c.tag || '').toUpperCase() === 'P'
+            && c.dataset?.continuation !== 'true'
+            && c.dataset?.splitHead !== 'true'
+        );
+        if (idx === firstContentPIdx) return el;
+      }
 
       // Check if first alphabetic character is uppercase (new paragraph, not split-rest)
       const firstLetter = el.textContent.trim().match(/\p{L}/u)?.[0] || '';
@@ -1830,6 +1993,14 @@ const repairMissingIndents = (pages, safeConfig) => {
 
       if (newOuter !== el.outerHtml) {
         changed = true;
+        if (log) {
+          log.record('repair', 'added-indent', page.pageNumber ?? 0, {
+            idx,
+            isFirstChapterPage: !!page.isFirstChapterPage,
+            isFirstContentPage,
+            text: (el.textContent || '').substring(0, 60)
+          });
+        }
         return { ...el, outerHtml: newOuter };
       }
       return el;
@@ -2007,7 +2178,7 @@ const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
     let bestGap = 0;
     for (let iter = 0; iter < 8; iter++) {
       const mid = (lo + hi) / 2;
-      if (measure(applyGap(mid)) <= contentHeight) {
+      if (measure(applyGap(mid)) <= contentHeight - 2) {
         bestGap = mid;
         lo = mid;
       } else {
@@ -2131,8 +2302,18 @@ const cleanupNearlyEmptyPages = (pages, layoutCtx, canvasCtx) => {
  * @private
  */
 const enforceChapterStartParity = (pages, safeConfig) => {
-  if (!safeConfig?.chapterTitle?.startOnRightPage) return;
+  if (safeConfig?.chapterTitle?.startOnRightPage === false) return;
 
+  // Pass 1: Remove stale parity blanks (blank pages immediately before a
+  // chapter-start page). This makes the function idempotent — safe to call
+  // multiple times after page-count mutations (reopt, fill-pass, smoothing).
+  for (let i = pages.length - 1; i >= 1; i--) {
+    if (pages[i]?.isFirstChapterPage && pages[i - 1]?.isBlank) {
+      pages.splice(i - 1, 1);
+    }
+  }
+
+  // Pass 2: Insert blanks where needed so chapter starts on a right (odd) page.
   for (let i = 1; i < pages.length; i++) {
     if (!pages[i]?.isFirstChapterPage) continue;
 
@@ -2268,7 +2449,7 @@ const smoothPageBalance = (pages, layoutCtx, canvasCtx, log) => {
         toPage: toIdx + 1,
         reason: 'short-last-line',
         text: '',
-        shortLineScore: shortLineViolation.shortLineScore
+        shortLineScore: changedEndQ.score
       });
       break;
     }
@@ -2332,7 +2513,6 @@ const fixShortLastLines = (pages, layoutCtx, canvasCtx, log) => {
 
       const pageHeight = measure(page.html);
       const pageFill = pageHeight / contentHeight;
-      if (pageFill < FILL_PASS_RUNT_MIN_RESULT_FILL) continue;
 
       const qPage = evaluatePageQualityCanvas(page.html, contentHeight, lineHeightPx, canvasCtx);
       if (!qPage.violations.includes('runt_line')) continue;
@@ -2356,27 +2536,55 @@ const fixShortLastLines = (pages, layoutCtx, canvasCtx, log) => {
       if (!newCurrentHtml) continue;
 
       const newCurrentFill = measure(newCurrentHtml) / contentHeight;
-      if (newCurrentFill < SHORT_LAST_LINE_POSTPASS_MIN_SOURCE_FILL) continue;
+      // Allow pushing even if source page drops below threshold — runt elimination
+      // takes priority. Fill-pass can recover the gap afterwards.
+      if (newCurrentFill < 0.50) continue; // only skip if page becomes nearly empty
 
       const qCurrent = evaluatePageQualityCanvas(newCurrentHtml, contentHeight, lineHeightPx, canvasCtx);
       if (qCurrent.violations.includes('heading_at_bottom')) continue;
 
       const nextHtml = movedHtml + (nextPage.html || '');
-      if (!canAcceptHtml(nextHtml, contentHeight, canvasCtx)) continue;
+      if (canAcceptHtml(nextHtml, contentHeight, canvasCtx)) {
+        // Strategy A: push last element of runt page → next page
+        pages[i] = setPageHtml(page, newCurrentHtml);
+        pages[nextIdx] = setPageHtml(nextPage, nextHtml);
+        mergeSplitFragments([pages[i], pages[nextIdx]], log);
+        changedAny = true;
+        log.record('short-line-fix', 'push', i + 1, {
+          toPage: nextIdx + 1,
+          text: (lastEl.textContent || '').substring(0, 60),
+          shortLineScore: qPage.score,
+          beforeFillPct: +(pageFill * 100).toFixed(0),
+          afterFillPct: +(newCurrentFill * 100).toFixed(0)
+        });
+        continue;
+      }
 
-      pages[i] = setPageHtml(page, newCurrentHtml);
-      pages[nextIdx] = setPageHtml(nextPage, nextHtml);
+      // Strategy B: pull first element of next page → runt page.
+      // This pushes the runt paragraph to the next page where it gains more lines
+      // and its last line gets more words. Only viable if runt page can accept it.
+      const nextEls = getPageBlocks(nextPage);
+      if (nextEls.length < 2) continue; // next page would become empty
+      const firstNextEl = nextEls[0];
+      const firstNextTag = (firstNextEl?.tag || '').toUpperCase();
+      if (/^H[1-6]$/.test(firstNextTag)) continue; // don't pull headings
+      const pulledHtml = page.html + firstNextEl.outerHtml;
+      if (!canAcceptHtml(pulledHtml, contentHeight, canvasCtx)) continue;
+      const newNextHtml = serializeBlocks(nextEls.slice(1)).trim();
+      if (!newNextHtml) continue;
+      const qPulled = evaluatePageQualityCanvas(pulledHtml, contentHeight, lineHeightPx, canvasCtx);
+      // Only apply if pulling fixes or doesn't worsen the runt
+      if (qPulled.violations.includes('runt_line') && qPulled.score >= qPage.score) continue;
+      if (qPulled.violations.includes('heading_at_bottom')) continue;
+      pages[i] = setPageHtml(page, pulledHtml);
+      pages[nextIdx] = setPageHtml(nextPage, newNextHtml);
       mergeSplitFragments([pages[i], pages[nextIdx]], log);
       changedAny = true;
-
-      log.record('short-line-fix', 'move', i + 1, {
-        toPage: nextIdx + 1,
-        text: shortLineViolation.text.substring(0, 60),
-        lastLineWords: shortLineViolation.lastLineWords,
-        widthRatio: +shortLineViolation.widthRatio.toFixed(2),
-        shortLineScore: shortLineViolation.shortLineScore,
-        beforeFillPct: +(pageFill * 100).toFixed(0),
-        afterFillPct: +(newCurrentFill * 100).toFixed(0)
+      log.record('short-line-fix', 'pull', i + 1, {
+        fromPage: nextIdx + 1,
+        text: (firstNextEl.textContent || '').substring(0, 60),
+        shortLineScore: qPage.score,
+        afterScore: qPulled.score
       });
     }
 
@@ -2495,15 +2703,21 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
       violations.push('heading_at_bottom');
     }
 
-    // Scan ALL paragraphs for orphan/widow violations.
-    // Orphan: any continuation paragraph (text-indent:0) with only 1 line — at any position.
-    // Widow: last paragraph on page with only 1 line.
+    // Scan ALL paragraphs for orphan/widow/interior-short violations.
+    // Uses computeParaLineMetrics (Canvas geometry) instead of height-division
+    // so line count is accurate even when element has top/bottom margins.
     for (let ci = 0; ci < children.length; ci++) {
       const el = children[ci];
       if ((el.tag || '').toUpperCase() !== 'P') continue;
 
       const isContinuation = el.dataset?.continuation === 'true';
-      const elLines = Math.floor(measure(el.outerHtml) / lineHeightPx);
+      const elMetrics = computeParaLineMetrics(
+        htmlToText(el.innerHTML).trim(),
+        canvasCtx,
+        isContinuation,
+        ci === children.length - 1
+      );
+      const elLines = elMetrics.lineCount;
 
       // Orphan: continuation chunk with only 1 line (any position on page)
       // Scaled by fs — on a fragment, this is not a real orphan yet.
@@ -2533,38 +2747,34 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
         violations.push('fragment');
       }
 
+      // Interior short-line penalty — continuation fragments with 1-word interior lines.
+      // Lighter than runt (150 vs 1400) — editorially weak but not critical.
+      if (isContinuation && elMetrics.interiorShortLines > 0) {
+        score += elMetrics.interiorShortLines * 150 * fs;
+        violations.push('interior_short_line');
+      }
     }
 
-    // Runt-line penalty: last paragraph on page is a split continuation fragment
-    // (data-continuation=true) ending with 1 word or 2 very short words (<25% line width).
-    // Only penalises split artefacts — whole paragraphs are the author's text and must
-    // not be penalised here (doing so cascades across all fill-pass scoring globally).
-    // Both scaled by fs so fragment lookaheads (isFragment=true) don't over-fire.
+    // Runt-line penalty: last <p> on page is a split continuation fragment ending
+    // with 1 word or 2 very short words (<35% line width).
+    // Only penalises split artefacts — whole author paragraphs must not be penalised
+    // here (doing so fires on ~50% of pages, cascading across fill-pass scoring globally).
     const lastPEl = [...children].reverse().find(c => (c.tag || '').toUpperCase() === 'P');
     if (lastPEl && lastPEl.dataset?.continuation === 'true') {
-      const lastPLines = Math.floor(measure(lastPEl.outerHtml) / lineHeightPx);
-      if (lastPLines >= 2) {
-        const fontStr = buildFontString(canvasCtx.baseFontSizePx, canvasCtx.fontFamily);
-        const effectiveWidth = canvasCtx.contentWidth - (canvasCtx.widthSlack || 0);
-        const plainText = htmlToText(lastPEl.innerHTML).trim();
-        const words = plainText.split(/\s+/).filter(w => w.length > 0);
-        const lineStarts = getLineBreakPositions(plainText, effectiveWidth, fontStr);
-        if (lineStarts && lineStarts.length > 0) {
-          const lastStart = lineStarts[lineStarts.length - 1];
-          const lastLineWords = Math.max(0, words.length - lastStart);
-          // Compute widthRatio for computeRuntLinePenalty (same threshold as scoreCandidate)
-          let widthRatioRunt = 1;
-          const ctx2dRunt = getCanvasCtx2d();
-          if (ctx2dRunt && effectiveWidth > 0) {
-            ctx2dRunt.font = fontStr;
-            const lastLineText = words.slice(lastStart).join(' ');
-            widthRatioRunt = ctx2dRunt.measureText(lastLineText).width / effectiveWidth;
-          }
-          const runtPenalty = computeRuntLinePenalty(lastLineWords, widthRatioRunt);
-          if (runtPenalty > 0) {
-            score += runtPenalty * fs;
-            violations.push('runt_line');
-          }
+      const lastPMetrics = computeParaLineMetrics(
+        htmlToText(lastPEl.innerHTML).trim(),
+        canvasCtx,
+        true,   // isContinuation
+        true    // isLastOnPage
+      );
+      if (lastPMetrics.lineCount >= 2) {
+        const runtPenalty = computeRuntLinePenalty(
+          lastPMetrics.lastLineWords,
+          lastPMetrics.lastLineWidthRatio
+        );
+        if (runtPenalty > 0) {
+          score += runtPenalty * fs;
+          violations.push('runt_line');
         }
       }
     }
@@ -2608,5 +2818,5 @@ const tagChapterLastPages = (pages) => {
  * @private
  */
 const canAcceptHtml = (html, contentHeight, canvasCtx) =>
-  measureHtmlHeight(html, canvasCtx) <= contentHeight;
+  measureHtmlHeight(html, canvasCtx) <= contentHeight - DOM_SLACK;
 

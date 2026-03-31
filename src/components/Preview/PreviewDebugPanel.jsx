@@ -225,6 +225,14 @@ const PreviewDebugPanel = memo(function PreviewDebugPanel({
                   />
                   Dimensiones de página
                 </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={!!debugConfig.dimensions.layoutGuides}
+                    onChange={(e) => updateDebug('dimensions.layoutGuides', e.target.checked)}
+                  />
+                  Guías de layout (márgenes + bloques)
+                </label>
               </div>
             </div>
 

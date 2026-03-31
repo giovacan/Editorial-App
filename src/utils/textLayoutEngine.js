@@ -665,7 +665,9 @@ const extractStyles = (style) => ({
   marginBottom: parseFloat(style.marginBottom) || 0,
   marginBottomUnit: (style.marginBottom || '').replace(/[\d.-]/g, '') || 'px',
   paddingTop: parseFloat(style.paddingTop) || 0,
+  paddingTopUnit: (style.paddingTop || '').replace(/[\d.-]/g, '') || 'px',
   paddingBottom: parseFloat(style.paddingBottom) || 0,
+  paddingBottomUnit: (style.paddingBottom || '').replace(/[\d.-]/g, '') || 'px',
   paddingLeft: parseFloat(style.paddingLeft) || 0,
   paddingRight: parseFloat(style.paddingRight) || 0,
   marginLeft: parseFloat(style.marginLeft) || 0,
@@ -691,6 +693,20 @@ const parseStyleString = (cssText) => {
     const re = new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`, 'i');
     return (cssText || '').match(re)?.[1]?.trim() || '';
   };
+  // Expand padding/margin shorthand: "0.5em 1em" → top=0.5em, right=1em, bottom=0.5em, left=1em
+  const expandShorthand = (shortProp, longProps) => {
+    const longTop = get(longProps[0]);
+    if (longTop) return { [longProps[0]]: longTop, [longProps[1]]: get(longProps[1]) || longTop, [longProps[2]]: get(longProps[2]) || longTop, [longProps[3]]: get(longProps[3]) || (get(longProps[1]) || longTop) };
+    const shortVal = get(shortProp);
+    if (!shortVal) return { [longProps[0]]: '', [longProps[1]]: '', [longProps[2]]: '', [longProps[3]]: '' };
+    const parts = shortVal.trim().split(/\s+/);
+    const [v1 = '', v2 = v1, v3 = v1, v4 = v2] = parts;
+    return { [longProps[0]]: v1, [longProps[1]]: v2, [longProps[2]]: parts.length >= 3 ? v3 : v1, [longProps[3]]: parts.length >= 4 ? v4 : v2 };
+  };
+  const padding = expandShorthand('padding', ['padding-top', 'padding-right', 'padding-bottom', 'padding-left']);
+  const margin  = expandShorthand('margin',  ['margin-top',  'margin-right',  'margin-bottom',  'margin-left']);
+  const getPad  = (k) => padding[k] || '';
+  const getMar  = (k) => margin[k]  || get(k) || '';
   return {
     fontSize: parseFloat(get('font-size')) || null,
     fontSizeUnit: (get('font-size') || '').replace(/[\d.]/g, '') || 'pt',
@@ -698,18 +714,20 @@ const parseStyleString = (cssText) => {
     fontWeight: get('font-weight') || 'normal',
     fontStyle: get('font-style') || 'normal',
     textIndent: parseEmValue(get('text-indent')),
-    marginTop: parseFloat(get('margin-top')) || 0,
-    marginTopUnit: (get('margin-top') || '').replace(/[\d.-]/g, '') || 'px',
-    marginBottom: parseFloat(get('margin-bottom')) || 0,
-    marginBottomUnit: (get('margin-bottom') || '').replace(/[\d.-]/g, '') || 'px',
-    paddingTop: parseFloat(get('padding-top')) || 0,
-    paddingBottom: parseFloat(get('padding-bottom')) || 0,
-    paddingLeft: parseFloat(get('padding-left')) || 0,
-    paddingRight: parseFloat(get('padding-right')) || 0,
-    marginLeft: parseFloat(get('margin-left')) || 0,
-    marginLeftUnit: (get('margin-left') || '').replace(/[\d.-]/g, '') || 'px',
-    marginRight: parseFloat(get('margin-right')) || 0,
-    marginRightUnit: (get('margin-right') || '').replace(/[\d.-]/g, '') || 'px',
+    marginTop: parseFloat(getMar('margin-top')) || 0,
+    marginTopUnit: (getMar('margin-top') || '').replace(/[\d.-]/g, '') || 'px',
+    marginBottom: parseFloat(getMar('margin-bottom')) || 0,
+    marginBottomUnit: (getMar('margin-bottom') || '').replace(/[\d.-]/g, '') || 'px',
+    paddingTop: parseFloat(getPad('padding-top')) || 0,
+    paddingTopUnit: (getPad('padding-top') || '').replace(/[\d.-]/g, '') || 'px',
+    paddingBottom: parseFloat(getPad('padding-bottom')) || 0,
+    paddingBottomUnit: (getPad('padding-bottom') || '').replace(/[\d.-]/g, '') || 'px',
+    paddingLeft: parseFloat(getPad('padding-left')) || 0,
+    paddingRight: parseFloat(getPad('padding-right')) || 0,
+    marginLeft: parseFloat(getMar('margin-left')) || 0,
+    marginLeftUnit: (getMar('margin-left') || '').replace(/[\d.-]/g, '') || 'px',
+    marginRight: parseFloat(getMar('margin-right')) || 0,
+    marginRightUnit: (getMar('margin-right') || '').replace(/[\d.-]/g, '') || 'px',
     borderLeftWidth: parseFloat(get('border-left-width')) || 0,
     letterSpacing: parseFloat(get('letter-spacing')) || 0,
     letterSpacingUnit: (get('letter-spacing') || '').replace(/[\d.-]/g, '') || 'px',
@@ -956,7 +974,8 @@ const calculateElementHeight = (parsed, layoutCtx) => {
     const lineCount = (text || '').split('\n').length;
     const marginTopPx = resolveSize(styles.marginTop, styles.marginTopUnit, elFontSizePx);
     const marginBottomPx = resolveSize(styles.marginBottom, styles.marginBottomUnit, elFontSizePx);
-    const paddingV = (styles.paddingTop || 0) + (styles.paddingBottom || 0);
+    const paddingV = resolveSize(styles.paddingTop, styles.paddingTopUnit, elFontSizePx)
+                   + resolveSize(styles.paddingBottom, styles.paddingBottomUnit, elFontSizePx);
     return marginTopPx + paddingV + lineCount * lineHeightPx + marginBottomPx;
   }
 
@@ -1081,7 +1100,8 @@ const calculateElementHeight = (parsed, layoutCtx) => {
   // Resolve vertical margins
   const marginTopPx = resolveSize(styles.marginTop, styles.marginTopUnit, elFontSizePx);
   const marginBottomPx = resolveSize(styles.marginBottom, styles.marginBottomUnit, elFontSizePx);
-  const paddingV = (styles.paddingTop || 0) + (styles.paddingBottom || 0);
+  const paddingV = resolveSize(styles.paddingTop, styles.paddingTopUnit, elFontSizePx)
+                + resolveSize(styles.paddingBottom, styles.paddingBottomUnit, elFontSizePx);
 
   return marginTopPx + paddingV + contentH + marginBottomPx;
 };
