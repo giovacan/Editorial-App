@@ -185,26 +185,45 @@ export function createPaginationLogger() {
         const pageEntries = entries.filter(e => e.page === i + 1);
         const splits = pageEntries.filter(e => e.type === 'split').length;
         const moves = pageEntries.filter(e => e.type === 'move' || e.type === 'heading-group').length;
+        const rejects = pageEntries.filter(e => e.type === 'reject' && e.phase === 'fill').length;
         // Count elements in the page HTML (worker-safe, no DOM)
         const elCount = parseAllElements(p.html || '').length;
 
-        // qualityGrade: A/B/C/D/F based on score thresholds matching evaluatePageQualityCanvas
-        // A=16, B=116, C=316, D=500, F=anything worse
+        // qualityGrade: A/B/C/D/F based on score thresholds.
+        // Calibrated for bestseller quality with reduced cosmetic penalties:
+        //   A ≤ 50: near-perfect pages (≤1 unused line, no violations)
+        //   B ≤ 180: minor cosmetic issues (short_last_para, fragment, small whitespace)
+        //   C ≤ 350: real defects (split_shallow, moderate underfill)
+        //   D ≤ 600: severe issues
+        //   F > 600: critical failures
         const sc = Math.round(q.score);
         const fp = Math.round(q.fillPct != null ? q.fillPct * 100 : 0);
+        const violations = q.violations || [];
+
         // Chapter-last pages are graded on violations only (fill is structurally inevitable)
-        const qualityGrade = p.isChapterLastPage
-          ? (sc <= 16 ? 'A' : sc <= 116 ? 'B' : sc <= 316 ? 'C' : sc <= 500 ? 'D' : 'F')
-          : (sc <= 16  && fp >= 90 ? 'A' :
-             sc <= 116 && fp >= 88 ? 'B' :
-             sc <= 316 && fp >= 85 ? 'C' :
-             sc <= 500 && fp >= 70 ? 'D' : 'F');
+        let qualityGrade = p.isChapterLastPage
+          ? (sc <= 50 ? 'A' : sc <= 180 ? 'B' : sc <= 350 ? 'C' : sc <= 600 ? 'D' : 'F')
+          : (sc <= 50  && fp >= 90 ? 'A' :
+             sc <= 180 && fp >= 86 ? 'B' :
+             sc <= 350 && fp >= 80 ? 'C' :
+             sc <= 600 && fp >= 60 ? 'D' : 'F');
 
         // chapterEnd: true when page is underfilled and ALL fill-pass rejects are chapter-boundary.
         // These are last pages of chapters where the fill-pass correctly refuses to cross chapter lines.
         const pageRejects = pageEntries.filter(e => e.type === 'reject');
         const chapterBoundaryRejects = pageRejects.filter(e => e.data?.reason === 'chapter-boundary');
         const isChapterEnd = fp < 80 && pageRejects.length > 0 && chapterBoundaryRejects.length === pageRejects.length;
+
+        // unsplittable: fill-pass tried (rejects>0) but made no moves — blocked by widow/orphan constraints.
+        // The page is editorially correct but the algorithm cannot improve it further.
+        const unsplittable = rejects > 0 && moves === 0 && fp < 96;
+
+        // Grade override: unsplittable page with decent fill and no grave violations → B minimum.
+        // Rationale: if the fill-pass tried and was blocked, the page is as good as it can be.
+        const hasGraveViolation = violations.some(v => ['orphan', 'widow', 'runt_line', 'heading_at_bottom'].includes(v));
+        if (unsplittable && fp >= 86 && !hasGraveViolation && qualityGrade > 'B') {
+          qualityGrade = 'B';
+        }
 
         // Indent anomaly detection — string-based, no DOM
         const indentAnomalies = detectIndentAnomalies(p.html, { isFirstChapterPage: p.isFirstChapterPage === true });
@@ -215,12 +234,15 @@ export function createPaginationLogger() {
           fillPct: fp,
           score: sc,
           qualityGrade,
-          violations: q.violations || [],
+          violations,
           elements: elCount,
           events: pageEntries.length,
           splits,
           moves,
+          rejects,
           chapterEnd: isChapterEnd,
+          unsplittable,
+          isFirstChapterPage: p.isFirstChapterPage === true,
           unstable: splits > 0 || moves > 1,
           indentAnomalies,
           lineAnalysis: analyzePageLines(p.html, canvasCtx),
@@ -317,19 +339,30 @@ export function createPaginationLogger() {
         }
       }
 
-      // Fill-pass reject details for F-grade non-chapter-end pages — FIRST for visibility
+      // Fill-pass reject details for F/D-grade non-chapter-end pages with rejects — FIRST for visibility
+      // Also include C-grade pages with score≥280 that have rejects (high-penalty but not F/D)
       const realPagesEarly = summary.filter(s => !s.blank);
-      const fPagesEarly = realPagesEarly.filter(s => s.qualityGrade === 'F' && !s.chapterEnd);
+      const fPagesEarly = realPagesEarly.filter(s =>
+        (s.qualityGrade === 'F' || (s.qualityGrade === 'D' && s.fillPct < 80) ||
+         (s.qualityGrade === 'C' && s.score >= 280)) && !s.chapterEnd
+      );
       if (fPagesEarly.length > 0) {
         lines.push('');
         lines.push('F-PAGE REJECT DETAILS:');
         for (const fp of fPagesEarly) {
           const rejects = entries.filter(e => e.page === fp.page && e.type === 'reject');
           const allEvts = entries.filter(e => e.page === fp.page);
-          lines.push(`  p${fp.page} fill=${fp.fillPct}% | ${allEvts.length} events, ${rejects.length} rejects`);
+          lines.push(`  p${fp.page} fill=${fp.fillPct}% score=${fp.score} grade=${fp.grade||fp.qualityGrade} viol=${fp.violations?.join(',')||'—'} | ${allEvts.length} events, ${rejects.length} rejects`);
           for (const r of rejects.slice(0, 8)) {
             const d = r.data || {};
-            lines.push(`    [${r.phase}] reason=${d.reason || '?'} tag=${d.tag || '?'} rem=${d.remainingLines ?? '?'} before=${d.before?.score ?? '?'} after=${d.after?.score ?? '?'} text="${(d.text || '').substring(0, 50)}"`);
+            const f = d.features || {};
+            const rem   = d.remainingLines ?? f.remainingLines ?? '?';
+            const allow = f.splitAllowance != null ? ` allow=${f.splitAllowance}` : '';
+            const ratio = f.emptyRatio    != null ? ` empty=${Math.round(f.emptyRatio*100)}%` : '';
+            const srcV  = f.srcViolations?.length  ? ` srcV=${f.srcViolations.join(',')}` : '';
+            const dstV  = f.destViolations?.length ? ` dstV=${f.destViolations.join(',')}` : '';
+            const srcSc = d.after?.srcScore != null ? ` srcScore=${d.after.srcScore}` : '';
+            lines.push(`    [${r.phase}] reason=${d.reason || '?'} tag=${d.tag || '?'} rem=${rem}${ratio}${allow} before=${d.before?.score ?? '?'} after=${d.after?.score ?? '?'}${srcSc}${srcV}${dstV} text="${(d.text || '').substring(0, 50)}"`);
           }
         }
       }
@@ -366,7 +399,8 @@ export function createPaginationLogger() {
         for (let wi = Math.max(0, si - 2); wi <= Math.min(summary.length - 1, si + 2); wi++) {
           const ws = summary[wi];
           const tag = ws.blank ? 'BLANK' : ws.chapter?.substring(0, 20) || '?';
-          window.push(`p${ws.page}(${ws.blank ? 'blank' : ws.fillPct + '%,' + (ws.chapterEnd ? 'end' : 'cont')})[${tag}]`);
+          const startFlag = ws.isFirstChapterPage ? ',1stCh' : '';
+          window.push(`p${ws.page}(${ws.blank ? 'blank' : ws.fillPct + '%,' + (ws.chapterEnd ? 'end' : 'cont') + startFlag})[${tag}]`);
         }
         chapterBoundaries.push(window.join(' → '));
       }

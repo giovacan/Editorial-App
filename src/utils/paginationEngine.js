@@ -153,11 +153,19 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
 
     if (remainingHtml) {
       // Detect whether the split happened mid-sentence or at a sentence boundary.
-      // If the chunk ends with terminal punctuation (.!?»"), the rest is a new paragraph
-      // and should receive normal first-line indent. Mid-sentence splits are continuations
-      // and must have text-indent:0 (no indent) since they continue the same sentence.
+      // Primary signal: if the rest chunk starts with a lowercase letter, it is
+      // unambiguously a continuation regardless of how the chunk ended.
+      // Secondary signal: if chunk ends without terminal punctuation (.!?»""…),
+      // also treat as mid-sentence.
+      // This covers cases where the chunk ends with a sentence that was itself cut
+      // (e.g. "No se trata" ends with 'a' — no punct — but also cases where the
+      // chunk ends with ." and the rest begins lowercase from the same sentence).
       const chunkPlainText = htmlToText(chunkHtml).trim();
-      const isMidSentence = !/[.!?»"]\s*$/.test(chunkPlainText);
+      const restPlainText  = htmlToText(remainingHtml).trim();
+      const restFirstLetter = restPlainText.match(/\p{L}/u)?.[0] || '';
+      const restStartsLower = restFirstLetter && restFirstLetter === restFirstLetter.toLowerCase()
+        && restFirstLetter !== restFirstLetter.toUpperCase();
+      const isMidSentence = restStartsLower || !/[.!?»"\u201D\u2026]\s*$/.test(chunkPlainText);
 
       let continuationStyle;
       if (isMidSentence) {
@@ -346,9 +354,9 @@ export const buildChapterTitleHtml = (chapter, config, baseFontSize, lineHeightP
       if (ctConfig.showLines) {
         const hrTop = getHrStyle();
         const hrBottom = getHrStyle();
-        titleHtml = `<div style="margin:${spacedTop}px 0 ${titleMarginBottom}px 0;text-align:center;"><div style="${hrTop}"></div><div style="${titleBaseStyle}padding:${titleMarginBottom / 2}px 0;">${renderTitleInner()}</div><div style="${hrBottom}"></div></div>`;
+        titleHtml = `<div data-chapter-start="true" style="margin:${spacedTop}px 0 ${titleMarginBottom}px 0;text-align:center;"><div style="${hrTop}"></div><div style="${titleBaseStyle}padding:${titleMarginBottom / 2}px 0;">${renderTitleInner()}</div><div style="${hrBottom}"></div></div>`;
       } else {
-        titleHtml = `<div style="${titleBaseStyle}margin:${spacedTop}px 0 ${titleMarginBottom}px 0;">${renderTitleInner()}</div>`;
+        titleHtml = `<div data-chapter-start="true" style="${titleBaseStyle}margin:${spacedTop}px 0 ${titleMarginBottom}px 0;">${renderTitleInner()}</div>`;
       }
       break;
     }
@@ -357,9 +365,9 @@ export const buildChapterTitleHtml = (chapter, config, baseFontSize, lineHeightP
       if (ctConfig.showLines) {
         const hrTop = getHrStyle();
         const hrBottom = getHrStyle();
-        titleHtml = `<div style="margin:${Math.max(0, halfTop)}px 0 ${titleMarginBottom}px 0;text-align:center;"><div style="${hrTop}"></div><div style="${titleBaseStyle}padding:${titleMarginBottom / 2}px 0;">${renderTitleInner()}</div><div style="${hrBottom}"></div></div>`;
+        titleHtml = `<div data-chapter-start="true" style="margin:${Math.max(0, halfTop)}px 0 ${titleMarginBottom}px 0;text-align:center;"><div style="${hrTop}"></div><div style="${titleBaseStyle}padding:${titleMarginBottom / 2}px 0;">${renderTitleInner()}</div><div style="${hrBottom}"></div></div>`;
       } else {
-        titleHtml = `<div style="${titleBaseStyle}margin:${Math.max(0, halfTop)}px 0 ${titleMarginBottom}px 0;">${renderTitleInner()}</div>`;
+        titleHtml = `<div data-chapter-start="true" style="${titleBaseStyle}margin:${Math.max(0, halfTop)}px 0 ${titleMarginBottom}px 0;">${renderTitleInner()}</div>`;
       }
       break;
     }
@@ -367,9 +375,9 @@ export const buildChapterTitleHtml = (chapter, config, baseFontSize, lineHeightP
       if (ctConfig.showLines) {
         const hrTop = getHrStyle(ctConfig.lineStyle === 'double' ? 3 : 1);
         const hrBottom = getHrStyle(ctConfig.lineStyle === 'double' ? 3 : 1);
-        titleHtml = `<div style="${titleBaseStyle}display:flex;align-items:center;justify-content:center;min-height:${contentHeight}px;flex-direction:column;"><div style="${hrTop}"></div><div>${renderTitleInner()}</div><div style="${hrBottom}"></div></div>`;
+        titleHtml = `<div data-chapter-start="true" style="${titleBaseStyle}display:flex;align-items:center;justify-content:center;min-height:${contentHeight}px;flex-direction:column;"><div style="${hrTop}"></div><div>${renderTitleInner()}</div><div style="${hrBottom}"></div></div>`;
       } else {
-        titleHtml = `<div style="${titleBaseStyle}display:flex;align-items:center;justify-content:center;min-height:${contentHeight}px;flex-direction:column;"><div>${renderTitleInner()}</div></div>`;
+        titleHtml = `<div data-chapter-start="true" style="${titleBaseStyle}display:flex;align-items:center;justify-content:center;min-height:${contentHeight}px;flex-direction:column;"><div>${renderTitleInner()}</div></div>`;
       }
       break;
     }
@@ -377,9 +385,9 @@ export const buildChapterTitleHtml = (chapter, config, baseFontSize, lineHeightP
       if (ctConfig.showLines) {
         const hrTop = getHrStyle();
         const hrBottom = getHrStyle();
-        titleHtml = `<div style="margin:${titleMarginTop}px 0 ${titleMarginBottom}px 0;text-align:center;"><div style="${hrTop}"></div><div style="${titleBaseStyle}padding:${titleMarginBottom / 2}px 0;">${renderTitleInner()}</div><div style="${hrBottom}"></div></div>`;
+        titleHtml = `<div data-chapter-start="true" style="margin:${titleMarginTop}px 0 ${titleMarginBottom}px 0;text-align:center;"><div style="${hrTop}"></div><div style="${titleBaseStyle}padding:${titleMarginBottom / 2}px 0;">${renderTitleInner()}</div><div style="${hrBottom}"></div></div>`;
       } else {
-        titleHtml = `<div style="${titleBaseStyle}margin:${titleMarginTop}px 0 ${titleMarginBottom}px 0;">${renderTitleInner()}</div>`;
+        titleHtml = `<div data-chapter-start="true" style="${titleBaseStyle}margin:${titleMarginTop}px 0 ${titleMarginBottom}px 0;">${renderTitleInner()}</div>`;
       }
     }
   }

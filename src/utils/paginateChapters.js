@@ -39,6 +39,7 @@ import {
   measureHtmlHeight,
   createLayoutContext,
   getLineBreakPositions,
+  getLineBreakPositionsKP,
   buildFontString,
   countHyphenationMetrics,
   getCtx as getEngineCtx2d
@@ -47,15 +48,22 @@ import {
 import { createPaginationLogger, assignBlockId, deriveFragmentId, injectBlockIdAttrs, resetBlockCounter } from './paginationLogger.js';
 
 // Canvas measures content height precisely, but the browser DOM renders the same
-// HTML taller due to subpixel line-height accumulation and font rounding.
-// The error scales with font size and line count — using a fixed px value
-// under-corrects at larger fonts and over-corrects at tiny scales.
-// 30% of one lineHeightPx is the empirically-derived safe buffer:
-//   - At lineHeightPx=15 (a5, 1.5lh): DOM_SLACK ≈ 4.5px  (~3 lines of subpixel error)
-//   - At lineHeightPx=20 (6x9, 1.5lh): DOM_SLACK ≈ 6px
+// HTML taller due to subpixel line-height accumulation, font rounding, and
+// em-based padding on blockquotes/headings that canvas cannot measure exactly.
+// Empirical worst-case delta observed: ~1.8 lines at lineHeightPx=10px.
+// Using 1 full line (factor 1.0) covers all observed cases without wasting space.
 // Computed once per pagination run, after layoutCtx is available.
 // Initial value 0 — overwritten at the start of paginateChapters.
 let DOM_SLACK = 0;
+
+// Per-run cache for evaluatePageQualityCanvas — cleared at the start of each
+// paginateChapters() invocation. Eliminates ~80% of redundant scoring across
+// the 27 repair passes that re-evaluate the same page HTML repeatedly.
+// Key: `${simpleHash(html)}|${isFragment?1:0}|${isChapterLastPage?1:0}`
+// Value: { score, fillPct, violations }
+let _evalCache = new Map();
+let _evalCacheHits = 0;
+let _evalCacheMisses = 0;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DOM-free HTML helpers — Worker-safe string-based replacements for
@@ -104,14 +112,37 @@ const RUNT_HARD_PENALTY_THRESHOLD = 900;
  * @param {object} safeConfig
  * @returns {Page[]}
  */
+/**
+ * Fast non-cryptographic string hash (djb2 variant).
+ * Stable across runs for the same input — suitable as a chapter cache key.
+ * @param {string} str
+ * @returns {string} hex string
+ */
+const simpleHash = (str) => {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  }
+  return (h >>> 0).toString(16);
+};
+
 export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, options = null) => {
   if (!chapters || !Array.isArray(chapters)) return { pages: [], log: {}, summaryText: '' };
 
   const logger = options?.logger || null;
   const onProgress = options?.onProgress || null;
+  // Incremental layout: previous chapter hashes + pages from last run.
+  // If a chapter's hash matches, skip greedyPaginate and reuse its pages.
+  const prevChapterHashes = options?.prevChapterHashes || null;
+  const prevChapterPages  = options?.prevChapterPages  || null;
   const log = logger || createPaginationLogger();
   log.reset();
   resetBlockCounter();
+
+  // Clear scoring cache for this run (fresh state per pagination invocation).
+  _evalCache = new Map();
+  _evalCacheHits = 0;
+  _evalCacheMisses = 0;
 
   const allPages = [];
 
@@ -133,7 +164,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     ),
     widthSlack: justifySlack,
     lineHeightPx: layoutCtx.lineHeightPx,
-    targetFillPct: safeConfig?.pagination?.targetFillPct ?? 0.92,
+    targetFillPct: safeConfig?.pagination?.targetFillPct ?? 0.88,
     ctx2d: getEngineCtx2d(),
     textAlign: layoutCtx.textAlign || 'left',
     quoteConfig: safeConfig?.quote || {
@@ -178,7 +209,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
       },
       flags: {
         splitLongParagraphs: layoutCtx.splitLongParagraphs,
-        targetFillPct: safeConfig?.pagination?.targetFillPct ?? 0.92,
+        targetFillPct: safeConfig?.pagination?.targetFillPct ?? 0.88,
         firstLineIndent: safeConfig?.paragraph?.firstLineIndent ?? 1.5,
         justifySlack: justifySlack,
         workerPath: typeof WorkerGlobalScope !== 'undefined' ? 'worker' : 'main-thread'
@@ -188,9 +219,23 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     });
   }
 
+  // chapterHashes[i] = simpleHash of chapter html+title — returned to caller
+  // so it can feed them back as prevChapterHashes on the next run.
+  // chapterPageRanges[i] = { start, end } indices into allPages (before global passes)
+  // — used to build per-chapter page slices for the next run's cache.
+  const chapterHashes = [];
+  const chapterPageRanges = [];
+
   for (let i = 0; i < chapters.length; i++) {
     const chapter = chapters[i];
     if (onProgress) onProgress(i + 1, chapters.length);
+
+    // Compute a stable hash for this chapter's content + title.
+    const chHash = simpleHash((chapter.html || '') + '|' + (chapter.title || ''));
+    chapterHashes.push(chHash);
+
+    // Note the page index where this chapter starts (including any parity-pad blank)
+    const chapterStartIdx = allPages.length;
 
     // Pad to odd page if chapter must start on right
     if (shouldStartOnRightPage(chapter, i, safeConfig) && i > 0) {
@@ -206,6 +251,20 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
       }
     }
 
+    // Incremental layout: skip greedyPaginate if chapter is unchanged.
+    if (
+      prevChapterHashes && prevChapterPages &&
+      prevChapterHashes[i] === chHash &&
+      Array.isArray(prevChapterPages[i]) && prevChapterPages[i].length > 0
+    ) {
+      if (process.env.NODE_ENV === 'development') {
+        log.record('greedy', 'diag', 0, { note: 'incremental-cache-hit', chapter: i, hash: chHash });
+      }
+      allPages.push(...prevChapterPages[i]);
+      chapterPageRanges.push({ start: chapterStartIdx, end: allPages.length });
+      continue;
+    }
+
     const elements = flattenChapterElements(chapter, layoutCtx, canvasCtx, measureDiv, safeConfig);
     // DEV: log first 4 paragraph indents to diagnose missing-indent bugs
     if (process.env.NODE_ENV === 'development' && i === 0) {
@@ -217,6 +276,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     }
     const chapterPages = greedyPaginate(elements, layoutCtx, canvasCtx, measureDiv, safeConfig, chapter, log);
     allPages.push(...chapterPages);
+    chapterPageRanges.push({ start: chapterStartIdx, end: allPages.length });
   }
 
   // Re-number all pages sequentially
@@ -252,22 +312,26 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
   // same original paragraph on one page. One has data-continuation='true' — merge
   // it with its neighbor so it displays as a single paragraph.
   mergeSplitFragments(allPages, log);
-  fixShortLastLines(allPages, layoutCtx, canvasCtx, log);
+  repairPageDefects(allPages, layoutCtx, canvasCtx, log);
+  // Third heading fix pass: defect repair may have freed space on pages
+  // that were previously too full to accept a forwarded heading.
+  fixHeadingsAtBottom(allPages, canvasCtx, layoutCtx, log);
 
   // Indent repair pass — correct any <p> that lost its text-indent due to being
   // the "first paragraph" of a chapter (baked-in text-indent:0) but ended up on
   // a page other than the chapter-start page after fill/split operations.
   // Also fixes any non-continuation <p> at the start of a page that has indent:0.
-  repairMissingIndents(allPages, safeConfig, log);
+  // Logging suppressed here (null): the reopt pass re-runs repair on the final
+  // allPages at line ~356 and logs from there, avoiding duplicate INDENT REPAIR entries.
+  repairMissingIndents(allPages, safeConfig, null);
+  // Re-run fragment merge: repairMissingIndents may have re-added data-continuation
+  // to lowercase-start paragraphs that lost it during global passes. Those fragments
+  // can now be detected and merged by Pass 1 of mergeSplitFragments.
+  mergeSplitFragments(allPages, log);
 
   // Tag last page of each chapter — suppresses fill-penalties in scoring
   // for pages that can never be filled further (chapter boundary constraint).
   tagChapterLastPages(allPages);
-
-  // E6: Distribute remaining vertical whitespace proportionally among elements.
-  // Runs LAST (after all structural mutations) so margins are set once on the
-  // final page layout and are never moved to a different page.
-  distributeVerticalSpace(allPages, layoutCtx, canvasCtx);
 
   // ╔══════════════════════════════════════════════════════════════════╗
   // ║  FASE 6 — GLOBAL REOPTIMIZATION PASS                           ║
@@ -323,7 +387,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
         cleanupNearlyEmptyPages(relaxedPages, relaxedLayoutCtx, canvasCtx);
         smoothPageBalance(relaxedPages, relaxedLayoutCtx, canvasCtx, log);
         mergeSplitFragments(relaxedPages, log);
-        fixShortLastLines(relaxedPages, relaxedLayoutCtx, canvasCtx, log);
+        repairPageDefects(relaxedPages, relaxedLayoutCtx, canvasCtx, log);
         repairMissingIndents(relaxedPages, safeConfig, log);
         tagChapterLastPages(relaxedPages);
 
@@ -354,13 +418,20 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
         smoothPageBalance(allPages, layoutCtx, canvasCtx, log);
         enforceChapterStartParity(allPages, safeConfig);
         mergeSplitFragments(allPages, log);
-        fixShortLastLines(allPages, layoutCtx, canvasCtx, log);
+        repairPageDefects(allPages, layoutCtx, canvasCtx, log);
         repairMissingIndents(allPages, safeConfig, log);
+        mergeSplitFragments(allPages, log);
         tagChapterLastPages(allPages);
         distributeVerticalSpace(allPages, layoutCtx, canvasCtx);
       }
     }
   }
+
+  // E6 final pass: distribute vertical whitespace unconditionally AFTER all
+  // structural mutations (including FASE 6 reoptimization which may have replaced
+  // entire chapter slices). This ensures chapter-start pages always get margins
+  // distributed regardless of whether the reopt branch ran.
+  distributeVerticalSpace(allPages, layoutCtx, canvasCtx);
 
   // Re-number again after fill-pass may have emptied some pages.
   // Blank pages count toward the physical position but don't show a number —
@@ -424,7 +495,28 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
   // Generate structured summary via logger
   log.generateSummary(allPages, evaluatePageQualityCanvas, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx);
 
-  return { pages: allPages, log: log.getLog(), summaryText: log.formatSummaryText() };
+  // Build per-chapter page slices using the ranges recorded before global passes.
+  // Global passes (fill-pass, smoothPageBalance) may move pages between chapters,
+  // but the greedy-pass output per chapter is what matters for cache validity on the
+  // next run — since global passes will always re-run on all pages.
+  const chapterPageSlices = chapterPageRanges.map(({ start, end }) =>
+    allPages.slice(start, end)
+  );
+
+  // Log scoring cache stats (dev only)
+  if (process.env.NODE_ENV === 'development') {
+    const total = _evalCacheHits + _evalCacheMisses;
+    const hitRate = total > 0 ? ((_evalCacheHits / total) * 100).toFixed(1) : '0.0';
+    console.log(`[EVAL-CACHE] ${_evalCacheHits} hits / ${_evalCacheMisses} misses (${hitRate}% hit rate, ${_evalCache.size} entries)`);
+  }
+
+  return {
+    pages: allPages,
+    log: log.getLog(),
+    summaryText: log.formatSummaryText(),
+    chapterHashes,
+    chapterPageSlices
+  };
 };
 
 /**
@@ -550,7 +642,9 @@ const getLastLineMetrics = (plainText, canvasCtx) => {
   const fontStr = buildFontString(canvasCtx.baseFontSizePx, canvasCtx.fontFamily);
   const effectiveWidth = canvasCtx.contentWidth - (canvasCtx.widthSlack || 0);
   const words = text.split(/\s+/).filter(w => w.length > 0);
-  const lineStarts = getLineBreakPositions(text, effectiveWidth, fontStr);
+  // Use KP-optimal line breaks (consistent with measureHtmlHeight), greedy fallback
+  const kpResult = getLineBreakPositionsKP(text, effectiveWidth, fontStr);
+  const lineStarts = kpResult ? kpResult.lineStarts : getLineBreakPositions(text, effectiveWidth, fontStr);
   const lastStart = (lineStarts && lineStarts.length > 0)
     ? lineStarts[lineStarts.length - 1]
     : 0;
@@ -649,7 +743,9 @@ const computeParaLineMetrics = (plainText, canvasCtx, isContinuation = false, is
   const fontStr = buildFontString(canvasCtx.baseFontSizePx, canvasCtx.fontFamily);
   const effectiveWidth = canvasCtx.contentWidth - (canvasCtx.widthSlack || 0);
   const words = text.split(/\s+/).filter(w => w.length > 0);
-  const lineStarts = getLineBreakPositions(text, effectiveWidth, fontStr);
+  // Use KP-optimal line breaks (consistent with measureHtmlHeight), greedy fallback
+  const kpResult = getLineBreakPositionsKP(text, effectiveWidth, fontStr);
+  const lineStarts = kpResult ? kpResult.lineStarts : getLineBreakPositions(text, effectiveWidth, fontStr);
   const lineCount = lineStarts.length;
 
   // Last line metrics (same logic as getLastLineMetrics)
@@ -736,7 +832,11 @@ const scoreCandidate = (firstChunkHtml, restChunkHtml, fullParaHtml, remainingPx
   // splitParagraphByLines wraps at (contentWidth - widthSlack); using full contentWidth
   // here would undercount line breaks and make lastLineWords appear larger than reality.
   const effectiveWidth = canvasCtx.contentWidth - (canvasCtx.widthSlack || 0);
-  const lineStarts = getLineBreakPositions(plainText, effectiveWidth, fontStr);
+  // Use KP-optimal line breaks when available — this aligns scoring with measureHtmlHeight
+  // which also uses KP internally (via countLinesKP). Greedy fallback for edge cases
+  // where KP returns null (long words, single-word lines, etc.).
+  const kpResult = getLineBreakPositionsKP(plainText, effectiveWidth, fontStr);
+  const lineStarts = kpResult ? kpResult.lineStarts : getLineBreakPositions(plainText, effectiveWidth, fontStr);
   const words = plainText.split(/\s+/).filter(w => w.length > 0);
 
   // 1. Word count on last line (guard against empty lineStarts)
@@ -788,7 +888,7 @@ const scoreCandidate = (firstChunkHtml, restChunkHtml, fullParaHtml, remainingPx
   // Measure the width of each line and penalise high standard deviation.
   // Only applies to multi-line chunks (≥3 lines) — single-line splits have no shape.
   // stdDev > 25% of line width triggers a proportional penalty.
-  // Uses lineStarts from getLineBreakPositions (already computed above).
+  // Uses lineStarts from KP/greedy (already computed above).
   if (lineStarts.length >= 3 && words.length > 0) {
     const ctx2d2 = getCanvasCtx2d();
     const lineWidths = [];
@@ -1043,8 +1143,388 @@ const mergeIntoOne = (htmlA, htmlB) => {
   return htmlA + htmlB;
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// BREAKPOINT-BASED PAGE FILLING — TeX-simplified approach
+// Instead of greedily adding elements until overflow, collect ALL valid
+// breakpoints for each page and pick the one with lowest penalty.
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Core greedy pagination — single linear pass.
+ * Collect all valid breakpoints for a page being built.
+ * A breakpoint is a place where the page could end — either after a complete
+ * block element, or at a KP line boundary inside a splittable paragraph.
+ *
+ * @param {Array} elements   - flattened chapter elements
+ * @param {number} startIdx  - first element index to consider
+ * @param {string} baseHtml  - HTML already committed to this page (title, prior elements)
+ * @param {number} budget    - max height for this page
+ * @param {object} canvasCtx - Canvas layout context
+ * @param {object} layoutCtx - full layout context (lineHeightPx, minOrphanLines, etc.)
+ * @param {object} measureDiv - for splitParagraphByLines
+ * @param {object} safeConfig - paragraph config
+ * @param {object} log       - pagination logger
+ * @returns {Array} breakpoint candidates sorted by elementIndex
+ * @private
+ */
+const collectBreakpoints = (elements, startIdx, baseHtml, budget, canvasCtx, layoutCtx, measureDiv, safeConfig, log) => {
+  const { lineHeightPx, minOrphanLines, splitLongParagraphs, textAlign } = layoutCtx;
+  const measure = (html) => measureHtmlHeight(html, canvasCtx);
+  const candidates = [];
+  let accumulated = baseHtml || '';
+  let accHeight = accumulated ? measure(accumulated) : 0;
+  const chapterTitle = elements[startIdx]?.chapterTitle;
+
+  for (let i = startIdx; i < elements.length; i++) {
+    const el = elements[i];
+    // Stay within the same chapter
+    if (el.chapterTitle !== chapterTitle) break;
+    // Skip titles — handled separately before breakpoint collection
+    if (el.isTitle) break;
+
+    const withEl = accumulated + el.html;
+    const withElH = measure(withEl);
+
+    // A. Element fits entirely → breakpoint after this complete block
+    if (withElH <= budget) {
+      const isHeading = /^H[1-6]$/i.test(el.tag);
+      const isBold = !isHeading && el.tag === 'P' && el.isBold;
+
+      candidates.push({
+        type: 'block-end',
+        elementIndex: i,
+        html: withEl,
+        height: withElH,
+        restHtml: null,
+        isHeadingOrBold: isHeading || isBold,
+        isLastChapterElement: i === elements.length - 1,
+        orphanLines: 0,
+        widowLines: 0,
+        splitLine: 0,
+        totalLines: 0,
+      });
+
+      // C. SPECULATIVE SPLIT: if this block-end leaves 2+ unused lines AND the
+      // next element is a splittable paragraph, try pulling 1-2 lines from it
+      // onto this page. This breaks the 87%/96% quantization pattern.
+      const specRemainingSpace = budget - withElH;
+      const specRemainingLines = Math.floor(specRemainingSpace / lineHeightPx);
+      const nextEl = i + 1 < elements.length ? elements[i + 1] : null;
+      const nextCanSplit = nextEl
+        && splitLongParagraphs
+        && !nextEl.isTitle
+        && nextEl.chapterTitle === chapterTitle
+        && (nextEl.tag === 'P' || nextEl.tag === 'DIV' || nextEl.tag === 'BLOCKQUOTE')
+        && !nextEl.isBold
+        && specRemainingLines >= 2; // need at least 2 lines to avoid orphan
+
+      if (nextCanSplit) {
+        const specHasIndent = nextEl.tag === 'P';
+        const specIndentValue = safeConfig.paragraph?.firstLineIndent || 1.5;
+        const specPreserveIndent = /text-indent:\s*0[^.]/.test(nextEl.html);
+
+        const specSplit = splitParagraphByLines(
+          nextEl.html, measureDiv, specRemainingSpace,
+          textAlign, specHasIndent, specIndentValue, specPreserveIndent, canvasCtx
+        );
+
+        if (specSplit && specSplit.length >= 2) {
+          const specFirst = specSplit[0];
+          const specRest = specSplit.slice(1).reduce((a, b) => mergeIntoOne(a, b));
+          const specH = measure(withEl + specFirst);
+          const specOrphan = Math.max(1, Math.floor(measure(specFirst) / lineHeightPx));
+          const specWidow = Math.max(1, Math.floor(measure(specRest) / lineHeightPx));
+
+          if (specH <= budget
+              && specOrphan >= (minOrphanLines || 2)
+              && specWidow >= (minOrphanLines || 2) + 1) {
+            candidates.push({
+              type: 'para-split',
+              elementIndex: i + 1,
+              html: withEl + specFirst,
+              height: specH,
+              restHtml: specRest,
+              isHeadingOrBold: false,
+              isLastChapterElement: (i + 1) === elements.length - 1,
+              orphanLines: specOrphan,
+              widowLines: specWidow,
+              splitLine: specOrphan,
+              totalLines: specOrphan + specWidow,
+            });
+          }
+        }
+      }
+
+      accumulated = withEl;
+      accHeight = withElH;
+      continue;
+    }
+
+    // B. Element doesn't fit — try split breakpoints inside it
+    const canSplit = splitLongParagraphs
+      && (el.tag === 'P' || el.tag === 'DIV' || el.tag === 'BLOCKQUOTE')
+      && !el.isBold;
+
+    if (canSplit) {
+      const remainingSpace = budget - accHeight;
+      if (remainingSpace < lineHeightPx) break; // no room for even 1 line
+
+      const hasIndent = el.tag === 'P';
+      const indentValue = safeConfig.paragraph?.firstLineIndent || 1.5;
+      const preserveIndent = /text-indent:\s*0[^.]/.test(el.html);
+
+      // Use splitParagraphByLines for a full-page split first
+      const fullPageSplit = splitParagraphByLines(
+        el.html, measureDiv, budget - accHeight,
+        textAlign, hasIndent, indentValue, preserveIndent, canvasCtx
+      );
+
+      if (fullPageSplit && fullPageSplit.length >= 2) {
+        const defaultFirst = fullPageSplit[0];
+        const defaultRest = fullPageSplit.slice(1).reduce((a, b) => mergeIntoOne(a, b));
+        const defaultFirstH = measure(accumulated + defaultFirst);
+        const defaultOrphan = Math.max(1, Math.floor(measure(defaultFirst) / lineHeightPx));
+        const defaultWidow = Math.max(1, Math.floor(measure(defaultRest) / lineHeightPx));
+
+        // Candidate at default split (delta=0)
+        if (defaultFirstH <= budget && defaultOrphan >= (minOrphanLines || 2)) {
+          candidates.push({
+            type: 'para-split',
+            elementIndex: i,
+            html: accumulated + defaultFirst,
+            height: defaultFirstH,
+            restHtml: defaultRest,
+            isHeadingOrBold: false,
+            isLastChapterElement: i === elements.length - 1,
+            orphanLines: defaultOrphan,
+            widowLines: defaultWidow,
+            splitLine: defaultOrphan,
+            totalLines: defaultOrphan + defaultWidow,
+          });
+        }
+
+        // Try delta=-1: one fewer line on this page
+        const adjMax1 = remainingSpace - lineHeightPx;
+        if (adjMax1 >= lineHeightPx * 2) {
+          const cand1 = splitParagraphByLines(
+            el.html, measureDiv, adjMax1,
+            textAlign, hasIndent, indentValue, preserveIndent, canvasCtx
+          );
+          if (cand1 && cand1.length >= 2) {
+            const c1First = cand1[0];
+            const c1Rest = cand1.slice(1).reduce((a, b) => mergeIntoOne(a, b));
+            const c1H = measure(accumulated + c1First);
+            const c1Orphan = Math.max(1, Math.floor(measure(c1First) / lineHeightPx));
+            const c1Widow = Math.max(1, Math.floor(measure(c1Rest) / lineHeightPx));
+            if (c1H <= budget && c1Orphan >= (minOrphanLines || 2)) {
+              candidates.push({
+                type: 'para-split',
+                elementIndex: i,
+                html: accumulated + c1First,
+                height: c1H,
+                restHtml: c1Rest,
+                isHeadingOrBold: false,
+                isLastChapterElement: i === elements.length - 1,
+                orphanLines: c1Orphan,
+                widowLines: c1Widow,
+                splitLine: c1Orphan,
+                totalLines: c1Orphan + c1Widow,
+              });
+            }
+          }
+        }
+
+        // Try delta=-2: two fewer lines (fixes runts by moving last line to next page)
+        const adjMax2 = remainingSpace - 2 * lineHeightPx;
+        if (adjMax2 >= lineHeightPx * 2) {
+          const cand2 = splitParagraphByLines(
+            el.html, measureDiv, adjMax2,
+            textAlign, hasIndent, indentValue, preserveIndent, canvasCtx
+          );
+          if (cand2 && cand2.length >= 2) {
+            const c2First = cand2[0];
+            const c2Rest = cand2.slice(1).reduce((a, b) => mergeIntoOne(a, b));
+            const c2H = measure(accumulated + c2First);
+            const c2Orphan = Math.max(1, Math.floor(measure(c2First) / lineHeightPx));
+            const c2Widow = Math.max(1, Math.floor(measure(c2Rest) / lineHeightPx));
+            if (c2H <= budget && c2Orphan >= (minOrphanLines || 2)) {
+              candidates.push({
+                type: 'para-split',
+                elementIndex: i,
+                html: accumulated + c2First,
+                height: c2H,
+                restHtml: c2Rest,
+                isHeadingOrBold: false,
+                isLastChapterElement: i === elements.length - 1,
+                orphanLines: c2Orphan,
+                widowLines: c2Widow,
+                splitLine: c2Orphan,
+                totalLines: c2Orphan + c2Widow,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Can't fit or split — stop collecting (nothing beyond this can fit either)
+    break;
+  }
+
+  return candidates;
+};
+
+/**
+ * Score a breakpoint candidate. Lower = better.
+ *
+ * Priority:
+ *   PROHIBIDO (Infinity): overflow, heading-at-bottom
+ *   SEVERO (1000-2000):   widow ≤1 line, orphan ≤1 line, extreme runt
+ *   MODERADO (200-500):   shallow split, severe underfill, medium runt
+ *   LEVE (40-100):        short_last_para, minor underfill
+ *   PREFERENCIA:          maximize fill
+ *
+ * @private
+ */
+const scoreBreakpoint = (candidate, canvasCtx, layoutCtx, elements, log) => {
+  const { contentHeight, lineHeightPx, minOrphanLines } = layoutCtx;
+  let penalty = 0;
+
+  // 1. PROHIBIDO: overflow
+  if (candidate.height > contentHeight) return Infinity;
+
+  // 2. PROHIBIDO: heading or bold paragraph at bottom of page
+  //    Applies to block-end AND flush candidates (both can leave a heading stranded).
+  //    Para-splits can't end with a heading by construction.
+  if ((candidate.type === 'block-end' || candidate.type === 'flush') && candidate.isHeadingOrBold) {
+    // Check if there's a following element (heading at bottom is only bad when
+    // content follows — at chapter end it's fine)
+    const nextIdx = candidate.elementIndex + 1;
+    const hasFollowing = nextIdx < elements.length
+      && elements[nextIdx].chapterTitle === elements[candidate.elementIndex].chapterTitle
+      && !elements[nextIdx].isTitle;
+    if (hasFollowing) {
+      penalty += 2500; // heading-at-bottom (2000) + keep-with-next (500)
+    }
+  }
+
+  // 4. Underfill penalty — continuous scale
+  const fillPct = candidate.height / contentHeight;
+  const unusedLines = Math.floor((contentHeight - candidate.height) / lineHeightPx);
+
+  // Chapter-end pages are expected to be short — don't penalize underfill
+  if (!candidate.isLastChapterElement) {
+    if (unusedLines >= 6)      penalty += 600;
+    else if (unusedLines >= 4) penalty += 400;
+    else                       penalty += unusedLines * 40; // 1-3 lines: 40/80/120 — gradual
+  }
+
+  // 5. Split-specific penalties
+  if (candidate.type === 'para-split') {
+    const effectiveMinOrphan = candidate.isLastChapterElement ? 1 : (minOrphanLines || 2);
+    const effectiveMinWidow = candidate.isLastChapterElement ? 1 : (minOrphanLines || 2) + 1;
+
+    // Hard orphan constraint
+    if (candidate.orphanLines < effectiveMinOrphan) penalty += 1000;
+
+    // Widow penalty (rest chunk lines)
+    if (candidate.widowLines < 2) penalty += 1000;      // real widow
+    else if (candidate.widowLines < effectiveMinWidow) penalty += 200; // shallow split
+
+    // Runt penalty: last line of the chunk on this page
+    const chunkPlainText = htmlToText(candidate.html).trim();
+    const metrics = getLastLineMetrics(chunkPlainText, canvasCtx);
+    penalty += computeRuntLinePenalty(metrics.lastLineWords, metrics.widthRatio ?? 1);
+
+    // Hyphenation at split point — word broken across page boundary
+    if (chunkPlainText.endsWith('-')) penalty += 300;
+
+    // Fragment base cost (any split is slightly worse than no split)
+    penalty += 15;
+  }
+
+  // 6. For block-end candidates: check if the last block is a short 1-line paragraph
+  if (candidate.type === 'block-end' && !candidate.isHeadingOrBold) {
+    const el = elements[candidate.elementIndex];
+    if (el && (el.tag === 'P' || el.tag === 'BLOCKQUOTE')) {
+      const plainText = (el.textContent || '').trim();
+      const metrics = getLastLineMetrics(plainText, canvasCtx);
+      if (isSevereShortLastLine(metrics) && unusedLines <= 1) {
+        // Runt-flush: paragraph's short last line is trapped at page bottom
+        penalty += computeRuntLinePenalty(metrics.lastLineWords, metrics.widthRatio ?? 1);
+      }
+    }
+  }
+
+  // 7. Widow guard: 1-line complete paragraph at very bottom of full page
+  if (candidate.type === 'block-end' && !candidate.isHeadingOrBold && unusedLines <= 0) {
+    const el = elements[candidate.elementIndex];
+    if (el && el.tag === 'P' && !el.isBold) {
+      const measure = (html) => measureHtmlHeight(html, canvasCtx);
+      const elLineCount = Math.floor(measure(el.html) / lineHeightPx);
+      if (elLineCount <= 1) {
+        penalty += 500; // widow-like isolated line at bottom
+      }
+    }
+  }
+
+  // 8. Lookahead: simulate what the next page looks like
+  //    A breakpoint that creates a much better next page should be preferred
+  if (candidate.type === 'para-split' && !candidate.isLastChapterElement) {
+    const measure = (html) => measureHtmlHeight(html, canvasCtx);
+    // Build simulated next page: rest chunk + following elements that fit
+    let simHtml = candidate.restHtml;
+    let simH = measure(simHtml);
+    for (let j = candidate.elementIndex + 1; j < elements.length; j++) {
+      const ne = elements[j];
+      if (ne.chapterTitle !== elements[candidate.elementIndex].chapterTitle) break;
+      if (ne.isTitle) break;
+      const cH = simH + measure(ne.html);
+      if (cH > contentHeight) break;
+      simHtml += ne.html;
+      simH = cH;
+    }
+    const nextPageEval = evaluatePageQualityCanvas(simHtml, contentHeight, lineHeightPx, canvasCtx);
+    // Discount lookahead slightly (it's an approximation)
+    penalty += nextPageEval.score * 0.4;
+  }
+
+  return penalty;
+};
+
+/**
+ * Pick the best breakpoint from a list of candidates.
+ * @private
+ */
+const pickBestBreakpoint = (candidates, canvasCtx, layoutCtx, elements, log) => {
+  if (candidates.length === 0) return null;
+
+  let best = candidates[0];
+  let bestScore = scoreBreakpoint(best, canvasCtx, layoutCtx, elements, log);
+
+  for (let i = 1; i < candidates.length; i++) {
+    const score = scoreBreakpoint(candidates[i], canvasCtx, layoutCtx, elements, log);
+    if (score < bestScore) {
+      best = candidates[i];
+      bestScore = score;
+    }
+  }
+
+  log.record('greedy', 'breakpoint-select', 0, {
+    candidateCount: candidates.length,
+    bestType: best.type,
+    bestElIdx: best.elementIndex,
+    bestScore: +bestScore.toFixed(0),
+    bestFill: +(best.height / layoutCtx.contentHeight * 100).toFixed(1),
+    bestOrphan: best.orphanLines,
+    bestWidow: best.widowLines,
+  });
+
+  return best;
+};
+
+/**
+ * Core breakpoint-based pagination — evaluates all valid page-break positions
+ * and picks the one with lowest penalty, instead of greedily filling.
  * All height calculations use Canvas-based measureHtmlHeight.
  *
  * @private
@@ -1063,6 +1543,8 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
 
   let currentFirstElementIndex = 0;
   let pageHasTitle = false;
+  // true after a fullPage title — the first content page after it also skips header
+  let prevWasTitleOnly = false;
 
   const pushPage = (html, opts = {}) => {
     const blocks = parseHtmlElements(html);
@@ -1077,11 +1559,17 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
       currentSubheader,
       firstElementIndex: currentFirstElementIndex
     });
+    prevWasTitleOnly = opts.isTitleOnlyPage || false;
     pageHasTitle = false;
   };
 
   const flushCurrent = (startWith = '', firstIdx = null) => {
-    if (currentHtml) pushPage(currentHtml, { isFirstChapterPage: pageHasTitle });
+    if (currentHtml) {
+      // First content page after a fullPage title also counts as chapter start
+      // (header should be skipped on it, same as the title page itself).
+      const isFirstAfterTitleOnly = prevWasTitleOnly && !pageHasTitle;
+      pushPage(currentHtml, { isFirstChapterPage: pageHasTitle || isFirstAfterTitleOnly });
+    }
     currentHtml = startWith;
     pageHasTitle = false;
     if (firstIdx !== null) {
@@ -1100,23 +1588,20 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
       currentSubheader = el.textContent;
     }
 
-    // Chapter title element
+    // Chapter title element — handle before breakpoint collection
     if (el.isTitle) {
       const layout = el.titleLayout;
       if (layout === 'fullPage') {
-        // fullPage: solo título en la página, siguiente página tiene el texto
         flushCurrent();
         pushPage(el.html, { isTitleOnlyPage: true, isFirstChapterPage: true });
         currentFirstElementIndex = elIdx;
         currentHtml = '';
       } else if (layout === 'spaced' || layout === 'halfPage') {
-        // spaced/halfPage: título + texto en la misma página
         flushCurrent();
         currentFirstElementIndex = elIdx;
         currentHtml = el.html;
         pageHasTitle = true;
       } else {
-        // continuous: comportamiento por defecto
         flushCurrent();
         currentFirstElementIndex = elIdx;
         currentHtml = el.html;
@@ -1127,33 +1612,23 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
 
     // KEEP-WITH-NEXT for subheaders — ensure enough follow content fits after heading
     const isHeading = /^H[1-6]$/i.test(el.tag);
-    // Use the isBold flag computed from the ORIGINAL DOM element
-    // (buildParagraphHtml strips original styles, so checking el.html wouldn't work)
     const isBoldParagraph = !isHeading && el.tag === 'P' && el.isBold;
 
     if (isHeading || isBoldParagraph) {
       log.record('greedy', 'heading-detect', pages.length + 1, { tag: el.tag, text: (el.textContent || '').substring(0, 60), isHeading, isBoldParagraph });
-    }
 
-    if (isHeading || isBoldParagraph) {
       const nextEl = elements[elIdx + 1];
       if (nextEl && !nextEl.isTitle) {
         const pageWithSub = measure((currentHtml || '') + el.html);
         const level = isHeading ? el.tag?.toLowerCase() : 'h3';
         const subConfig = safeConfig.subheaders?.[level];
-        // minLinesAfter: how many follow lines the heading needs to stay on this page.
-        // Respect explicit config value; fall back to minOrphanLines (default 2).
-        // Previously used Math.max(minOrphanLines, configured) which silently ignored
-        // any configured value lower than minOrphanLines (e.g. minLinesAfter:1 → 2).
         const effectiveMinLines = subConfig?.minLinesAfter != null
           ? subConfig.minLinesAfter
           : Math.max(minOrphanLines, 2);
         const minFollowHeight = effectiveMinLines * lineHeightPx;
-        const spaceAfterSub = contentHeight - pageWithSub;
+        const spaceAfterSub = (contentHeight - (pageHasTitle ? lineHeightPx : 0)) - pageWithSub;
 
-        const needsMove = spaceAfterSub < minFollowHeight;
-
-        if (needsMove) {
+        if (spaceAfterSub < minFollowHeight) {
           log.record('greedy', 'keep-with-next', pages.length + 1, { tag: el.tag, text: (el.textContent || '').substring(0, 60), effectiveMinLines, availableLines: +(spaceAfterSub / lineHeightPx).toFixed(1) });
           flushCurrent(el.html, elIdx);
           currentFirstElementIndex = elIdx;
@@ -1162,29 +1637,23 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
       }
     }
 
-    // Check if element fits
+    // ── BREAKPOINT SELECTION ──
+    // Instead of greedily checking "does this element fit?", collect ALL valid
+    // breakpoints from this position and pick the best one.
+    const pageHeightBudget = contentHeight - DOM_SLACK - (pageHasTitle ? lineHeightPx : 0);
+
+    // Only trigger breakpoint selection when the current element does NOT fit.
+    // If it fits, add it and continue — this keeps the simple case fast.
     const candidateHeight = measure(currentHtml + el.html);
-    const isLastChapterElement = elIdx === elements.length - 1;
 
-    if (isLastChapterElement) {
-      const elLines = Math.floor(measure(el.html) / lineHeightPx);
-      const actualH = measure(currentHtml);
-      const freeLines = Math.floor((contentHeight - actualH) / lineHeightPx);
-      log.record('greedy', 'diag', pages.length + 1, { tag: el.tag, text: (el.textContent || '').substring(0, 60), elLines, freeLines, candidateH: +candidateHeight.toFixed(1), contentH: +contentHeight.toFixed(1), gap: +(candidateHeight - contentHeight).toFixed(1), fits: candidateHeight <= contentHeight });
-    }
-
-    if (candidateHeight <= contentHeight - DOM_SLACK) {
-      // Runt-flush guard: if adding this paragraph fills the page completely (≤1 free line
-      // remaining on the COMBINED page) and its last line is a single word, it will sit
-      // isolated at the bottom — visually identical to a widow but in a whole paragraph.
-      // Guard: only when the page is already meaningfully filled (≥70% before this element)
-      // so we never flush a page that only has 1-2 small elements on it.
-      // Also skip for last-chapter elements (their final pages are expected short).
-      // candidateHeight = measure(currentHtml + el.html) — already computed above the fit check.
-      // Use it directly as the authoritative "page height after adding this element".
+    if (candidateHeight <= pageHeightBudget) {
+      // Element fits — but check for runt/widow traps before blindly adding.
+      const isLastChapterElement = elIdx === elements.length - 1;
+      const freeLinesAfter = Math.floor((pageHeightBudget - candidateHeight) / lineHeightPx);
       const currentPageHeight = currentHtml ? measure(currentHtml) : 0;
-      const freeLinesAfter = Math.floor((contentHeight - DOM_SLACK - candidateHeight) / lineHeightPx);
       const currentFill = currentPageHeight / contentHeight;
+
+      // Runt-flush guard: paragraph's short last line trapped at full page bottom
       if (!isLastChapterElement
           && (el.tag === 'P' || el.tag === 'BLOCKQUOTE')
           && !el.isBold
@@ -1194,16 +1663,32 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
         const plainText = (el.textContent || '').trim();
         const shortLine = getLastLineMetrics(plainText, canvasCtx);
         if (isSevereShortLastLine(shortLine)) {
-          // Flush current page without this paragraph, start fresh page with it
-          log.record('greedy', 'no-fit', pages.length + 1, {
-            tag: el.tag,
-            text: plainText.substring(0, 60),
-            reason: 'short-line-flush',
+          log.record('greedy', 'bp-runt-flush', pages.length + 1, {
+            tag: el.tag, text: plainText.substring(0, 60),
             lastLineWords: shortLine.lastLineWords,
-            widthRatio: +shortLine.widthRatio.toFixed(2),
-            shortLineScore: shortLine.shortLineScore
+            widthRatio: +shortLine.widthRatio.toFixed(2)
           });
           flushCurrent(el.html, elIdx);
+          currentFirstElementIndex = elIdx;
+          continue;
+        }
+      }
+
+      // Widow guard: 1-line paragraph isolated at very bottom of full page
+      if (!isLastChapterElement
+          && el.tag === 'P'
+          && !el.isBold
+          && freeLinesAfter <= 0
+          && currentFill >= 0.70
+          && currentHtml) {
+        const elLineCount = Math.floor(measure(el.html) / lineHeightPx);
+        if (elLineCount <= 1) {
+          log.record('greedy', 'bp-widow-flush', pages.length + 1, {
+            tag: el.tag, text: (el.textContent || '').substring(0, 60),
+            elLines: elLineCount
+          });
+          flushCurrent(el.html, elIdx);
+          currentFirstElementIndex = elIdx;
           continue;
         }
       }
@@ -1212,141 +1697,138 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
       continue;
     }
 
-    // Doesn't fit — measure current page height.
-    // Subtract DOM_SLACK so the split budget matches the DOM-safe boundary
-    // (same slack applied in the fit-check above).
-    const actualCurrentHeight = measure(currentHtml);
-    const remainingSpace = contentHeight - DOM_SLACK - actualCurrentHeight;
-    const remainingLines = Math.floor(remainingSpace / lineHeightPx);
+    // Element doesn't fit — collect all valid breakpoints and pick the best one.
+    // The breakpoint collection starts from the CURRENT element (not from the
+    // page start) and evaluates where the page should end.
+    // We include the "flush without adding" option as an implicit candidate
+    // (the page ends with what it already has, and this element starts fresh).
+    const candidates = collectBreakpoints(
+      elements, elIdx, currentHtml, pageHeightBudget,
+      canvasCtx, layoutCtx, measureDiv, safeConfig, log
+    );
 
-    log.record('greedy', 'no-fit', pages.length + 1, { tag: el.tag, text: (el.textContent || '').substring(0, 60), isBold: el.isBold, candidateH: +candidateHeight.toFixed(0), contentH: +contentHeight.toFixed(0), remainLines: remainingLines, splitEnabled: splitLongParagraphs });
-    const canSplit = splitLongParagraphs
-      && (el.tag === 'P' || el.tag === 'DIV' || el.tag === 'BLOCKQUOTE')
-      && !el.isBold
-      && remainingLines >= 1;
+    // Also add a "flush" candidate: close the page as-is, this element starts a new page.
+    // This is the fallback that the old greedy algorithm always did.
+    if (currentHtml) {
+      const flushHeight = measure(currentHtml);
+      // Check if the last element on the current page is a heading/bold
+      const prevEl = elIdx > 0 ? elements[elIdx - 1] : null;
+      const prevIsHeadingOrBold = prevEl
+        ? (/^H[1-6]$/i.test(prevEl.tag) || (!(/^H[1-6]$/i.test(prevEl.tag)) && prevEl.tag === 'P' && prevEl.isBold))
+        : false;
+      candidates.push({
+        type: 'flush',
+        elementIndex: elIdx - 1,
+        html: currentHtml,
+        height: flushHeight,
+        restHtml: null,
+        isHeadingOrBold: prevIsHeadingOrBold,
+        isLastChapterElement: false,
+        orphanLines: 0,
+        widowLines: 0,
+        splitLine: 0,
+        totalLines: 0,
+      });
+    }
 
-    if (canSplit) {
-      const hasIndent = el.tag === 'P';
-      const indentValue = safeConfig.paragraph?.firstLineIndent || 1.5;
-      const preserveIndent = /text-indent:\s*0[^.]/.test(el.html);
+    if (candidates.length === 0) {
+      // Nothing fits and no flush possible.
+      // If the element itself is taller than a full page, force it onto its own
+      // page to prevent infinite loops. Otherwise start fresh with this element.
+      if (currentHtml) {
+        // Flush existing content first, then retry this element on a fresh page
+        flushCurrent('', null);
+        elIdx--; // re-process this element on the now-empty page
+        continue;
+      }
+      // currentHtml is empty and element still doesn't fit → oversized element.
+      // Accept overflow: push it as a single-element page.
+      log.record('greedy', 'oversized-element', pages.length + 1, {
+        tag: el.tag, text: (el.textContent || '').substring(0, 60),
+        elHeight: +measure(el.html).toFixed(0), budget: +pageHeightBudget.toFixed(0)
+      });
+      pushPage(el.html, { isFirstChapterPage: pageHasTitle });
+      currentHtml = '';
+      pageHasTitle = false;
+      currentFirstElementIndex = elIdx + 1;
+      continue;
+    }
 
-      let splitResult = splitInTwo(
-        el.html, measureDiv, canvasCtx, remainingSpace, contentHeight,
-        textAlign, hasIndent, indentValue, preserveIndent, quoteOptions
-      );
+    const best = pickBestBreakpoint(candidates, canvasCtx, layoutCtx, elements, log);
 
-      if (splitResult) {
-        const [firstChunk, restChunk] = splitResult;
+    if (!best) {
+      // Shouldn't happen, but safety fallback
+      flushCurrent(el.html, elIdx);
+      currentFirstElementIndex = elIdx;
+      continue;
+    }
 
-        // Hard floor: both sides must have at least minOrphanLines lines.
-        // Exception: for the chapter's LAST paragraph, allow 1-line orphans AND
-        // 1-line widows. The chapter's final page will be short regardless, and
-        // filling the current page as much as possible is always preferable to
-        // wasting space and pushing the whole paragraph to a nearly-empty page.
-        const pageWithChunkHeight = measure(currentHtml + firstChunk);
-        const orphanLines = Math.floor(pageWithChunkHeight / lineHeightPx)
-          - Math.floor(actualCurrentHeight / lineHeightPx);
-        const widowLines = Math.floor(measure(restChunk) / lineHeightPx);
-        const effectiveMinOrphan = isLastChapterElement ? 1 : minOrphanLines;
-        // Widows (rest chunk at top of next page) are more visually disruptive
-        // than orphans — require 1 extra line (min 3) to avoid 2-line fragments.
-        const effectiveMinWidow = isLastChapterElement ? 1 : minOrphanLines + 1;
+    if (best.type === 'flush') {
+      // Close current page as-is, start new page with this element
+      log.record('greedy', 'bp-flush', pages.length + 1, {
+        tag: el.tag, text: (el.textContent || '').substring(0, 60),
+        reason: 'breakpoint-flush',
+        pageFill: +(best.height / contentHeight * 100).toFixed(1)
+      });
+      flushCurrent(el.html, elIdx);
+      currentFirstElementIndex = elIdx;
+      continue;
+    }
 
-        if (orphanLines >= effectiveMinOrphan && widowLines >= effectiveMinWidow) {
-          // Symmetric lookahead: simulate what the full next page would look like
-          // in BOTH scenarios by greedily adding subsequent elements that fit.
-          // This gives a realistic "next page" score rather than evaluating an
-          // isolated fragment (restChunk alone would be penalised for underfill/widow
-          // even though more content will follow on the real next page).
-          const LOOKAHEAD_WEIGHT = 0.6; // lookahead is an approximation — discount slightly
-
-          // Split next-page simulation: restChunk + following elements that fit
-          let simSplitHtml   = restChunk;
-          let simSplitH      = measure(restChunk);
-          let splitEnriched  = false;
-          for (let j = elIdx + 1; j < elements.length; j++) {
-            const ne = elements[j];
-            if (ne.chapterTitle !== el.chapterTitle) break; // stay within chapter
-            const cH = simSplitH + measure(ne.html);
-            if (cH > contentHeight) break;
-            simSplitHtml  += ne.html;
-            simSplitH      = cH;
-            splitEnriched  = true;
-          }
-
-          // Flush next-page simulation: el.html + following elements that fit
-          let simFlushHtml = el.html;
-          let simFlushH    = measure(el.html);
-          for (let j = elIdx + 1; j < elements.length; j++) {
-            const ne = elements[j];
-            if (ne.chapterTitle !== el.chapterTitle) break;
-            const cH = simFlushH + measure(ne.html);
-            if (cH > contentHeight) break;
-            simFlushHtml += ne.html;
-            simFlushH     = cH;
-          }
-
-          // isFragment fallback: if no extra elements were added to the split simulation,
-          // restChunk is still isolated → keep isFragment=true scaling for its score.
-          const badnessSplit =
-            evaluatePageQualityCanvas(currentHtml + firstChunk, contentHeight, lineHeightPx, canvasCtx).score +
-            evaluatePageQualityCanvas(simSplitHtml, contentHeight, lineHeightPx, canvasCtx, !splitEnriched).score * LOOKAHEAD_WEIGHT;
-
-          const badnessFlush =
-            evaluatePageQualityCanvas(currentHtml, contentHeight, lineHeightPx, canvasCtx).score +
-            evaluatePageQualityCanvas(simFlushHtml, contentHeight, lineHeightPx, canvasCtx).score * LOOKAHEAD_WEIGHT;
-
-          const _chunkP = firstChunk.replace(/<[^>]*>/g, '').trim();
-          const _restP = restChunk.replace(/<[^>]*>/g, '').trim();
-          log.record('greedy', 'split', pages.length + 1, { tag: el.tag, text: (el.textContent || '').substring(0, 60), orphanLines, widowLines, chunkTail: _chunkP.slice(-80), restHead: _restP.substring(0, 80), before: { score: +badnessFlush.toFixed(0) }, after: { score: +badnessSplit.toFixed(0) }, simSplitLines: Math.floor(simSplitH / lineHeightPx), simFlushLines: Math.floor(simFlushH / lineHeightPx) });
-
-          // Last paragraph of chapter: always prefer split to fill the current page.
-          // The chapter's final page is expected to be short, so the rest chunk's
-          // underfill is not a real quality problem — but leaving the current page
-          // half-empty IS visible.
-          if (isLastChapterElement) {
-            log.record('greedy', 'split', pages.length + 1, { tag: el.tag, text: (el.textContent || '').substring(0, 60), reason: 'last-chapter-element', orphanLines, widowLines });
-            pushPage(currentHtml + firstChunk);
-            currentHtml = restChunk;
-            continue;
-          }
-
-          // Shallow split guard: when the split creates very few widow lines AND
-          // the flush simulation fills the next page much better than the split would,
-          // the split is "shallow" — it cuts a few lines off a paragraph but leaves
-          // the next page nearly empty. Use a much higher threshold to reject these.
-          const simSplitLines = Math.floor(simSplitH / lineHeightPx);
-          const simFlushLines = Math.floor(simFlushH / lineHeightPx);
-          const isShallowSplit = widowLines <= minOrphanLines + 1 &&
-            simFlushLines > 0 && simSplitLines < simFlushLines * 0.6;
-          const greedySplitThreshold = isShallowSplit ? 350 : 50;
-
-          // Accept split only if it produces a meaningfully better layout
-          if (badnessSplit < badnessFlush - greedySplitThreshold) {
-            // Propagate fragment IDs to the rest chunk
-            if (process.env.NODE_ENV === 'development' && el.sourceBlockId) {
-              const restIds = deriveFragmentId(el);
-              el.fragmentIndex = restIds.fragmentIndex;
-              // inject into restChunk HTML so it's traceable
-              const taggedRest = injectBlockIdAttrs(restChunk, restIds);
-              pushPage(currentHtml + firstChunk);
-              currentHtml = taggedRest;
-            } else {
-              pushPage(currentHtml + firstChunk);
-              currentHtml = restChunk;
-            }
-            continue;
-          }
+    if (best.type === 'block-end') {
+      // Update subheader tracking for all elements included in this page
+      // (elements between elIdx and best.elementIndex are consumed by the
+      // breakpoint but the for-loop won't visit them individually).
+      for (let s = elIdx; s <= best.elementIndex; s++) {
+        if (/^H[1-6]$/i.test(elements[s].tag) && !elements[s].isTitle && elements[s].textContent) {
+          currentSubheader = elements[s].textContent;
         }
       }
+      // Page ends after a complete block element.
+      pushPage(best.html, { isFirstChapterPage: pageHasTitle });
+      currentHtml = '';
+      pageHasTitle = false;
+      // elIdx is set to best.elementIndex; the for-loop's elIdx++ advances
+      // to best.elementIndex + 1, which is the first element of the next page.
+      elIdx = best.elementIndex;
+      currentFirstElementIndex = elIdx + 1;
+      continue;
     }
 
-    // Could not split — flush and start new page
-    if (remainingLines >= 3) {
-      log.record('greedy', 'no-fit', pages.length + 1, { tag: el.tag, text: (el.textContent || '').substring(0, 60), reason: 'underfill', remainingLines, canSplit });
+    if (best.type === 'para-split') {
+      // Update subheader tracking for elements up to (but not including) the split one
+      for (let s = elIdx; s < best.elementIndex; s++) {
+        if (/^H[1-6]$/i.test(elements[s].tag) && !elements[s].isTitle && elements[s].textContent) {
+          currentSubheader = elements[s].textContent;
+        }
+      }
+
+      log.record('greedy', 'bp-split', pages.length + 1, {
+        tag: elements[best.elementIndex]?.tag,
+        text: (elements[best.elementIndex]?.textContent || '').substring(0, 60),
+        orphanLines: best.orphanLines,
+        widowLines: best.widowLines,
+        fill: +(best.height / contentHeight * 100).toFixed(1),
+      });
+
+      // Propagate fragment IDs in dev mode
+      const srcEl = elements[best.elementIndex];
+      if (process.env.NODE_ENV === 'development' && srcEl?.sourceBlockId) {
+        const restIds = deriveFragmentId(srcEl);
+        srcEl.fragmentIndex = restIds.fragmentIndex;
+        const taggedRest = injectBlockIdAttrs(best.restHtml, restIds);
+        pushPage(best.html, { isFirstChapterPage: pageHasTitle });
+        currentHtml = taggedRest;
+      } else {
+        pushPage(best.html, { isFirstChapterPage: pageHasTitle });
+        currentHtml = best.restHtml;
+      }
+      pageHasTitle = false;
+      // elIdx → best.elementIndex; loop's elIdx++ advances past the split element
+      elIdx = best.elementIndex;
+      currentFirstElementIndex = elIdx + 1;
+      continue;
     }
-    flushCurrent(el.html, elIdx);
-    currentFirstElementIndex = elIdx;
   }
 
   // Final flush
@@ -1792,14 +2274,43 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
       // When the current page is underfilled, reduce or skip the widow penalty —
       // filling an empty page is worth tolerating a short fragment on the source.
       const underfillRatio = remainingLines / Math.max(1, Math.round(contentHeight / lineHeightPx));
-      const widowPenaltyScale = underfillRatio >= 0.45 ? 0 : underfillRatio >= 0.35 ? 0.3 : 1;
+      // Suppress widow penalty when there are very few lines free — no better split point exists.
+      // rem<=1: full suppression (only one line of space, zero alternatives).
+      // rem<=2: 80% suppression — 2-line gap is also highly constrained.
+      const widowPenaltyScale = remainingLines <= 1 ? 0 : remainingLines <= 2 ? 0.2 : underfillRatio >= 0.45 ? 0 : underfillRatio >= 0.35 ? 0.3 : 1;
       const widowSoftPenalty = newSourceLines < minWidowLines ? Math.round(600 * widowPenaltyScale) : 0;
 
       // Badness gate for split — accept only if total quality improves
+      const totalLines = Math.round(contentHeight / lineHeightPx);
+      const emptyRatio = remainingLines / totalLines;
+
       const qSplitCurrent = evaluatePageQualityCanvas(currentHtml + chunk, contentHeight, lineHeightPx, canvasCtx);
       const qSplitSource  = evaluatePageQualityCanvas(newSourceHtml, contentHeight, lineHeightPx, canvasCtx);
 
-      const splitBadnessAfter = qSplitCurrent.score + qSplitSource.score + widowSoftPenalty;
+      // evaluatePageQualityCanvas already includes a widow penalty (1000 pts) when the
+      // destination page ends with a 1-line paragraph. But the fill-pass applies its own
+      // widowPenaltyScale (0 for rem≤1, 0.2 for rem≤2) to suppress this when the
+      // destination is already highly constrained. We must subtract the raw widow penalty
+      // and add back the scaled version to avoid double-counting.
+      const destHasWidow = qSplitCurrent.violations.includes('widow');
+      const RAW_WIDOW_PENALTY = 1000; // must match evaluatePageQualityCanvas line 2767
+      const destWidowAdjustment = destHasWidow
+        ? Math.round(RAW_WIDOW_PENALTY * widowPenaltyScale) - RAW_WIDOW_PENALTY  // ≤ 0
+        : 0;
+      const qSplitCurrentAdjusted = qSplitCurrent.score + destWidowAdjustment;
+
+      // When the destination page is significantly underfilled (≥25% empty) and the
+      // source page's high score comes only from fragment+runt_line (no orphan/widow/heading),
+      // discount the source score. The fill-pass cascades: subsequent iterations can fix
+      // the runt on the source, but they cannot fix a severely underfilled destination.
+      const srcViolationSet = new Set(qSplitSource.violations);
+      const srcOnlyRuntFragment = srcViolationSet.size > 0
+        && ![...srcViolationSet].some(v => v === 'orphan' || v === 'widow' || v === 'heading_at_bottom');
+      const srcScoreForGate = (srcOnlyRuntFragment && emptyRatio >= 0.25)
+        ? Math.round(qSplitSource.score * 0.5)
+        : qSplitSource.score;
+
+      const splitBadnessAfter = qSplitCurrentAdjusted + srcScoreForGate + widowSoftPenalty;
 
       // For 1-line gaps (created by delta=-1 splits), accept even Δ0 — the goal is
       // to fill the gap, not to improve total badness. Use a generous threshold.
@@ -1812,8 +2323,6 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
       // Uses continuous scaling: the emptier the page, the more degradation we accept.
       //   >= 45% empty: +400, 30% empty: +350, 20% empty: +200, 1-line gap: +300
       //   normal (< 15% empty): +50
-      const totalLines = Math.round(contentHeight / lineHeightPx);
-      const emptyRatio = remainingLines / totalLines;
       let splitAllowance;
       if (isRetrySplit) {
         splitAllowance = 400;
@@ -1821,18 +2330,23 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
         // Continuous scale: 25% empty → +300, 45%+ empty → +400
         splitAllowance = Math.min(400, Math.round(200 + emptyRatio * 450));
       } else if (remainingLines <= 1) {
-        splitAllowance = 300; // delta=-1 compensation
+        splitAllowance = 350; // delta=-1 compensation (raised from 300 to compensate reduced fragment penalty)
+      } else if (remainingLines <= 2) {
+        // 2-line gap: very constrained, widow penalty already scaled to 0.2.
+        // Use a generous fixed allowance so the reduced widow cost can actually unlock splits.
+        splitAllowance = 400;
       } else if (emptyRatio >= 0.08) {
         // Medium underfill (8-25% empty, ~1-4 lines free at 55-line pages):
         // enough space to warrant a moderately imperfect split rather than leaving the page underused.
-        // Continuous scale: 8% → +50, 25% → +150 (bridges into the ≥0.25 tier).
-        splitAllowance = Math.round(50 + (emptyRatio - 0.08) * 588); // 588 = (150-50)/(0.25-0.08)
+        // Continuous scale: 8% → +120, 25% → +250 (bridges into the ≥0.25 tier).
+        // (Was 8%→50, 25%→150 — raised to absorb the reduced widow penalty at rem<=2.)
+        splitAllowance = Math.round(120 + (emptyRatio - 0.08) * 765); // 765 = (250-120)/(0.25-0.08)
       } else {
         splitAllowance = 50;
       }
       const splitThreshold = badnessBefore + splitAllowance;
       if (splitBadnessAfter > splitThreshold) {
-        log.record('fill', 'reject', i + 1, { tag, text: firstEl.textContent.substring(0, 60), reason: 'badness-split', before: { score: +badnessBefore.toFixed(0), fillPct: +(currentFill * 100).toFixed(0) }, after: { score: +splitBadnessAfter.toFixed(0), destFill: +(qSplitCurrent.fillPct * 100).toFixed(0), srcScore: +qSplitSource.score.toFixed(0) }, delta: +(badnessBefore - splitBadnessAfter).toFixed(0), features: { remainingLines, emptyRatio: +emptyRatio.toFixed(2), splitAllowance, threshold: +splitThreshold.toFixed(0), chunkLines, restLines, widowPenalty: widowSoftPenalty, isRetrySplit, destViolations: qSplitCurrent.violations, srcViolations: qSplitSource.violations } });
+        log.record('fill', 'reject', i + 1, { tag, text: firstEl.textContent.substring(0, 60), reason: 'badness-split', before: { score: +badnessBefore.toFixed(0), fillPct: +(currentFill * 100).toFixed(0) }, after: { score: +splitBadnessAfter.toFixed(0), destFill: +(qSplitCurrent.fillPct * 100).toFixed(0), srcScore: +qSplitSource.score.toFixed(0), srcScoreGated: +srcScoreForGate.toFixed(0) }, delta: +(badnessBefore - splitBadnessAfter).toFixed(0), features: { remainingLines, emptyRatio: +emptyRatio.toFixed(2), splitAllowance, threshold: +splitThreshold.toFixed(0), chunkLines, restLines, widowPenalty: widowSoftPenalty, isRetrySplit, destViolations: qSplitCurrent.violations, srcViolations: qSplitSource.violations } });
         // Sliding window: if badness of this element is too high, try the next source
         if (sourceHopCount < MAX_SOURCE_HOPS) {
           sourceHopCount++;
@@ -1972,7 +2486,29 @@ const repairMissingIndents = (pages, safeConfig, log = null) => {
       const startsUpper = firstLetter !== '' &&
         firstLetter === firstLetter.toUpperCase() &&
         firstLetter !== firstLetter.toLowerCase();
-      if (!startsUpper) return el;
+
+      if (!startsUpper) {
+        // Lowercase start at index > 0 with no data-continuation = split-rest that lost
+        // its attribute. Re-add data-continuation so mergeSplitFragments can detect it.
+        const alreadyHasCont = /data-continuation\s*=\s*["']true["']/i.test(el.outerHtml);
+        if (!alreadyHasCont) {
+          const tagM = el.outerHtml.match(/^<p(\s|>)/i);
+          if (tagM) {
+            const newOuter = el.outerHtml.replace(/^<p(\s|>)/i, `<p data-continuation="true"$1`);
+            if (newOuter !== el.outerHtml) {
+              changed = true;
+              if (log) {
+                log.record('repair', 'added-continuation', page.pageNumber ?? 0, {
+                  idx,
+                  text: (el.textContent || '').substring(0, 60)
+                });
+              }
+              return { ...el, outerHtml: newOuter, dataset: { ...el.dataset, continuation: 'true' } };
+            }
+          }
+        }
+        return el;
+      }
 
       // Restore indent
       let newOuter;
@@ -2129,38 +2665,46 @@ const mergeSplitFragments = (pages, log = null) => {
 const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
   const { contentHeight, lineHeightPx } = layoutCtx;
   const measure = (html) => measureHtmlHeight(html, canvasCtx);
-  const MIN_GAP = lineHeightPx;
-  const MAX_PER_GAP = lineHeightPx * 0.5;
 
   for (const page of pages) {
-    if (!page || page.isBlank || page.isTitleOnlyPage || page.isFirstChapterPage || !page.html) continue;
+    if (!page || page.isBlank || page.isTitleOnlyPage || page.isChapterLastPage || !page.html) continue;
 
     const actualHeight = measure(page.html);
-    const gap = contentHeight - actualHeight;
-    if (gap < MIN_GAP) continue;
+    const freeSpace = contentHeight - actualHeight;
+    // Need at least half a line of free space to bother distributing.
+    if (freeSpace < lineHeightPx * 0.5) continue;
+    // Below 60% fill the gap is structural — leave it at the bottom.
+    if (actualHeight / contentHeight < 0.60) continue;
 
-    let children = getPageBlocks(page);
+    const children = getPageBlocks(page);
     if (children.length < 2) continue;
-
-    // Don't adjust if last element is a heading (should have been moved already)
     const last = children[children.length - 1];
     if (/^H[1-6]$/i.test(last.tag)) continue;
 
+    // All children participate in distribution — including the chapter title block.
+    // This closes the gap between chapter title and first paragraph that was
+    // previously left untouched (old code excluded title from distributable set).
+    // Distribution is UNIFORM across all gaps to avoid uneven paragraph spacing.
     const numGaps = children.length - 1;
-    const maxPerGap = Math.min(gap / numGaps, MAX_PER_GAP);
-    if (maxPerGap < 1) continue;
+    if (numGaps < 1) continue;
 
-    // Capture original margins before any modification
+    // Cap per-gap growth so pages with few elements don't get huge rivers.
+    // Keep spacing subtle: max 0.35 lineH per gap (≈3.5px at lineH=10).
+    // This fills vertical whitespace without creating visible paragraph separation.
+    const perGapCap = lineHeightPx * 0.35;
+    const maxPerGap = Math.min(freeSpace / numGaps, perGapCap);
+
+    // Capture original margins for ALL children.
     const origMargins = children.map(el => {
       const m = (el.style || '').match(/margin-bottom:\s*([\d.]+)px/);
       return m ? parseFloat(m[1]) : 0;
     });
 
-    // Build updated HTML by injecting margin-bottom into each element's style
+    // Apply uniform gap delta to every element except the last.
     const applyGap = (g) => {
       return children.map((el, idx) => {
-        if (idx >= children.length - 1) return el.outerHtml;
-        const newMargin = (origMargins[idx] + g).toFixed(1);
+        if (idx >= numGaps) return el.outerHtml;  // last element, no gap after it
+        const newMargin = (origMargins[idx] + g).toFixed(2);
         const newStyle = (el.style || '')
           .replace(/margin-bottom:\s*[\d.]+px;?/g, '')
           .trimEnd()
@@ -2168,15 +2712,15 @@ const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
         if (/\bstyle="/.test(el.outerHtml)) {
           return el.outerHtml.replace(/\bstyle="[^"]*"/, `style="${newStyle}"`);
         }
-        // No style attribute — inject one into the opening tag
         return el.outerHtml.replace(/^(<[a-zA-Z][^\s/>]*)/, `$1 style="${newStyle}"`);
       }).join('');
     };
 
+    // Binary search for the largest per-gap delta that fits.
     let lo = 0;
     let hi = maxPerGap;
     let bestGap = 0;
-    for (let iter = 0; iter < 8; iter++) {
+    for (let iter = 0; iter < 10; iter++) {
       const mid = (lo + hi) / 2;
       if (measure(applyGap(mid)) <= contentHeight - 2) {
         bestGap = mid;
@@ -2186,7 +2730,7 @@ const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
       }
     }
 
-    if (bestGap >= 1) {
+    if (bestGap >= 0.5) {
       Object.assign(page, setPageHtml(page, applyGap(bestGap)));
     }
   }
@@ -2235,12 +2779,190 @@ const fixHeadingsAtBottom = (pages, canvasCtx, layoutCtx, log) => {
     // Move heading to top of next page — only if it fits without overflow
     const headingHtml = last.outerHtml;
     const mergedHtml = headingHtml + (next.html || '');
+
     if (!canAcceptHtml(mergedHtml, layoutCtx.contentHeight, canvasCtx)) {
-      // Heading doesn't fit on next page — leave heading in place.
-      // Do NOT mark as isTitleOnlyPage: that flag is only for chapter title pages,
-      // and misusing it would cause distributeVerticalSpace and smoothPageBalance
-      // to skip this page entirely, leaving large whitespace gaps uncorrected.
-      log.record('heading-fix', 'reject', i + 1, { tag: last.tag, text: htmlToText(last.innerHTML).substring(0, 60), reason: 'next-page-full' });
+      // Next page is full. Try cascading: push elements forward through a chain
+      // of pages to make room for the heading. Supports up to 2-level cascade.
+      let cascaded = false;
+      const nextChildren = getPageBlocks(next);
+      if (nextChildren.length >= 2) {
+        let ni2 = ni + 1;
+        while (ni2 < pages.length && pages[ni2]?.isBlank) ni2++;
+        if (ni2 < pages.length) {
+          const nextNext = pages[ni2];
+          if (nextNext && !nextNext.isTitleOnlyPage && !nextNext.isFirstChapterPage
+              && next.chapterTitle === nextNext.chapterTitle) {
+            const donorEl = nextChildren[nextChildren.length - 1];
+            const newNextHtml = serializeBlocks(nextChildren.slice(0, nextChildren.length - 1)).trim();
+            const donorPlusNextNext = donorEl.outerHtml + (nextNext.html || '');
+
+            // Level 1 cascade: donor fits on page+2 directly
+            if (newNextHtml && canAcceptHtml(donorPlusNextNext, layoutCtx.contentHeight, canvasCtx)) {
+              const mergedAfterCascade = headingHtml + newNextHtml;
+              if (canAcceptHtml(mergedAfterCascade, layoutCtx.contentHeight, canvasCtx)) {
+                const qBefore = evaluatePageQualityCanvas(page.html, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score
+                  + evaluatePageQualityCanvas(next.html, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score
+                  + evaluatePageQualityCanvas(nextNext.html, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score;
+                const remainingHtmlCascade = serializeBlocks(children.slice(0, children.length - 1)).trim();
+                const qAfter = evaluatePageQualityCanvas(remainingHtmlCascade || '', layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score
+                  + evaluatePageQualityCanvas(mergedAfterCascade, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score
+                  + evaluatePageQualityCanvas(donorPlusNextNext, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score;
+                if (qAfter <= qBefore + 100) {
+                  pages[i]   = setPageHtml(page, remainingHtmlCascade, { isBlank: !remainingHtmlCascade });
+                  pages[ni]  = setPageHtml(next, mergedAfterCascade);
+                  pages[ni2] = setPageHtml(nextNext, donorPlusNextNext);
+                  log.record('heading-fix', 'cascade', i + 1, { tag: last.tag, text: htmlToText(last.innerHTML).substring(0, 60), toPage: ni + 1, cascadeTo: ni2 + 1 });
+                  cascaded = true;
+                }
+              }
+            }
+
+            // Level 2 cascade: page+2 is also full — try pushing its last element to page+3
+            if (!cascaded && newNextHtml) {
+              const nnChildren = getPageBlocks(nextNext);
+              if (nnChildren.length >= 2) {
+                let ni3 = ni2 + 1;
+                while (ni3 < pages.length && pages[ni3]?.isBlank) ni3++;
+                if (ni3 < pages.length) {
+                  const p3 = pages[ni3];
+                  if (p3 && !p3.isTitleOnlyPage && !p3.isFirstChapterPage
+                      && nextNext.chapterTitle === p3.chapterTitle) {
+                    const donor2 = nnChildren[nnChildren.length - 1];
+                    const newNNHtml = serializeBlocks(nnChildren.slice(0, nnChildren.length - 1)).trim();
+                    const donor2PlusP3 = donor2.outerHtml + (p3.html || '');
+                    if (newNNHtml && canAcceptHtml(donor2PlusP3, layoutCtx.contentHeight, canvasCtx)) {
+                      // Now page+2 has room — retry donor from page+1
+                      const donorPlusNewNN = donorEl.outerHtml + newNNHtml;
+                      if (canAcceptHtml(donorPlusNewNN, layoutCtx.contentHeight, canvasCtx)) {
+                        const mergedAfterCascade2 = headingHtml + newNextHtml;
+                        if (canAcceptHtml(mergedAfterCascade2, layoutCtx.contentHeight, canvasCtx)) {
+                          const remainingHtmlC2 = serializeBlocks(children.slice(0, children.length - 1)).trim();
+                          const qBefore2 = evaluatePageQualityCanvas(page.html, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score
+                            + evaluatePageQualityCanvas(next.html, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score
+                            + evaluatePageQualityCanvas(nextNext.html, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score
+                            + evaluatePageQualityCanvas(p3.html, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score;
+                          const qAfter2 = evaluatePageQualityCanvas(remainingHtmlC2 || '', layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score
+                            + evaluatePageQualityCanvas(mergedAfterCascade2, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score
+                            + evaluatePageQualityCanvas(donorPlusNewNN, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score
+                            + evaluatePageQualityCanvas(donor2PlusP3, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score;
+                          if (qAfter2 <= qBefore2 + 150) {
+                            pages[i]   = setPageHtml(page, remainingHtmlC2, { isBlank: !remainingHtmlC2 });
+                            pages[ni]  = setPageHtml(next, mergedAfterCascade2);
+                            pages[ni2] = setPageHtml(nextNext, donorPlusNewNN);
+                            pages[ni3] = setPageHtml(p3, donor2PlusP3);
+                            log.record('heading-fix', 'cascade-2', i + 1, { tag: last.tag, text: htmlToText(last.innerHTML).substring(0, 60), toPage: ni + 1, cascadeTo: ni3 + 1 });
+                            cascaded = true;
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Fallback: split the first splittable paragraph on page+1 to make room
+      // for the heading. Overflow goes to a newly inserted page (avoids
+      // requiring page+2 to have spare capacity).
+      if (!cascaded && nextChildren.length >= 2) {
+        const headingHeight = measureHtmlHeight(headingHtml, canvasCtx);
+        const budget = layoutCtx.contentHeight - DOM_SLACK;
+        // Find how many whole elements from page+1 fit alongside the heading.
+        // Then push the rest to a new overflow page.
+        let usedHeight = headingHeight;
+        let fitCount = 0;
+        for (let si = 0; si < nextChildren.length; si++) {
+          const elH = measureHtmlHeight(nextChildren[si].outerHtml, canvasCtx);
+          if (usedHeight + elH <= budget) {
+            usedHeight += elH;
+            fitCount = si + 1;
+          } else {
+            // Try splitting this element if it's a splittable paragraph
+            if (!(/^H[1-6]$/i.test(nextChildren[si].tag)) && elH > layoutCtx.lineHeightPx * 4) {
+              const splitBudget = budget - usedHeight;
+              if (splitBudget >= layoutCtx.lineHeightPx * 3) {
+                const chunks = splitInTwo(
+                  nextChildren[si].outerHtml, null, canvasCtx, splitBudget,
+                  layoutCtx.contentHeight, layoutCtx.textAlign,
+                  false, 1.5, false, canvasCtx
+                );
+                if (chunks && chunks.length === 2 && chunks[0] && chunks[1]) {
+                  const ch = measureHtmlHeight(chunks[0], canvasCtx);
+                  if (ch > 0 && ch <= splitBudget + DOM_SLACK) {
+                    // Partial fit: heading + fitCount whole elements + first chunk
+                    const keepHtml = headingHtml
+                      + nextChildren.slice(0, fitCount).map(e => e.outerHtml).join('')
+                      + chunks[0];
+                    const overflowHtml = chunks[1]
+                      + nextChildren.slice(si + 1).map(e => e.outerHtml).join('');
+                    const remainingHtmlSplit = serializeBlocks(children.slice(0, children.length - 1)).trim();
+                    const qBefore = evaluatePageQualityCanvas(page.html, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score
+                      + evaluatePageQualityCanvas(next.html, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score;
+                    const qAfter = evaluatePageQualityCanvas(remainingHtmlSplit || '', layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score
+                      + evaluatePageQualityCanvas(keepHtml, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score
+                      + evaluatePageQualityCanvas(overflowHtml, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score;
+                    if (qAfter <= qBefore + 200) {
+                      pages[i]  = setPageHtml(page, remainingHtmlSplit, { isBlank: !remainingHtmlSplit });
+                      pages[ni] = setPageHtml(next, keepHtml);
+                      const overflowPage = {
+                        html: overflowHtml,
+                        blocks: parseHtmlElements(overflowHtml),
+                        chapterTitle: next.chapterTitle,
+                        currentSubheader: next.currentSubheader || '',
+                        isTitleOnlyPage: false,
+                        isFirstChapterPage: false,
+                        shouldShowPageNumber: next.shouldShowPageNumber !== false,
+                      };
+                      pages.splice(ni + 1, 0, overflowPage);
+                      log.record('heading-fix', 'split-to-fit', i + 1, { tag: last.tag, text: htmlToText(last.innerHTML).substring(0, 60), toPage: ni + 1, insertedPage: ni + 2, fitCount, splitAt: si });
+                      cascaded = true;
+                      i++;
+                    }
+                  }
+                }
+              }
+            }
+            break;
+          }
+        }
+        // All whole elements fit but page was "full" due to margin/slack — repartition
+        if (!cascaded && fitCount >= 1 && fitCount < nextChildren.length) {
+          const keepHtml = headingHtml + nextChildren.slice(0, fitCount).map(e => e.outerHtml).join('');
+          const overflowHtml = nextChildren.slice(fitCount).map(e => e.outerHtml).join('');
+          if (canAcceptHtml(keepHtml, layoutCtx.contentHeight, canvasCtx) && overflowHtml) {
+            const remainingHtmlSplit = serializeBlocks(children.slice(0, children.length - 1)).trim();
+            const qBefore = evaluatePageQualityCanvas(page.html, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score
+              + evaluatePageQualityCanvas(next.html, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score;
+            const qAfter = evaluatePageQualityCanvas(remainingHtmlSplit || '', layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score
+              + evaluatePageQualityCanvas(keepHtml, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score
+              + evaluatePageQualityCanvas(overflowHtml, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx).score;
+            if (qAfter <= qBefore + 200) {
+              pages[i]  = setPageHtml(page, remainingHtmlSplit, { isBlank: !remainingHtmlSplit });
+              pages[ni] = setPageHtml(next, keepHtml);
+              const overflowPage = {
+                html: overflowHtml,
+                blocks: parseHtmlElements(overflowHtml),
+                chapterTitle: next.chapterTitle,
+                currentSubheader: next.currentSubheader || '',
+                isTitleOnlyPage: false,
+                isFirstChapterPage: false,
+                shouldShowPageNumber: next.shouldShowPageNumber !== false,
+              };
+              pages.splice(ni + 1, 0, overflowPage);
+              log.record('heading-fix', 'repartition', i + 1, { tag: last.tag, text: htmlToText(last.innerHTML).substring(0, 60), toPage: ni + 1, insertedPage: ni + 2, fitCount });
+              cascaded = true;
+              i++;
+            }
+          }
+        }
+      }
+
+      if (!cascaded) {
+        log.record('heading-fix', 'reject', i + 1, { tag: last.tag, text: htmlToText(last.innerHTML).substring(0, 60), reason: 'next-page-full' });
+      }
       continue;
     }
 
@@ -2494,98 +3216,193 @@ const smoothPageBalance = (pages, layoutCtx, canvasCtx, log) => {
 };
 
 /**
- * Final safety net for visually short trailing lines.
- * Flushes the last block forward when a near-full page still ends badly and the
- * source page remains reasonably filled after the move.
+ * Consolidated repair pass: handles runt_line, widow, and orphan violations
+ * in a single multi-pass sweep.
+ *
+ * For each page with violations, evaluates all possible single-element moves
+ * (push last forward, pull first backward) and picks the best one.
  *
  * @private
  */
-const fixShortLastLines = (pages, layoutCtx, canvasCtx, log) => {
+const repairPageDefects = (pages, layoutCtx, canvasCtx, log) => {
   const { contentHeight, lineHeightPx } = layoutCtx;
   const measure = (html) => measureHtmlHeight(html, canvasCtx);
+  const minOrphanLines = layoutCtx.minOrphanLines ?? 2;
 
-  for (let pass = 0; pass < 2; pass++) {
+  for (let pass = 0; pass < 3; pass++) {
     let changedAny = false;
 
-    for (let i = 0; i < pages.length - 1; i++) {
+    for (let i = 0; i < pages.length; i++) {
       const page = pages[i];
-      if (!page || page.isBlank || page.isTitleOnlyPage || page.isFirstChapterPage || !page.html) continue;
-
-      const pageHeight = measure(page.html);
-      const pageFill = pageHeight / contentHeight;
+      if (!page || page.isBlank || page.isTitleOnlyPage || !page.html) continue;
 
       const qPage = evaluatePageQualityCanvas(page.html, contentHeight, lineHeightPx, canvasCtx);
-      if (!qPage.violations.includes('runt_line')) continue;
+      const viols = qPage.violations;
 
-      let nextIdx = i + 1;
-      while (nextIdx < pages.length && pages[nextIdx]?.isBlank) nextIdx++;
-      if (nextIdx >= pages.length) continue;
-
-      const nextPage = pages[nextIdx];
-      if (!nextPage || !nextPage.html || nextPage.isTitleOnlyPage || nextPage.isFirstChapterPage) continue;
-      if (page.chapterTitle !== nextPage.chapterTitle) continue;
+      const hasRunt   = viols.includes('runt_line');
+      const hasWidow  = viols.includes('widow');
+      const hasOrphan = viols.includes('orphan');
+      if (!hasRunt && !hasWidow && !hasOrphan) continue;
 
       const pageEls = getPageBlocks(page);
-      const lastEl = pageEls[pageEls.length - 1];
-      const tagName = (lastEl?.tag || '').toUpperCase();
-      if (!lastEl || /^H[1-6]$/i.test(tagName)) continue;
-      if (tagName === 'P' && isMostlyBoldParagraph(lastEl)) continue;
+      if (pageEls.length < 2) continue;
 
-      const movedHtml = lastEl.outerHtml;
-      const newCurrentHtml = serializeBlocks(pageEls.slice(0, pageEls.length - 1)).trim();
-      if (!newCurrentHtml) continue;
+      // Find adjacent pages
+      let nextIdx = i + 1;
+      while (nextIdx < pages.length && pages[nextIdx]?.isBlank) nextIdx++;
+      let prevIdx = i - 1;
+      while (prevIdx >= 0 && pages[prevIdx]?.isBlank) prevIdx--;
 
-      const newCurrentFill = measure(newCurrentHtml) / contentHeight;
-      // Allow pushing even if source page drops below threshold — runt elimination
-      // takes priority. Fill-pass can recover the gap afterwards.
-      if (newCurrentFill < 0.50) continue; // only skip if page becomes nearly empty
+      const nextPage = nextIdx < pages.length ? pages[nextIdx] : null;
+      const prevPage = prevIdx >= 0 ? pages[prevIdx] : null;
+      const sameChapterNext = nextPage && !nextPage.isTitleOnlyPage && !nextPage.isFirstChapterPage
+        && nextPage.html && page.chapterTitle === nextPage.chapterTitle;
+      const sameChapterPrev = prevPage && !prevPage.isTitleOnlyPage && prevPage.html
+        && prevPage.chapterTitle === page.chapterTitle;
 
-      const qCurrent = evaluatePageQualityCanvas(newCurrentHtml, contentHeight, lineHeightPx, canvasCtx);
-      if (qCurrent.violations.includes('heading_at_bottom')) continue;
+      let bestMove = null; // { type, improvement, apply() }
 
-      const nextHtml = movedHtml + (nextPage.html || '');
-      if (canAcceptHtml(nextHtml, contentHeight, canvasCtx)) {
-        // Strategy A: push last element of runt page → next page
-        pages[i] = setPageHtml(page, newCurrentHtml);
-        pages[nextIdx] = setPageHtml(nextPage, nextHtml);
-        mergeSplitFragments([pages[i], pages[nextIdx]], log);
-        changedAny = true;
-        log.record('short-line-fix', 'push', i + 1, {
-          toPage: nextIdx + 1,
-          text: (lastEl.textContent || '').substring(0, 60),
-          shortLineScore: qPage.score,
-          beforeFillPct: +(pageFill * 100).toFixed(0),
-          afterFillPct: +(newCurrentFill * 100).toFixed(0)
-        });
-        continue;
+      // === PUSH LAST ELEMENT FORWARD (fixes runt_line, widow) ===
+      if ((hasRunt || hasWidow) && sameChapterNext && !page.isFirstChapterPage) {
+        const lastEl = pageEls[pageEls.length - 1];
+        const lastTag = (lastEl?.tag || '').toUpperCase();
+        const isHeading = /^H[1-6]$/.test(lastTag);
+        const isBold = lastTag === 'P' && isMostlyBoldParagraph(lastEl);
+
+        if (!isHeading && !isBold) {
+          // For widow: confirm it's a single-line P
+          const skipWidow = hasWidow && !hasRunt
+            && (lastTag !== 'P' || Math.floor(measure(lastEl.outerHtml) / lineHeightPx) > 1);
+
+          if (!skipWidow) {
+            const newSrcHtml = serializeBlocks(pageEls.slice(0, pageEls.length - 1)).trim();
+            if (newSrcHtml) {
+              const newSrcFill = measure(newSrcHtml) / contentHeight;
+              const minFill = hasWidow ? 0.75 : 0.50;
+              if (newSrcFill >= minFill) {
+                const qNewSrc = evaluatePageQualityCanvas(newSrcHtml, contentHeight, lineHeightPx, canvasCtx);
+                if (!qNewSrc.violations.includes('heading_at_bottom')) {
+                  const newNextHtml = lastEl.outerHtml + (nextPage.html || '');
+                  if (canAcceptHtml(newNextHtml, contentHeight, canvasCtx)) {
+                    const qNewNext = evaluatePageQualityCanvas(newNextHtml, contentHeight, lineHeightPx, canvasCtx);
+                    const nextScore = evaluatePageQualityCanvas(nextPage.html, contentHeight, lineHeightPx, canvasCtx).score;
+                    const scoreBefore = qPage.score + nextScore;
+                    const scoreAfter = qNewSrc.score + qNewNext.score;
+                    const improvement = scoreBefore - scoreAfter;
+                    if (improvement >= -50 && (!bestMove || improvement > bestMove.improvement)) {
+                      bestMove = {
+                        type: hasRunt ? 'runt-push' : 'widow-push',
+                        improvement,
+                        apply: () => {
+                          pages[i] = setPageHtml(page, newSrcHtml);
+                          pages[nextIdx] = setPageHtml(nextPage, newNextHtml);
+                          mergeSplitFragments([pages[i], pages[nextIdx]], log);
+                          log.record('defect-fix', hasRunt ? 'runt-push' : 'widow-push', i + 1, {
+                            toPage: nextIdx + 1,
+                            text: (lastEl.textContent || '').substring(0, 50),
+                            scoreBefore, scoreAfter
+                          });
+                        }
+                      };
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
 
-      // Strategy B: pull first element of next page → runt page.
-      // This pushes the runt paragraph to the next page where it gains more lines
-      // and its last line gets more words. Only viable if runt page can accept it.
-      const nextEls = getPageBlocks(nextPage);
-      if (nextEls.length < 2) continue; // next page would become empty
-      const firstNextEl = nextEls[0];
-      const firstNextTag = (firstNextEl?.tag || '').toUpperCase();
-      if (/^H[1-6]$/.test(firstNextTag)) continue; // don't pull headings
-      const pulledHtml = page.html + firstNextEl.outerHtml;
-      if (!canAcceptHtml(pulledHtml, contentHeight, canvasCtx)) continue;
-      const newNextHtml = serializeBlocks(nextEls.slice(1)).trim();
-      if (!newNextHtml) continue;
-      const qPulled = evaluatePageQualityCanvas(pulledHtml, contentHeight, lineHeightPx, canvasCtx);
-      // Only apply if pulling fixes or doesn't worsen the runt
-      if (qPulled.violations.includes('runt_line') && qPulled.score >= qPage.score) continue;
-      if (qPulled.violations.includes('heading_at_bottom')) continue;
-      pages[i] = setPageHtml(page, pulledHtml);
-      pages[nextIdx] = setPageHtml(nextPage, newNextHtml);
-      mergeSplitFragments([pages[i], pages[nextIdx]], log);
-      changedAny = true;
-      log.record('short-line-fix', 'pull', i + 1, {
-        fromPage: nextIdx + 1,
-        text: (firstNextEl.textContent || '').substring(0, 60),
-        shortLineScore: qPage.score,
-        afterScore: qPulled.score
-      });
+      // === PULL FIRST ELEMENT OF NEXT PAGE BACKWARD (fixes runt_line via reflow) ===
+      if (hasRunt && sameChapterNext && !page.isFirstChapterPage) {
+        const nextEls = nextPage ? getPageBlocks(nextPage) : [];
+        if (nextEls.length >= 2) {
+          const firstNextEl = nextEls[0];
+          const firstNextTag = (firstNextEl?.tag || '').toUpperCase();
+          if (!/^H[1-6]$/.test(firstNextTag)) {
+            const pulledHtml = page.html + firstNextEl.outerHtml;
+            if (canAcceptHtml(pulledHtml, contentHeight, canvasCtx)) {
+              const newNextHtml = serializeBlocks(nextEls.slice(1)).trim();
+              if (newNextHtml) {
+                const qPulled = evaluatePageQualityCanvas(pulledHtml, contentHeight, lineHeightPx, canvasCtx);
+                if (!qPulled.violations.includes('heading_at_bottom')
+                    && !(qPulled.violations.includes('runt_line') && qPulled.score >= qPage.score)) {
+                  const nextScore = evaluatePageQualityCanvas(nextPage.html, contentHeight, lineHeightPx, canvasCtx).score;
+                  const qNewNext = evaluatePageQualityCanvas(newNextHtml, contentHeight, lineHeightPx, canvasCtx);
+                  const scoreBefore = qPage.score + nextScore;
+                  const scoreAfter = qPulled.score + qNewNext.score;
+                  const improvement = scoreBefore - scoreAfter;
+                  if (improvement >= -50 && (!bestMove || improvement > bestMove.improvement)) {
+                    bestMove = {
+                      type: 'runt-pull',
+                      improvement,
+                      apply: () => {
+                        pages[i] = setPageHtml(page, pulledHtml);
+                        pages[nextIdx] = setPageHtml(nextPage, newNextHtml);
+                        mergeSplitFragments([pages[i], pages[nextIdx]], log);
+                        log.record('defect-fix', 'runt-pull', i + 1, {
+                          fromPage: nextIdx + 1,
+                          text: (firstNextEl.textContent || '').substring(0, 50),
+                          scoreBefore, scoreAfter
+                        });
+                      }
+                    };
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // === PULL ORPHAN BACKWARD TO PREVIOUS PAGE ===
+      if (hasOrphan && sameChapterPrev) {
+        const orphanEl = pageEls[0];
+        const orphanTag = (orphanEl?.tag || '').toUpperCase();
+        if (orphanTag === 'P' && !isMostlyBoldParagraph(orphanEl)) {
+          const orphanLines = Math.floor(measure(orphanEl.outerHtml) / lineHeightPx);
+          if (orphanLines < minOrphanLines) {
+            const newPrevHtml = (prevPage.html || '') + orphanEl.outerHtml;
+            if (canAcceptHtml(newPrevHtml, contentHeight, canvasCtx)) {
+              const qNewPrev = evaluatePageQualityCanvas(newPrevHtml, contentHeight, lineHeightPx, canvasCtx);
+              if (!qNewPrev.violations.includes('heading_at_bottom')
+                  && !qNewPrev.violations.includes('orphan')
+                  && !(qNewPrev.violations.includes('widow') && !viols.includes('widow'))) {
+                const newPageHtml = serializeBlocks(pageEls.slice(1)).trim();
+                if (newPageHtml) {
+                  const qNewPage = evaluatePageQualityCanvas(newPageHtml, contentHeight, lineHeightPx, canvasCtx);
+                  const prevScore = evaluatePageQualityCanvas(prevPage.html, contentHeight, lineHeightPx, canvasCtx).score;
+                  const scoreBefore = qPage.score + prevScore;
+                  const scoreAfter = qNewPage.score + qNewPrev.score;
+                  const improvement = scoreBefore - scoreAfter;
+                  if (improvement >= -50 && (!bestMove || improvement > bestMove.improvement)) {
+                    bestMove = {
+                      type: 'orphan-pull',
+                      improvement,
+                      apply: () => {
+                        pages[prevIdx] = setPageHtml(prevPage, newPrevHtml);
+                        pages[i] = setPageHtml(page, newPageHtml);
+                        mergeSplitFragments([pages[prevIdx]], log);
+                        log.record('defect-fix', 'orphan-pull', i + 1, {
+                          toPrevPage: prevIdx + 1,
+                          text: (orphanEl.textContent || '').substring(0, 50),
+                          scoreBefore, scoreAfter
+                        });
+                      }
+                    };
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Apply the best move found for this page
+      if (bestMove) {
+        bestMove.apply();
+        changedAny = true;
+      }
     }
 
     if (!changedAny) break;
@@ -2642,7 +3459,7 @@ const checkSplitBalance = (prevHtml, restHtml, lineHeightPx, canvasCtx) => {
  * @param {object} canvasCtx
  * @returns {{ score: number, fillPct: number, violations: string[] }}
  */
-const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvasCtx, isFragment = false, options = {}) => {
+const _evaluatePageQualityCanvasCore = (pageHtml, contentHeight, lineHeightPx, canvasCtx, isFragment = false, options = {}) => {
   if (!pageHtml) return { score: Infinity, fillPct: 0, violations: [] };
 
   // fs = fragment scale: when isFragment=true the html is a split remainder that will
@@ -2668,15 +3485,21 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
   if (!isChapterLastPage) {
     const unusedLines = Math.floor(Math.max(0, remainingSpace) / lineHeightPx);
     if (unusedLines > 4)      score += 500 * fs; // severe underfill (5+ lines)
-    else if (unusedLines > 2) score += 200 * fs; // moderate underfill (3-4 lines)
-    else                      score += unusedLines * 80 * fs; // 1-2 lines: 80/160
+    else if (unusedLines > 3) score += 200 * fs; // moderate underfill (4 lines)
+    else                      score += unusedLines * 40 * fs; // 1-3 lines: 40/80/120 — gradual, no cliff
   }
 
   // fillPct deviation penalty — suppressed for chapter-last pages (same reason).
+  // Target 0.88 (not 0.92): pages at 87-91% with no violations are well-formed and
+  // should not accumulate baseline penalty just for being slightly below a tight target.
+  // Cap at 100 pts to prevent over-penalizing wide underfills vs structural violations.
   const targetFill = canvasCtx?.targetFillPct ?? 0.92;
   const fillPct = pageHeight / contentHeight;
   if (!isChapterLastPage) {
-    score += Math.abs(fillPct - targetFill) * 200 * fs;
+    // Only penalize underfill — pages above target are always good.
+    // Target raised to 0.92: bestseller-quality pages should be ≥92% full.
+    const underfill = Math.max(0, targetFill - fillPct);
+    score += Math.min(underfill * 200, 100) * fs;
   }
 
   // Parse structure
@@ -2726,11 +3549,21 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
         violations.push('orphan');
       }
 
-      // Widow: last paragraph on page with only 1 line
-      // Scaled by fs — on a fragment, this is not a real widow yet.
+      // Widow: last paragraph on page with only 1 line.
+      // Continuation fragments get full penalty (1000) — this is a bad split artifact.
+      // Complete author paragraphs that are naturally 1 line get a lighter penalty (200)
+      // — aesthetically weak but not a split defect, and not actionable by repair passes.
       if (ci === children.length - 1 && elLines <= 1) {
-        score += 1000 * fs;
-        violations.push('widow');
+        if (isContinuation) {
+          score += 1000 * fs;
+          violations.push('widow');
+        } else {
+          // Cosmetic observation, not a layout defect: a naturally short author
+          // paragraph at page bottom is normal in professional typesetting.
+          // 80 pts = mild signal (not 200 which inflated ~40% of pages to C-grade).
+          score += 80 * fs;
+          violations.push('short_last_para');
+        }
       }
 
       // Fragmentation penalty: continuation chunk with <3 lines is a "bad split"
@@ -2742,8 +3575,11 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
 
       // Fragmentation penalty: any paragraph fragment crossing pages adds cost.
       // Discourages unnecessary splits when the page could absorb the whole element.
+      // 15 pts: a continuation paragraph opening a page is typographically normal
+      // in professional book layout — penalising it heavily inflates scores with
+      // no benefit. Just enough to prefer non-split over split when all else is equal.
       if (isContinuation) {
-        score += 100;
+        score += 15;
         violations.push('fragment');
       }
 
@@ -2785,6 +3621,24 @@ const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvas
     fillPct,   // 0.0–1.0 ratio (fillPct computed above for deviation penalty)
     violations
   };
+};
+
+/**
+ * Cached wrapper for _evaluatePageQualityCanvasCore.
+ * Key = hash(html) + isFragment + isChapterLastPage — contentHeight, lineHeightPx,
+ * canvasCtx are constant per-run so they don't need to be part of the key.
+ * Cache is cleared at the start of each paginateChapters() invocation.
+ */
+const evaluatePageQualityCanvas = (pageHtml, contentHeight, lineHeightPx, canvasCtx, isFragment = false, options = {}) => {
+  if (!pageHtml) return { score: Infinity, fillPct: 0, violations: [] };
+  const isChapterLastPage = options.isChapterLastPage === true;
+  const key = `${simpleHash(pageHtml)}|${isFragment ? 1 : 0}|${isChapterLastPage ? 1 : 0}`;
+  const cached = _evalCache.get(key);
+  if (cached) { _evalCacheHits++; return { ...cached, violations: [...cached.violations] }; }
+  const result = _evaluatePageQualityCanvasCore(pageHtml, contentHeight, lineHeightPx, canvasCtx, isFragment, options);
+  _evalCache.set(key, result);
+  _evalCacheMisses++;
+  return result;
 };
 
 /**

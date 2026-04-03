@@ -13,6 +13,7 @@ import {
 } from '../utils/paginationEngine';
 import { paginateChapters } from '../utils/paginateChapters';
 import { calculateContentDimensions, calculateDynamicMargins } from '../utils/textMeasurer';
+import { FOLIO_FROM_BOTTOM_MM } from '../utils/pageLayout';
 import { calculateLineHeightPx, ensureFontsReady } from '../utils/textLayoutEngine';
 import { useParagraphValidation } from './useParagraphValidation';
 
@@ -180,6 +181,11 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
   const gutterValueRef = useRef(gutterValue);
   const previousPageCountRef = useRef(0);
   const paginationWorkerRef = useRef(null);
+  // Incremental layout cache — survives across re-paginations in this session.
+  // On each successful DONE message we store chapterHashes + chapterPageSlices
+  // and pass them back when the worker is restarted so unchanged chapters skip
+  // the expensive greedyPaginate step.
+  const paginationCacheRef = useRef({ chapterHashes: null, chapterPageSlices: null });
 
   // Keep ref in sync with state, but don't trigger pagination effect
   useEffect(() => {
@@ -272,7 +278,11 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
       safeConfig.showHeaders, safeConfig.chaptersOnRight,
       safeConfig.extraEndPages, safeConfig.extraEndPagesNumbered,
       // optimization mode
-      useEditorStore.getState().layoutOptimization?.globalMode || 'auto'
+      useEditorStore.getState().layoutOptimization?.globalMode || 'auto',
+      // folio position constant — changing this must re-paginate
+      FOLIO_FROM_BOTTOM_MM,
+      // engine version — bump to force re-pagination after algorithm changes
+      'ev5',
     ].join('|');
     const contentHash = JSON.stringify(safeBookData.chapters.map(ch =>
       ch.id + murmurhash(ch.html || '').result()
@@ -382,15 +392,34 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
         return Math.ceil(headerLineH + paddingBottom + border + marginBottom);
       })();
       const minOrphanLines = safeConfig.pagination?.minOrphanLines ?? 2;
-      // Floor to line grid, then subtract 1 line as safety buffer.
-      // Reserves one line-height to absorb browser subpixel rendering differences
-      // and prevent the last text line from being clipped by overflow:hidden.
-      const rawContentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight) - headerSpaceEstimate;
-      const contentHeight = Math.floor(rawContentHeight / lineHeightPx) * lineHeightPx - lineHeightPx;
+      // Folio is fixed at FOLIO_FROM_BOTTOM_MM (15mm) from the physical page bottom edge.
+      // The content box must end at least 1 full line ABOVE the folio top edge.
+      //
+      // Layout (bottom of page, measuring upward from physical edge):
+      //   0px              → physical bottom edge
+      //   folioFromEdgePx  → folio baseline (15mm up)
+      //   folioFromEdgePx + lineHeightPx → minimum bottom of content box
+      //   marginBottomPx   → CSS padding (content box floor when no reserve)
+      //
+      // folioReserve = extra px to subtract from rawContentHeight so that
+      // content box bottom stays at least 1 line above the folio:
+      //   required clearance from edge = folioFromEdgePx + lineHeightPx
+      //   already provided by marginBottom = marginBottomPx
+      //   reserve = required - provided (clamped to 0)
+      const folioFromEdgePx = Math.round(FOLIO_FROM_BOTTOM_MM * PX_PER_MM * previewScale);
+      const marginBottomPx  = Math.min(dimsOdd.marginBottom, dimsEven.marginBottom);
+      const folioReserve    = Math.max(folioFromEdgePx + lineHeightPx - marginBottomPx, 0);
+      // Snap DOWN to the nearest full line grid boundary so the engine never
+      // allocates more px than fits in the page. ceil() caused DOM overflow
+      // (engine budget > available px → text spilled over the folio).
+      // The render subtracts 1 lineHeight from effectiveContentHeight (see store save below)
+      // to guarantee a visible gap between the last text line and the folio.
+      const rawContentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight) - headerSpaceEstimate - folioReserve;
+      const contentHeight = Math.floor(rawContentHeight / lineHeightPx) * lineHeightPx;
 
       if (process.env.NODE_ENV === 'development') {
         const floorDrop = rawContentHeight - contentHeight;
-        console.log(`[PAGINATION-SETUP] marginBottom=${dimsOdd.marginBottom.toFixed(1)}px, headerSpace=${headerSpaceEstimate}px, floorDrop=${floorDrop.toFixed(1)}px`);
+        console.log(`[PAGINATION-SETUP] marginBottom=${dimsOdd.marginBottom.toFixed(1)}px, headerSpace=${headerSpaceEstimate}px, folioReserve=${folioReserve.toFixed(1)}px, floorDrop=${floorDrop.toFixed(1)}px`);
         console.log(`[PAGINATION-SETUP] previewScale=${previewScale.toFixed(3)}, baseFontSize=${baseFontSize.toFixed(1)}pt, lineHeightPx=${lineHeightPx}px, contentWidth=${contentWidth.toFixed(1)}px, pageHeight=${pageHeightPx.toFixed(1)}px, contentHeight=${contentHeight.toFixed(1)}px, gutter=${gutterValueRef.current}`);
       }
       const minWidowLines = safeConfig.pagination?.minWidowLines ?? 2;
@@ -442,17 +471,30 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
             console.error('[WORKER ONERROR]', msg, e);
             reject(new Error(msg));
           };
+          // Pass the cached chapter hashes + page slices from the previous run so
+          // the worker can skip greedyPaginate for unchanged chapters.
+          const { chapterHashes: prevHashes, chapterPageSlices: prevSlices } = paginationCacheRef.current;
           paginationWorkerRef.current.postMessage({
             type: 'START',
             chapters: safeBookData.chapters,
             layoutCtx,
-            safeConfig
+            safeConfig,
+            ...(prevHashes && prevSlices
+              ? { prevChapterHashes: prevHashes, prevChapterPageSlices: prevSlices }
+              : {})
           });
         });
         if (cancelled) return;
         generatedPages = paginationResult.pages;
         paginationLog = paginationResult.log;
         paginationSummaryText = paginationResult.summaryText;
+        // Save incremental layout cache for the next run.
+        if (paginationResult.chapterHashes?.length) {
+          paginationCacheRef.current = {
+            chapterHashes: paginationResult.chapterHashes,
+            chapterPageSlices: paginationResult.chapterPageSlices ?? null
+          };
+        }
         if (paginationLog) {
           useEditorStore.getState().setPaginationLog(paginationLog);
           if (process.env.NODE_ENV === 'development') {
@@ -492,8 +534,13 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
         const validatedPages = validatePages(generatedPages);
         // Batch both state updates together to avoid re-render between them
         // which would trigger effect cleanup and set cancelled=true
+        // renderContentHeight = engine budget exactly.
+        // The Canvas measurement engine now recursively measures nested block
+        // elements (chapter titles with inner divs/padding/borders), so the
+        // engine budget matches DOM rendering. No buffer needed.
+        const renderContentHeight = contentHeight;
         const dimsSnapshot = {
-          contentHeight,
+          contentHeight: renderContentHeight,
           contentWidth,
           lineHeightPx,
           baseFontSizePx,
@@ -501,7 +548,7 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
           previewScale,
           gutterValue: engineGutter,
         };
-        console.log(`[PAGINATION] Guardando layoutDims: contentHeight=${contentHeight}px, engineGutter=${engineGutter}`);
+        console.log(`[PAGINATION] Guardando layoutDims: contentHeight=${contentHeight}px renderContentHeight=${renderContentHeight}px engineGutter=${engineGutter}`);
         setLayoutDims(dimsSnapshot);
         useEditorStore.getState().setLayoutDims(dimsSnapshot);
         setPages(validatedPages);

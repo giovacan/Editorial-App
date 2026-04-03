@@ -8,7 +8,8 @@
  * line breaks that minimize inter-word spacing variance across the paragraph.
  */
 
-import { breakLines, forcedBreak, MAX_COST, MaxAdjustmentExceededError } from 'tex-linebreak';
+import { breakLines, forcedBreak, MAX_COST, MaxAdjustmentExceededError, createHyphenator } from 'tex-linebreak';
+import esPatterns from 'hyphenation.es';
 
 /**
  * KP_MAX_ADJUSTMENT_RATIO: Maximum allowed stretch/shrink ratio per space.
@@ -26,6 +27,36 @@ import { breakLines, forcedBreak, MAX_COST, MaxAdjustmentExceededError } from 't
  * because KP is optimizing globally across all lines.
  */
 const KP_MAX_ADJUSTMENT_RATIO = 1.5;
+
+// Penalty for two consecutive hyphenated line endings (flagged penalties back-to-back).
+// 0 = disabled (no hyphenation yet). Once hyphenation is wired in, set to 3000 to match
+// InDesign's default. Pre-activated here so the infrastructure is ready.
+const KP_DOUBLE_HYPHEN_PENALTY = 3000;
+
+// Penalty for adjacent lines in very different fitness classes (tight/normal/loose/very-loose).
+// Prevents jarring transitions in inter-word spacing between consecutive lines.
+// 3000 is the TeX default; InDesign uses a similar value internally.
+const KP_ADJACENT_LOOSE_TIGHT_PENALTY = 3000;
+
+// Soft hyphen penalty cost — lower than InDesign's default (~100) so KP prefers
+// hyphenation over very loose spacing, but not so low that it hyphenates every word.
+// 50 matches TeX's \hyphenpenalty default.
+const KP_HYPHEN_PENALTY = 50;
+
+// Minimum syllable length to insert a breakpoint.
+// The Liang dictionary already enforces leftmin=2 / rightmin=2 for Spanish.
+// We use 2 here to match — setting this to 3 would reject most Spanish syllables
+// (e.g. "di", "na", "ra" in "ex-tra-or-di-na-ria-men-te").
+const KP_MIN_SYLLABLE_LENGTH = 2;
+
+// ─── Spanish hyphenator (Liang patterns via tex-linebreak + hyphenation.es) ──
+// Initialized lazily on first call to buildItemsWithHyphenation.
+// The hyphenator splits words into syllable arrays: ['cons','ti','tu','cio','nal']
+let _hyphenate = null;
+const getHyphenate = () => {
+  if (!_hyphenate) _hyphenate = createHyphenator(esPatterns);
+  return _hyphenate;
+};
 
 // ─── Imported from textLayoutEngine.js (will be injected) ───────────
 // We need measureWordWidth, getSpaceWidth, buildFontString, breakWord
@@ -49,22 +80,31 @@ export const initKnuthPlass = (measureWordWidth, getSpaceWidth, buildFontString,
 
 /**
  * Build Box/Glue/Penalty items from an array of words with their widths.
+ * When fontString is supplied, words are split into syllables via the Liang
+ * Spanish dictionary and penalty items (cost=50, flagged=true) are inserted
+ * between syllables so KP can break within words when needed.
  *
  * @param {Array<{word: string, width: number}>} wordItems - Words with pre-measured widths
  * @param {number} spaceWidth - Base space width in px
  * @param {number} firstLineIndent - Indent for the first line in px
+ * @param {string|null} fontString - CSS font string for syllable measurement (enables hyphenation)
  * @returns {import('tex-linebreak').InputItem[]}
  */
-const buildItems = (wordItems, spaceWidth, firstLineIndent) => {
+const buildItems = (wordItems, spaceWidth, firstLineIndent, fontString = null, itemWordIdx = null) => {
   const items = [];
+  const hyphenate = fontString ? getHyphenate() : null;
+
+  // Measure soft-hyphen glyph width once (used for all penalty items in this paragraph)
+  const hyphenWidth = fontString ? _measureWordWidth('-', fontString) : 0;
 
   // First-line indent as an empty box
   if (firstLineIndent > 0) {
     items.push({ type: 'box', width: firstLineIndent });
+    if (itemWordIdx) itemWordIdx.push(-1);
   }
 
   for (let i = 0; i < wordItems.length; i++) {
-    const { width } = wordItems[i];
+    const { word, width } = wordItems[i];
 
     if (i > 0) {
       // Glue (space) between words — can stretch/shrink
@@ -74,14 +114,60 @@ const buildItems = (wordItems, spaceWidth, firstLineIndent) => {
         stretch: spaceWidth * 0.5,
         shrink: Math.max(0, spaceWidth * 0.33),
       });
+      if (itemWordIdx) itemWordIdx.push(-1);
     }
 
+    // Attempt syllabification if the word is long enough to benefit.
+    // Short words (≤4 chars) rarely produce useful breaks and add noise.
+    // Skip NBSP-joined tokens (\uE000 sentinel) — they must not be broken.
+    if (hyphenate && word.length > 4 && !word.includes('\uE000')) {
+      const syllables = hyphenate(word);
+      if (syllables.length > 1) {
+        // Verify each syllable is long enough per KP_MIN_SYLLABLE_LENGTH
+        // Build the syllable boxes + penalty items
+        let syllableOk = true;
+        for (let s = 0; s < syllables.length; s++) {
+          const isEdge = s === 0 || s === syllables.length - 1;
+          if (!isEdge && syllables[s].length < KP_MIN_SYLLABLE_LENGTH) {
+            // Interior syllable too short — skip hyphenation for this word
+            // (edge syllables can be short; only interior ones matter)
+            syllableOk = false;
+            break;
+          }
+        }
+
+        if (syllableOk) {
+          for (let s = 0; s < syllables.length; s++) {
+            const sylWidth = _measureWordWidth(syllables[s], fontString);
+            items.push({ type: 'box', width: sylWidth });
+            // All syllable boxes map to the same word index
+            if (itemWordIdx) itemWordIdx.push(i);
+            if (s < syllables.length - 1) {
+              // Optional hyphen: penalty item with the soft-hyphen glyph width
+              items.push({
+                type: 'penalty',
+                width: hyphenWidth,
+                cost: KP_HYPHEN_PENALTY,
+                flagged: true,
+              });
+              if (itemWordIdx) itemWordIdx.push(-1);
+            }
+          }
+          continue; // Skip the single-box push below
+        }
+      }
+    }
+
+    // No hyphenation — word is a single box
     items.push({ type: 'box', width });
+    if (itemWordIdx) itemWordIdx.push(i);
   }
 
   // Finishing glue + forced break (standard Knuth-Plass paragraph ending)
   items.push({ type: 'glue', width: 0, stretch: MAX_COST, shrink: 0 });
+  if (itemWordIdx) itemWordIdx.push(-1);
   items.push(forcedBreak());
+  if (itemWordIdx) itemWordIdx.push(-1);
 
   return items;
 };
@@ -106,29 +192,18 @@ export const countLinesKP = (text, contentWidth, fontString, firstLineIndent = 0
 
   const spaceWidth = _getSpaceWidth(fontString) + letterSpacingPx + wordSpacingPx;
 
-  // Check for words wider than contentWidth (need char-level breaking)
-  // Knuth-Plass doesn't handle this, so we pre-process long words
-  let hasLongWord = false;
+  // Measure all words. With hyphenation enabled, words wider than contentWidth
+  // will be split into syllables inside buildItems, so we no longer bail out here.
   const wordItems = [];
   for (const word of words) {
     let w = _measureWordWidth(word, fontString);
     if (letterSpacingPx && word.length > 1) {
       w += letterSpacingPx * (word.length - 1);
     }
-    if (w > contentWidth) {
-      hasLongWord = true;
-      break;
-    }
     wordItems.push({ word, width: w });
   }
 
-  // Fall back to greedy for paragraphs with words wider than the line
-  // (rare edge case — Knuth-Plass doesn't handle mid-word breaks)
-  if (hasLongWord) {
-    return null; // Signal caller to use greedy fallback
-  }
-
-  const items = buildItems(wordItems, spaceWidth, firstLineIndent);
+  const items = buildItems(wordItems, spaceWidth, firstLineIndent, fontString);
 
   try {
     // Try with controlled ratio first — prevents overly-wide spaces in short lines.
@@ -136,7 +211,7 @@ export const countLinesKP = (text, contentWidth, fontString, firstLineIndent = 0
     // (e.g. very long Spanish compound words, narrow columns).
     let breakpoints;
     try {
-      breakpoints = breakLines(items, contentWidth, { maxAdjustmentRatio: KP_MAX_ADJUSTMENT_RATIO });
+      breakpoints = breakLines(items, contentWidth, { maxAdjustmentRatio: KP_MAX_ADJUSTMENT_RATIO, doubleHyphenPenalty: KP_DOUBLE_HYPHEN_PENALTY, adjacentLooseTightPenalty: KP_ADJACENT_LOOSE_TIGHT_PENALTY });
     } catch (ratioErr) {
       if (ratioErr instanceof MaxAdjustmentExceededError) {
         breakpoints = breakLines(items, contentWidth, { maxAdjustmentRatio: null });
@@ -180,39 +255,22 @@ export const getLineBreakPositionsKP = (text, contentWidth, fontString, firstLin
 
   const baseSpaceWidth = _getSpaceWidth(fontString) + wordSpacingPx;
 
-  // Measure all words, building item list with a word-index map
+  // Measure all words
   const wordItems = [];
-  const items = [];
-  const itemWordIdx = []; // items[i] → word index, -1 for non-word items
-
-  if (firstLineIndent > 0) {
-    items.push({ type: 'box', width: firstLineIndent });
-    itemWordIdx.push(-1);
-  }
-
   for (let i = 0; i < words.length; i++) {
     const w = _measureWordWidth(words[i], fontString);
-    if (w > contentWidth) return null; // long word — caller should use greedy
     wordItems.push({ word: words[i], width: w });
-
-    if (i > 0) {
-      items.push({ type: 'glue', width: baseSpaceWidth, stretch: baseSpaceWidth * 0.5, shrink: Math.max(0, baseSpaceWidth * 0.33) });
-      itemWordIdx.push(-1);
-    }
-    items.push({ type: 'box', width: w });
-    itemWordIdx.push(i);
   }
 
-  // Finishing glue + forced break (standard KP paragraph ending)
-  items.push({ type: 'glue', width: 0, stretch: MAX_COST, shrink: 0 });
-  itemWordIdx.push(-1);
-  items.push(forcedBreak());
-  itemWordIdx.push(-1);
+  // Build items via shared buildItems (includes hyphenation when fontString is set).
+  // itemWordIdx tracks which word each item corresponds to (-1 for non-word items).
+  const itemWordIdx = [];
+  const items = buildItems(wordItems, baseSpaceWidth, firstLineIndent, fontString, itemWordIdx);
 
   try {
     let breakpoints;
     try {
-      breakpoints = breakLines(items, contentWidth, { maxAdjustmentRatio: KP_MAX_ADJUSTMENT_RATIO });
+      breakpoints = breakLines(items, contentWidth, { maxAdjustmentRatio: KP_MAX_ADJUSTMENT_RATIO, doubleHyphenPenalty: KP_DOUBLE_HYPHEN_PENALTY, adjacentLooseTightPenalty: KP_ADJACENT_LOOSE_TIGHT_PENALTY });
     } catch (ratioErr) {
       if (ratioErr instanceof MaxAdjustmentExceededError) {
         breakpoints = breakLines(items, contentWidth, { maxAdjustmentRatio: null });
@@ -229,7 +287,12 @@ export const getLineBreakPositionsKP = (text, contentWidth, fontString, firstLin
       const bp = breakpoints[b];
       for (let k = bp + 1; k < items.length; k++) {
         if (itemWordIdx[k] >= 0) {
-          lineStarts.push(itemWordIdx[k]);
+          // Deduplicate: hyphenated words produce multiple boxes with the same
+          // word index. Only record a new lineStart when the word index changes.
+          const wordIdx = itemWordIdx[k];
+          if (lineStarts[lineStarts.length - 1] !== wordIdx) {
+            lineStarts.push(wordIdx);
+          }
           break;
         }
       }
@@ -298,25 +361,27 @@ export const countLinesFromRunsKP = (runs, contentWidth, baseFontSizePx, fontFam
       if (!part) continue;
       if (/^\s+$/.test(part)) continue; // Spaces become glue, handled by buildItems
       const width = _measureWordWidth(part, fontStr);
-      if (width > contentWidth) {
-        return null; // Long word — fall back to greedy
-      }
-      wordItems.push({ word: part, width });
+      // With hyphenation, words wider than contentWidth are split inside buildItems
+      wordItems.push({ word: part, width, fontStr });
     }
   }
 
   if (wordItems.length === 0) return 0;
+
+  // Use the font of the first run as the representative font for hyphen measurement
+  const representativeFont = wordItems[0]?.fontStr
+    || _buildFontString(baseFontSizePx, fontFamily, false, false);
+
   if (!baseSpaceWidth) {
-    const defaultFont = _buildFontString(baseFontSizePx, fontFamily, false, false);
-    baseSpaceWidth = _getSpaceWidth(defaultFont) + wordSpacingPx;
+    baseSpaceWidth = _getSpaceWidth(representativeFont) + wordSpacingPx;
   }
 
-  const items = buildItems(wordItems, baseSpaceWidth, firstLineIndent);
+  const items = buildItems(wordItems, baseSpaceWidth, firstLineIndent, representativeFont);
 
   try {
     let breakpoints;
     try {
-      breakpoints = breakLines(items, contentWidth, { maxAdjustmentRatio: KP_MAX_ADJUSTMENT_RATIO });
+      breakpoints = breakLines(items, contentWidth, { maxAdjustmentRatio: KP_MAX_ADJUSTMENT_RATIO, doubleHyphenPenalty: KP_DOUBLE_HYPHEN_PENALTY, adjacentLooseTightPenalty: KP_ADJACENT_LOOSE_TIGHT_PENALTY });
     } catch (ratioErr) {
       if (ratioErr instanceof MaxAdjustmentExceededError) {
         breakpoints = breakLines(items, contentWidth, { maxAdjustmentRatio: null });

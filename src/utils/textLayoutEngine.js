@@ -128,7 +128,10 @@ const measureTextWidth = (text, fontString) => {
 const measureWordWidth = (word, fontString) => {
   const key = fontString + '|' + word;
   if (_wordWidthCache.has(key)) return _wordWidthCache.get(key);
-  const w = measureTextWidth(word, fontString);
+  // Restore NBSP sentinel to a regular space for Canvas measurement
+  // (Canvas measures \uE000 as zero-width; we need the actual space width)
+  const measured = word.includes(NBSP_SENTINEL) ? word.replace(/\uE000/g, ' ') : word;
+  const w = measureTextWidth(measured, fontString);
   _wordWidthCache.set(key, w);
   return w;
 };
@@ -147,10 +150,21 @@ const getSpaceWidth = (fontString) => {
 // ─── Whitespace collapsing ──────────────────────────────────────────
 // HTML collapses consecutive whitespace into a single space.
 // This replicates that behavior for plain text extracted from DOM.
+//
+// NBSP (\u00A0) is explicitly preserved as the Unicode no-break space —
+// it must NOT become a word-split boundary. We replace it with a
+// private-use sentinel (\uE000) before collapsing regular whitespace,
+// then restore it after, ensuring the surrounding tokens are joined into
+// a single "word" that KP will never break at.
+
+const NBSP_SENTINEL = '\uE000';
 
 const collapseWhitespace = (text) => {
   if (!text) return '';
-  return text.replace(/\s+/g, ' ').trim();
+  // Temporarily encode NBSP + neighbouring normal spaces as a sentinel-joined token.
+  // e.g. "artículo\u00A06" → "artículo\uE0006" (one word for KP/greedy)
+  const encoded = text.replace(/\s*\u00A0\s*/g, NBSP_SENTINEL);
+  return encoded.replace(/\s+/g, ' ').trim();
 };
 
 // ─── Inline text runs extractor ─────────────────────────────────────
@@ -675,6 +689,8 @@ const extractStyles = (style) => ({
   marginRight: parseFloat(style.marginRight) || 0,
   marginRightUnit: (style.marginRight || '').replace(/[\d.-]/g, '') || 'px',
   borderLeftWidth: parseFloat(style.borderLeftWidth) || 0,
+  borderTopWidth: parseFloat(style.borderTopWidth) || 0,
+  borderBottomWidth: parseFloat(style.borderBottomWidth) || 0,
   letterSpacing: parseFloat(style.letterSpacing) || 0,
   letterSpacingUnit: (style.letterSpacing || '').replace(/[\d.-]/g, '') || 'px',
   wordSpacing: parseFloat(style.wordSpacing) || 0,
@@ -729,6 +745,8 @@ const parseStyleString = (cssText) => {
     marginRight: parseFloat(getMar('margin-right')) || 0,
     marginRightUnit: (getMar('margin-right') || '').replace(/[\d.-]/g, '') || 'px',
     borderLeftWidth: parseFloat(get('border-left-width')) || 0,
+    borderTopWidth: parseFloat(get('border-top-width') || get('border-top')) || 0,
+    borderBottomWidth: parseFloat(get('border-bottom-width') || get('border-bottom')) || 0,
     letterSpacing: parseFloat(get('letter-spacing')) || 0,
     letterSpacingUnit: (get('letter-spacing') || '').replace(/[\d.-]/g, '') || 'px',
     wordSpacing: parseFloat(get('word-spacing')) || 0,
@@ -999,11 +1017,36 @@ const calculateElementHeight = (parsed, layoutCtx) => {
   // --- BR ---
   if (tag === 'BR') return baseFontSizePx * baseLineHeight;
 
+  // --- DIV with child block elements (e.g. chapter title with decorative lines) ---
+  // When a DIV contains inner <div> children, we must recursively measure them
+  // instead of treating all text as a single paragraph. This is critical for
+  // chapter title blocks: <div data-chapter-start><div>[hr]</div><div>[title]</div><div>[hr]</div></div>
+  // Depth guard prevents infinite recursion on deeply nested structures.
+  if (tag === 'DIV' && parsed.innerHTML && /<div[\s>]/i.test(parsed.innerHTML)
+      && (layoutCtx._divRecursionDepth || 0) < 3) {
+    const marginTopPx = resolveSize(styles.marginTop, styles.marginTopUnit, baseFontSizePx);
+    const marginBottomPx = resolveSize(styles.marginBottom, styles.marginBottomUnit, baseFontSizePx);
+    const paddingTopPx = resolveSize(styles.paddingTop, styles.paddingTopUnit, baseFontSizePx);
+    const paddingBottomPx = resolveSize(styles.paddingBottom, styles.paddingBottomUnit, baseFontSizePx);
+    // Recursively measure inner HTML with incremented depth guard
+    const innerCtx = { ...layoutCtx, _divRecursionDepth: (layoutCtx._divRecursionDepth || 0) + 1 };
+    const innerHeight = measureHtmlHeight(parsed.innerHTML, innerCtx);
+    return marginTopPx + paddingTopPx + innerHeight + paddingBottomPx + marginBottomPx;
+  }
+
   // --- Empty element with no text ---
   if (!text?.trim()) {
     // Elements with display:flex + min-height (like fullPage title)
     if (styles.display === 'flex' && styles.minHeight) {
       return resolveSize(styles.minHeight, styles.minHeightUnit, baseFontSizePx);
+    }
+    // Empty elements with borders (e.g. decorative HR-like divs)
+    const borderTopH = styles.borderTopWidth || 0;
+    const borderBottomH = styles.borderBottomWidth || 0;
+    if (borderTopH || borderBottomH) {
+      const marginTopPx = resolveSize(styles.marginTop, styles.marginTopUnit, baseFontSizePx);
+      const marginBottomPx = resolveSize(styles.marginBottom, styles.marginBottomUnit, baseFontSizePx);
+      return marginTopPx + borderTopH + borderBottomH + marginBottomPx;
     }
     return 0;
   }
@@ -1136,7 +1179,9 @@ const hasStyledRuns = (runs) => {
  *   - fontFamily: CSS font-family string
  * @returns {number} Height in pixels (deterministic)
  */
-export const measureHtmlHeight = (html, layoutCtx) => {
+// Hoisted function declaration so calculateElementHeight can call it
+// for recursive measurement of nested block elements (e.g. chapter titles).
+export function measureHtmlHeight(html, layoutCtx) {
   if (!html || !html.trim()) return 0;
 
   const elements = parseMultiElementHtml(html);
@@ -1169,7 +1214,7 @@ export const measureHtmlHeight = (html, layoutCtx) => {
   }
 
   return Math.ceil(totalHeight);
-};
+}
 
 // ─── Convenience: create layout context ─────────────────────────────
 
@@ -1560,6 +1605,7 @@ export {
   normalizeWidth,
   collapseWhitespace,
   getLineBreakPositions,
+  getLineBreakPositionsKP,
   getLineBreakPositionsFromRuns,
   countHyphenationMetrics,
   getCtx
