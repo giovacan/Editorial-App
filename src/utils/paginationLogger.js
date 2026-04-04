@@ -108,6 +108,7 @@ export function createPaginationLogger() {
   let summary = null;
   let counter = 0;
   let reproBundle = null;
+  let layoutAuditText = null;
 
   return {
     /** Clear all entries — call at the start of paginateChapters() */
@@ -117,6 +118,7 @@ export function createPaginationLogger() {
       summary = null;
       counter = 0;
       reproBundle = null;
+      layoutAuditText = null;
     },
 
     /** Store a snapshot of the pagination config for the log */
@@ -132,6 +134,16 @@ export function createPaginationLogger() {
     setReproBundle(bundle) {
       if (!IS_DEV) return;
       reproBundle = bundle;
+    },
+
+    /**
+     * Store pre-formatted layout audit text (from useLayoutVerification).
+     * Called from usePagination after the DOM audit completes.
+     * @param {string} text
+     */
+    setLayoutAudit(text) {
+      if (!IS_DEV) return;
+      layoutAuditText = text;
     },
 
     /**
@@ -262,6 +274,7 @@ export function createPaginationLogger() {
         totalEvents: entries.length,
         config,
         reproBundle: reproBundle || null,
+        layoutAudit: layoutAuditText || null,
         entries,
         summary: summary || []
       };
@@ -459,6 +472,12 @@ export function createPaginationLogger() {
         lines.push('');
         lines.push('PAGE LAYOUT VIEW (anomaly + C/D/F pages):');
         lines.push(pageView);
+      }
+
+      // Layout audit (DOM vs Canvas verification) — appended after DOM audit completes
+      if (layoutAuditText) {
+        lines.push('');
+        lines.push(layoutAuditText);
       }
 
       return lines.join('\n');

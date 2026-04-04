@@ -1,3 +1,6 @@
+import LayoutGuidesOverlay from './LayoutGuidesOverlay';
+import { useRef } from 'react';
+
 function MagnifierPanel({
   magnifierPanelRef,
   magnifierPageRef,
@@ -15,6 +18,8 @@ function MagnifierPanel({
   lineHeightPx,
   textAlign,
   effectiveContentHeight,
+  engineContentHeight,
+  showLayoutGuides,
   debugHtml,
   pageNumHtml,
   showHeaders,
@@ -29,6 +34,7 @@ function MagnifierPanel({
   const magScale = magnifierZoom / 100;
   const tx = -(magnifierPos.x / 100) * pageWidthPx * (magScale - 1);
   const ty = -(magnifierPos.y / 100) * pageHeightPx * (magScale - 1);
+  const magContentRef = useRef(null);
 
   return (
     <div
@@ -83,7 +89,7 @@ function MagnifierPanel({
             lineHeight: `${lineHeightPx}px`,
             textAlign: isFrontMatterPage ? 'left' : textAlign,
             textJustify: isFrontMatterPage ? undefined : 'inter-word',
-            hyphens: isFrontMatterPage ? 'none' : 'auto',
+            hyphens: 'none',
             wordBreak: 'break-word',
             overflowWrap: 'break-word',
             background: 'white',
@@ -101,11 +107,21 @@ function MagnifierPanel({
             />
           )}
           <div
-            ref={magnifierContentRef}
+            ref={(el) => {
+              magnifierContentRef.current = el;
+              magContentRef.current = el;
+            }}
             className="preview-content"
-            style={{ height: `${effectiveContentHeight + 2}px` }}
+            style={{ height: `${effectiveContentHeight}px` }}
             dangerouslySetInnerHTML={{ __html: debugHtml || '' }}
           />
+          {showLayoutGuides && !currentPageData.isBlank && !isFrontMatterPage && (
+            <LayoutGuidesOverlay
+              contentRef={magContentRef}
+              engineContentHeight={engineContentHeight}
+              contentWidth={pageWidthPx - marginLeft - marginRight}
+            />
+          )}
           {pageNumHtml}
         </div>
       </div>

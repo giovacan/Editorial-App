@@ -10,11 +10,10 @@
  * so Preview and PDF always show the same header content.
  */
 
-import { useMemo } from 'react';
+// useMemo removed — no longer needed after KP rendering moved to engine
 import { buildHeaderHtmlPure } from '../../hooks/useHeaderFooter';
 import { computeFolioStyle, computeShowFolio, computeFolioFromEdge } from '../../hooks/usePageRenderLayout';
-import { applyKpRendering } from '../../utils/textLayoutEngine';
-import { JUSTIFY_SLACK_RATIO } from '../../utils/layoutIr';
+// applyKpRendering removed — KP word-spacing now applied by the engine
 import './PageFrame.css';
 
 /**
@@ -45,6 +44,7 @@ export default function PageFrame({
     textAlign = 'justify',
     effectiveContentHeight,
     baseFontSize,
+    previewScale = 0.42,
   } = dims;
 
   const rawHtml   = page?.html || '';
@@ -63,28 +63,36 @@ export default function PageFrame({
   });
   const displayNum = page?.displayPageNumber ?? pageNum;
 
-  // ── KP Rendering ─────────────────────────────────────────────────────────────
+  // KP word-spacing is now applied by the engine — no render-time modification.
   const contentWidth = pageWidthPx - marginLeft - marginRight;
-  const html = useMemo(() => {
-    if (!rawHtml || isBlank || textAlign !== 'justify') return rawHtml;
-    return applyKpRendering(rawHtml, {
-      baseFontSizePx: fontSize,
-      fontFamily,
-      contentWidth,
-      widthSlack: contentWidth * JUSTIFY_SLACK_RATIO,
-    });
-  }, [rawHtml, isBlank, textAlign, fontSize, fontFamily, contentWidth]);
+  const html = rawHtml;
 
   // ── Header ──────────────────────────────────────────────────────────────────
   const headerHtml = buildHeaderHtmlPure(page, config, bookTitle, baseFontSize);
-  const showHeader = !!headerHtml;
+  // isFirstChapterPage flag may be lost after post-processing — fall back to
+  // checking if the page HTML contains a chapter title element (data-chapter-start).
+  const pageHasChapterTitle = !!(rawHtml && rawHtml.includes('data-chapter-start="true"'));
+  const isChapterStartPage  = page?.isFirstChapterPage === true || pageHasChapterTitle;
+  const showHeader = config?.showHeaders !== false && (config?.header?.enabled !== false) && !!headerHtml
+    && !!page
+    && !isFrontMatterPage
+    && !(config?.header?.skipFirstChapterPage && isChapterStartPage);
 
   // ── Page number position ────────────────────────────────────────────────────
-  // Folio: 1.5 lines below content bottom — canonical formula from pageLayout.js
-  const folioFromEdge = computeFolioFromEdge(pageHeightPx, marginTop, effectiveContentHeight, lineHeightPx);
+  // Fixed 15mm from physical page bottom — same formula as getPageLayout()
+  const folioFromEdge  = computeFolioFromEdge(previewScale);
+  const contentBoxHeight = effectiveContentHeight;
+  const folioPos   = config?.pageNumberPos   || 'bottom';
+  const folioAlign = config?.pageNumberAlign || 'center';
+  const folioOnOuter = folioAlign === 'outer' || folioAlign === 'paragraph-edge' || folioAlign === 'paragraph';
+  // outer-aligned folio at top: number is embedded inline in header row → suppress separate span
+  const folioEmbeddedInHeader = folioPos === 'top' && folioOnOuter && showHeader;
+  // center-aligned folio at top: number stays absolute, push header down to clear it
+  const headerTopOffset = (folioPos === 'top' && !folioOnOuter && showHeader) ? folioFromEdge + fontSize * 0.3 : 0;
+
   const pageNumStyle = {
     ...computeFolioStyle({
-      pos:            config?.pageNumberPos    || 'bottom',
+      pos:            folioPos,
       align:          config?.pageNumberAlign  || 'center',
       marginFromEdge: folioFromEdge,
       isEvenPage,
@@ -105,7 +113,7 @@ export default function PageFrame({
     lineHeight:    `${lineHeightPx}px`,
     textAlign,
     textJustify:   'inter-word',
-    hyphens:       'auto',
+    hyphens:       'none',
     wordBreak:     'break-word',
     overflowWrap:  'break-word',
     backgroundColor: '#fff',
@@ -139,7 +147,7 @@ export default function PageFrame({
       {showHeader && !isBlank && (
         <div
           className="pf-header"
-          style={{ marginBottom: '0.5em' }}
+          style={{ marginTop: headerTopOffset ? `${headerTopOffset}px` : undefined, marginBottom: '0.5em' }}
           dangerouslySetInnerHTML={{ __html: headerHtml }}
         />
       )}
@@ -147,12 +155,12 @@ export default function PageFrame({
       {/* Content */}
       <div
         className="pf-content preview-content"
-        style={{ height: `${effectiveContentHeight + 2}px`, overflow: 'hidden' }}
+        style={{ height: `${contentBoxHeight}px`, overflow: 'hidden' }}
         dangerouslySetInnerHTML={{ __html: html }}
       />
 
-      {/* Page number */}
-      {showPageNum && (
+      {/* Page number — suppressed when embedded in header row (folio-at-top) */}
+      {showPageNum && !folioEmbeddedInHeader && (
         <span className="pf-page-number" style={pageNumStyle}>
           {displayNum}
         </span>

@@ -198,7 +198,7 @@ export const exportPdf = async (bookData, config, paginatedPages, dims, onProgre
     'word-break:break-word',
     'overflow-wrap:break-word',
     'overflow:hidden',
-    'hyphens:auto',
+    'hyphens:none',
     'position:relative',
   ].join(';');
 
@@ -451,7 +451,7 @@ export const exportPdfPrint = async (bookData, config, paginatedPages, dims, onP
     'word-break:break-word',
     'overflow-wrap:break-word',
     'overflow:hidden',
-    'hyphens:auto',
+    'hyphens:none',
     'position:relative',
     'page-break-after:always',
     'break-after:always',
@@ -494,7 +494,7 @@ export const exportPdfPrint = async (bookData, config, paginatedPages, dims, onP
       text-justify: inter-word;
       word-break: break-word;
       overflow-wrap: break-word;
-      hyphens: auto;
+      hyphens: none;
       position: relative;
       box-sizing: border-box;
       overflow: hidden;

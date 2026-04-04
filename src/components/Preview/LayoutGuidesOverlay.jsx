@@ -2,6 +2,7 @@
  * LayoutGuidesOverlay — visual layout diagnostic overlay for the preview.
  *
  * Shows:
+ *   - Red solid line    = engine contentHeight limit (where pagination cuts)
  *   - Blue dashed rect  = actual content bounding box from DOM measurement
  *   - Colored outlines  = bounding box of each block element (p, h1-h6, blockquote)
  *
@@ -13,9 +14,7 @@ import { useEffect, useRef, useState, memo, useCallback } from 'react';
 
 const LayoutGuidesOverlay = memo(function LayoutGuidesOverlay({
   contentRef,
-  marginTop,
-  marginLeft,
-  effectiveContentHeight,
+  engineContentHeight,
   contentWidth,
 }) {
   const [guides, setGuides] = useState({
@@ -39,10 +38,17 @@ const LayoutGuidesOverlay = memo(function LayoutGuidesOverlay({
     const contentLeft = containerRect.left - pageRect.left;
     const contentTop = containerRect.top - pageRect.top;
     
-    // Use the actual rendered content dimensions (not the calculated ones)
-    // This accounts for any overflow or rendering differences
     const actualContentWidth = container.scrollWidth;
-    const actualContentHeight = container.offsetHeight; // Use offsetHeight for the visible height
+    // Use the bottom edge of the last visible child to get actual text height,
+    // not container.offsetHeight (which is fixed = effectiveContentHeight).
+    const allChildren = container.querySelectorAll('p, h1, h2, h3, h4, h5, h6, blockquote, div');
+    let lastChildBottom = 0;
+    for (const el of allChildren) {
+      const r = el.getBoundingClientRect();
+      const bottom = r.bottom - containerRect.top;
+      if (bottom > lastChildBottom) lastChildBottom = bottom;
+    }
+    const actualContentHeight = lastChildBottom > 0 ? lastChildBottom : container.offsetHeight;
 
     // Measure block positions relative to content container
     const children = container.querySelectorAll('p, h1, h2, h3, h4, h5, h6, blockquote');
@@ -94,11 +100,35 @@ const LayoutGuidesOverlay = memo(function LayoutGuidesOverlay({
         zIndex: 10,
       }}
     >
+      {/* Red line = engine cut limit (contentHeight used by paginator) */}
+      <div style={{
+        position: 'absolute',
+        top:   contentTop + engineContentHeight,
+        left:  contentLeft,
+        width: actualContentWidth || contentWidth,
+        height: 0,
+        borderTop: '1.5px solid rgba(220,30,30,0.9)',
+        boxSizing: 'border-box',
+      }}>
+        <span style={{
+          position: 'absolute',
+          right: 0,
+          top: -10,
+          fontSize: 8,
+          color: 'rgba(220,30,30,0.95)',
+          background: 'rgba(255,255,255,0.8)',
+          padding: '0 2px',
+          whiteSpace: 'nowrap',
+          lineHeight: '10px',
+        }}>motor cut</span>
+      </div>
+
+      {/* Blue dashed rect = render div height (contentHeight - 1 line reserved) */}
       <div style={{
         position: 'absolute',
         top:    contentTop,
         left:   contentLeft,
-        width:  actualContentWidth,
+        width:  actualContentWidth || contentWidth,
         height: actualContentHeight,
         border: '1px dashed rgba(0,100,255,0.6)',
         boxSizing: 'border-box',

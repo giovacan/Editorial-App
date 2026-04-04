@@ -58,6 +58,36 @@ const getHyphenate = () => {
   return _hyphenate;
 };
 
+// ─── UAX#14: Split words at em/en-dash boundaries ───────────────────
+// Em-dash (—, U+2014) and en-dash (–, U+2013) are optional break-after
+// points. "palabra—otra" → ["palabra—", "otra"]. Dash stays with the
+// preceding fragment (typographic convention).
+const _dashRe = /([\u2014\u2013])/;
+const _splitAtDashes = (words) => {
+  let changed = false;
+  const result = [];
+  for (const w of words) {
+    if (_dashRe.test(w)) {
+      const parts = w.split(_dashRe);
+      let cur = '';
+      for (let i = 0; i < parts.length; i++) {
+        if (!parts[i]) continue;
+        if (parts[i] === '\u2014' || parts[i] === '\u2013') {
+          cur += parts[i];
+        } else {
+          if (cur) { result.push(cur); changed = true; }
+          cur = parts[i];
+        }
+      }
+      if (cur) result.push(cur);
+      if (parts.filter(p => p === '\u2014' || p === '\u2013').length > 0) changed = true;
+    } else {
+      result.push(w);
+    }
+  }
+  return changed ? result : words;
+};
+
 // ─── Imported from textLayoutEngine.js (will be injected) ───────────
 // We need measureWordWidth, getSpaceWidth, buildFontString, breakWord
 // These are passed via init() to avoid circular imports.
@@ -107,12 +137,17 @@ const buildItems = (wordItems, spaceWidth, firstLineIndent, fontString = null, i
     const { word, width } = wordItems[i];
 
     if (i > 0) {
-      // Glue (space) between words — can stretch/shrink
+      // UAX#14: After a word ending with em/en-dash, use zero-width glue
+      // (the dash IS the visual separator — no extra space needed).
+      // This models a "break-after" opportunity without visible gap.
+      const prevWord = wordItems[i - 1].word;
+      const prevEndsDash = prevWord.endsWith('\u2014') || prevWord.endsWith('\u2013');
+      const gw = prevEndsDash ? 0 : spaceWidth;
       items.push({
         type: 'glue',
-        width: spaceWidth,
-        stretch: spaceWidth * 0.5,
-        shrink: Math.max(0, spaceWidth * 0.33),
+        width: gw,
+        stretch: prevEndsDash ? spaceWidth * 0.25 : spaceWidth * 0.5,
+        shrink: prevEndsDash ? 0 : Math.max(0, spaceWidth * 0.33),
       });
       if (itemWordIdx) itemWordIdx.push(-1);
     }
@@ -187,7 +222,7 @@ const buildItems = (wordItems, spaceWidth, firstLineIndent, fontString = null, i
 export const countLinesKP = (text, contentWidth, fontString, firstLineIndent = 0, letterSpacingPx = 0, wordSpacingPx = 0) => {
   if (!text || !text.trim() || contentWidth <= 0) return text?.trim() ? 1 : 0;
 
-  const words = text.split(' ').filter(w => w.length > 0);
+  const words = _splitAtDashes(text.split(' ').filter(w => w.length > 0));
   if (words.length === 0) return 0;
 
   const spaceWidth = _getSpaceWidth(fontString) + letterSpacingPx + wordSpacingPx;
@@ -249,7 +284,7 @@ export const countLinesKP = (text, contentWidth, fontString, firstLineIndent = 0
 export const getLineBreakPositionsKP = (text, contentWidth, fontString, firstLineIndent = 0, wordSpacingPx = 0) => {
   if (!text || !text.trim() || contentWidth <= 0) return null;
 
-  const words = text.split(' ').filter(w => w.length > 0);
+  const words = _splitAtDashes(text.split(' ').filter(w => w.length > 0));
   if (words.length === 0) return null;
   if (words.length === 1) return { lineStarts: [0], wordSpacings: [0] };
 
@@ -360,9 +395,12 @@ export const countLinesFromRunsKP = (runs, contentWidth, baseFontSizePx, fontFam
     for (const part of parts) {
       if (!part) continue;
       if (/^\s+$/.test(part)) continue; // Spaces become glue, handled by buildItems
-      const width = _measureWordWidth(part, fontStr);
-      // With hyphenation, words wider than contentWidth are split inside buildItems
-      wordItems.push({ word: part, width, fontStr });
+      // UAX#14: split at em/en-dashes within words
+      const subWords = _splitAtDashes([part]);
+      for (const sw of subWords) {
+        const width = _measureWordWidth(sw, fontStr);
+        wordItems.push({ word: sw, width, fontStr });
+      }
     }
   }
 

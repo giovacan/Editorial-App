@@ -1,5 +1,5 @@
 /**
- * paginationWorker.js — build: 2026-04-03f
+ * paginationWorker.js — build: 2026-04-04b
  *
  * Web Worker for off-main-thread pagination.
  * Receives chapters + layout config, runs paginateChapters, and posts progress/done/error.

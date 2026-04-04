@@ -34,11 +34,17 @@ function HeaderPanel({ safeConfig, setConfig }) {
               value={safeConfig.header?.template || 'classic'}
               onChange={(templateId) => {
                 const templateConfig = getHeaderTemplateConfig(templateId);
+                // pageNumberPos/Align are top-level config, not inside header
+                const { pageNumberPos, pageNumberAlign, ...headerOnly } = templateConfig;
+                const topLevel = {};
+                if (pageNumberPos)  topLevel.pageNumberPos  = pageNumberPos;
+                if (pageNumberAlign) topLevel.pageNumberAlign = pageNumberAlign;
                 setConfig({
                   showHeaders: true,
+                  ...topLevel,
                   header: {
                     ...safeConfig.header,
-                    ...templateConfig,
+                    ...headerOnly,
                     enabled: true
                   }
                 });

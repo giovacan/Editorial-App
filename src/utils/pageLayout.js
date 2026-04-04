@@ -14,10 +14,14 @@
  * Used by: usePageRenderLayout (hook wrapper), PageFrame (direct call for folio math)
  */
 
-import { calculateContentDimensions } from './textMeasurer';
+import { calculateContentDimensions, PX_PER_MM } from './textMeasurer';
 import { buildHeaderHtmlPure } from '../hooks/useHeaderFooter';
 
 const PX_PER_INCH = 96;
+
+// Distance from physical page bottom edge to folio baseline, in mm.
+// Content height is reduced so this gap is always respected.
+export const FOLIO_FROM_BOTTOM_MM = 15;
 
 // ─── Pure helpers ────────────────────────────────────────────────────────────
 
@@ -89,21 +93,16 @@ export function computeShowFolio({ showNums, isBlank, isTitleOnlyPage, isFrontMa
 }
 
 /**
- * Computes how far the folio sits from the physical page edge (px).
+ * Computes how far the folio sits from the physical page bottom edge (px).
  *
- * Geometric meaning: the folio top edge is placed 1.5 lines below the bottom
- * of the content block, clamped to a minimum of 0.5 lines from the page edge.
+ * Fixed at FOLIO_FROM_BOTTOM_MM (15mm) from the physical page edge.
+ * The pagination engine reserves this space by reducing contentHeight,
+ * so the folio never overlaps content.
  *
- * @param {number} pageHeightPx
- * @param {number} marginTop            - px
- * @param {number} effectiveContentHeight - px
- * @param {number} lineHeightPx         - px
+ * @param {number} previewScale - current preview scale factor
  */
-export function computeFolioFromEdge(pageHeightPx, marginTop, effectiveContentHeight, lineHeightPx) {
-  return Math.max(
-    pageHeightPx - marginTop - effectiveContentHeight - lineHeightPx * 1.5,
-    lineHeightPx * 0.5,
-  );
+export function computeFolioFromEdge(previewScale) {
+  return Math.round(FOLIO_FROM_BOTTOM_MM * PX_PER_MM * previewScale);
 }
 
 // ─── Main engine ─────────────────────────────────────────────────────────────
@@ -159,8 +158,11 @@ export function getPageLayout({
 
   const { pageWidthPx, pageHeightPx, marginTop, marginBottom, marginLeft, marginRight } = dims;
 
-  // contentHeight: pagination engine value is authoritative (already floor-snapped to line grid)
-  const effectiveContentHeight = layoutDims?.contentHeight ?? dims.contentHeight;
+  // contentHeight: pagination engine value is authoritative (already floor-snapped to line grid).
+  // With explicit <br> injection at render time, DOM line breaks match Canvas exactly.
+  // Minimal DOM_SLACK (0.5 line) handles sub-pixel rounding only.
+  const engineContentHeight = layoutDims?.contentHeight ?? dims.contentHeight;
+  const effectiveContentHeight = engineContentHeight;
 
   // Typography
   const fontSize     = (safeConfig.fontSize || bookConfig.fontSize) * (PX_PER_INCH / 72) * previewScale;
@@ -186,8 +188,36 @@ export function getPageLayout({
 
   const displayNum = safePageData.displayPageNumber ?? safePageData.pageNumber;
 
-  // Folio position — single canonical calculation
-  const folioFromEdge = computeFolioFromEdge(pageHeightPx, marginTop, effectiveContentHeight, lineHeightPx);
+  // Header — must be computed before folio so headerSpaceUsed is available
+  const headerHtml       = buildHeaderHtmlPure(safePageData, safeConfig, bookTitle, baseFontSize);
+  const showHeaders      = safeConfig.showHeaders !== false && (safeConfig.header?.enabled !== false);
+  const hasHeaderContent = !!headerHtml;
+  // isFirstChapterPage flag may be lost after post-processing passes.
+  // Fall back to checking if the page HTML contains a chapter title element.
+  const pageHasChapterTitle = !!(safePageData.html && safePageData.html.includes('data-chapter-start="true"'));
+  const isChapterStartPage  = safePageData.isFirstChapterPage === true || pageHasChapterTitle;
+  const skipHeader          = (safeConfig.header?.skipFirstChapterPage && isChapterStartPage) || false;
+
+  // Header physical geometry (flow element inside page padding, above content)
+  const headerFontSizePx     = baseFontSize * ((safeConfig.header?.fontSize ?? 70) / 100);
+  const headerLineHeightPx   = headerFontSizePx * (safeConfig.lineHeight || bookConfig.lineHeight);
+  const headerMarginBottomPx = (safeConfig.header?.marginBottom ?? 0.5) * headerFontSizePx;
+  const headerBoxHeight      = headerLineHeightPx + headerMarginBottomPx;
+  // y: starts at marginTop — header is a flow element inside the page padding
+  const headerBoxY           = marginTop;
+  // Space actually consumed by header when visible (matches usePagination.js headerSpaceEstimate)
+  const headerEnabled        = safeConfig.showHeaders !== false && (safeConfig.header?.enabled !== false);
+  const headerSpaceUsed      = (headerEnabled && hasHeaderContent && !skipHeader)
+    ? Math.ceil(
+        headerLineHeightPx
+        + headerFontSizePx * 0.5                                    // padding-bottom: 0.5em
+        + (safeConfig.header?.showLine !== false ? 1 : 0)           // border: 1px
+        + baseFontSize * (safeConfig.lineHeight || bookConfig.lineHeight), // margin-bottom: 1 line
+      )
+    : 0;
+
+  // Folio position — fixed 15mm from physical page bottom edge
+  const folioFromEdge = computeFolioFromEdge(previewScale);
   const pageNumStyle  = computeFolioStyle({
     pos:            safeConfig.pageNumberPos   || 'bottom',
     align:          safeConfig.pageNumberAlign || 'center',
@@ -197,20 +227,6 @@ export function getPageLayout({
     marginRight,
     fontSize,
   });
-
-  // Header
-  const headerHtml       = buildHeaderHtmlPure(safePageData, safeConfig, bookTitle, baseFontSize);
-  const showHeaders      = safeConfig.showHeaders !== false && (safeConfig.header?.enabled !== false);
-  const hasHeaderContent = !!headerHtml;
-  const skipHeader       = (safeConfig.header?.skipFirstChapterPage && safePageData.isFirstChapterPage) || false;
-
-  // Header physical geometry (lives inside top margin, never invades contentBox)
-  const headerFontSizePx     = baseFontSize * ((safeConfig.header?.fontSize ?? 70) / 100);
-  const headerLineHeightPx   = headerFontSizePx * (safeConfig.lineHeight || bookConfig.lineHeight);
-  const headerMarginBottomPx = (safeConfig.header?.marginBottom ?? 0.5) * headerFontSizePx;
-  const headerBoxHeight      = headerLineHeightPx + headerMarginBottomPx;
-  // y: starts at marginTop — header is a flow element inside the page padding, not absolutely positioned
-  const headerBoxY           = marginTop;
 
   // Derived geometry
   const contentWidth = pageWidthPx - marginLeft - marginRight;
@@ -292,6 +308,7 @@ export function getPageLayout({
       isBlank:      !!safePageData.isBlank,
     },
     effectiveContentHeight,
+    engineContentHeight,
 
     // ── Flat backwards-compat properties ────────────────────────────────────
     // All existing consumers that destructure these keep working unchanged.

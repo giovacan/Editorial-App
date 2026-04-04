@@ -52,7 +52,7 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
     if (isBlockquote) {
       return getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSizePt, effectiveBaseLineHeight, effectiveTextAlign);
     }
-    return `margin:0;padding:0;text-align:${effectiveTextAlign};text-indent:${indent};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`;
+    return `margin:0;padding:0;text-align:${effectiveTextAlign};text-indent:${indent};text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;`;
   };
 
   const getDefaultStyle = () => getChunkStyle(isFirstChunk);
@@ -131,7 +131,7 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
       ? getChunkStyle(isFirstChunk)
       : (isBlockquote
         ? getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSizePt, effectiveBaseLineHeight, effectiveTextAlign)
-        : `margin:0;padding:0;text-align:${effectiveTextAlign};text-indent:${indent};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`);
+        : `margin:0;padding:0;text-align:${effectiveTextAlign};text-indent:${indent};text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;`);
 
     // When paragraph continues to next page: the last visible line is a mid-paragraph
     // line — always justify it regardless of how many words it has.
@@ -175,7 +175,7 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
         } else if (isBlockquote) {
           continuationStyle = getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSizePt, effectiveBaseLineHeight, effectiveTextAlign);
         } else {
-          continuationStyle = `margin:0;padding:0;text-align:${effectiveTextAlign};text-indent:0;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`;
+          continuationStyle = `margin:0;padding:0;text-align:${effectiveTextAlign};text-indent:0;text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;`;
         }
       } else {
         // Chunk ends at sentence boundary — rest is a new paragraph, give it indent
@@ -185,7 +185,7 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
         } else if (isBlockquote) {
           continuationStyle = getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSizePt, effectiveBaseLineHeight, effectiveTextAlign);
         } else {
-          continuationStyle = `margin:0;padding:0;text-align:${effectiveTextAlign};text-indent:${indentVal};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`;
+          continuationStyle = `margin:0;padding:0;text-align:${effectiveTextAlign};text-indent:${indentVal};text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;`;
         }
       }
 
@@ -200,8 +200,80 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
   return lines;
 };
 
+/**
+ * Split a UL/OL list at <li> boundaries when it doesn't fit in the available
+ * height. Returns [headHtml, tailHtml] or null if the list can't be split
+ * (e.g., 0 or 1 items, or first item alone doesn't fit).
+ *
+ * The head chunk keeps the list wrapper tag + style + as many <li> items as
+ * fit. The tail chunk wraps the remaining items in the same list tag + style.
+ *
+ * @param {string} html - Full list HTML (<ul ...>...<li>...</li>...</ul>)
+ * @param {number} maxHeight - Available height in px
+ * @param {object} canvasCtx - Canvas layout context for measureHtmlHeight
+ * @param {object} [opts] - { minOrphanItems: number (min items in head, default 1),
+ *                            minWidowItems: number (min items in tail, default 1) }
+ * @returns {[string, string] | null} [headHtml, tailHtml] or null
+ */
+export const splitListByItems = (html, maxHeight, canvasCtx, opts = {}) => {
+  const { minOrphanItems = 1, minWidowItems = 1 } = opts;
+
+  if (!html || !canvasCtx || maxHeight <= 0) return null;
+
+  // Extract the list tag (ul/ol), its attributes, and inner HTML
+  const openMatch = html.match(/^<(ul|ol)(\s[^>]*)?>(.+)<\/\1>$/is);
+  if (!openMatch) return null;
+
+  const listTag = openMatch[1];
+  const listAttrs = openMatch[2] || '';
+  const innerHtml = openMatch[3];
+
+  // Split inner HTML into individual <li>...</li> items
+  // This handles nested lists (li can contain ul/ol) by matching balanced tags
+  const items = [];
+  const liRegex = /<li\b[^>]*>[\s\S]*?<\/li>/gi;
+  let match;
+  while ((match = liRegex.exec(innerHtml)) !== null) {
+    items.push(match[0]);
+  }
+
+  if (items.length < minOrphanItems + minWidowItems) return null;
+
+  // Binary search for the maximum number of items that fit in maxHeight
+  const wrap = (itemSlice) => `<${listTag}${listAttrs}>${itemSlice.join('')}</${listTag}>`;
+  const measure = (itemSlice) => measureHtmlHeight(wrap(itemSlice), canvasCtx);
+
+  // Quick check: if even the minimum head doesn't fit, can't split
+  const minHead = items.slice(0, minOrphanItems);
+  if (measure(minHead) > maxHeight) return null;
+
+  // Find the maximum number of items that fit
+  let lo = minOrphanItems;
+  let hi = items.length - minWidowItems;
+  let bestSplit = minOrphanItems;
+
+  while (lo <= hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    const headItems = items.slice(0, mid);
+    if (measure(headItems) <= maxHeight) {
+      bestSplit = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+
+  if (bestSplit < minOrphanItems) return null;
+  if (items.length - bestSplit < minWidowItems) return null;
+
+  const headHtml = wrap(items.slice(0, bestSplit));
+  const tailHtml = wrap(items.slice(bestSplit));
+
+  return [headHtml, tailHtml];
+};
+
 export const getQuoteStyle = (qConfig, template, baseFontSize, baseLineHeight, textAlign) => {
-  const baseStyle = `font-style:${qConfig.italic ? 'italic' : 'normal'};font-size:${baseFontSize * qConfig.sizeMultiplier}pt;text-align:${textAlign};text-justify:inter-word;hyphens:auto;text-align-last:left;`;
+  const baseStyle = `font-style:${qConfig.italic ? 'italic' : 'normal'};font-size:${baseFontSize * qConfig.sizeMultiplier}pt;text-align:${textAlign};text-justify:inter-word;hyphens:none;text-align-last:left;`;
 
   switch (template) {
     case 'classic':
@@ -237,7 +309,7 @@ export const buildParagraphHtml = (el, config, baseFontSize, baseLineHeight, tex
       return `<p${isFirstParagraph ? ' data-first-paragraph="true"' : ''} style="${getQuoteStyle(qConfig, template, baseFontSize, baseLineHeight, textAlign)}text-indent:${isFirstParagraph ? '0' : indent + 'em'};text-align-last:left;overflow-wrap:break-word;">${innerHtml}</p>`;
     } else {
       const spacingBetween = config.paragraph?.spacingBetween || 0;
-      return `<p${isFirstParagraph ? ' data-first-paragraph="true"' : ''} style="margin:${spacingBetween > 0 ? spacingBetween + 'em' : '0'} 0;padding:0;text-align:${textAlign};text-indent:${isFirstParagraph ? '0' : indent + 'em'};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;">${innerHtml}</p>`;
+      return `<p${isFirstParagraph ? ' data-first-paragraph="true"' : ''} style="margin:${spacingBetween > 0 ? spacingBetween + 'em' : '0'} 0;padding:0;text-align:${textAlign};text-indent:${isFirstParagraph ? '0' : indent + 'em'};text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;">${innerHtml}</p>`;
     }
   } else if (tag.match(/^H[1-6]$/i)) {
     const level = tag.slice(1).toLowerCase();
@@ -261,13 +333,13 @@ export const buildParagraphHtml = (el, config, baseFontSize, baseLineHeight, tex
     }
     return `<blockquote class="quote ${template}" style="${getQuoteStyle(qConfig, template, baseFontSize, baseLineHeight, textAlign)}">${innerHtml}</blockquote>`;
   } else if (tag === 'UL' || tag === 'OL') {
-    return `<${tag.toLowerCase()} style="margin:0.5em 0;padding-left:1.5em;text-align:${textAlign};text-justify:inter-word;hyphens:auto;text-align-last:left;">${innerHtml}</${tag.toLowerCase()}>`;
+    return `<${tag.toLowerCase()} style="margin:0.5em 0;padding-left:1.5em;text-align:${textAlign};text-justify:inter-word;hyphens:none;text-align-last:left;">${innerHtml}</${tag.toLowerCase()}>`;
   } else if (tag === 'HR') {
     return '<hr style="border:none;border-top:1px solid #999;margin:1em 0;">';
   } else if (tag === 'BR') {
     return '<br>';
   }
-  return `<p style="margin:0;padding:0;text-align:${textAlign};text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;">${innerHtml}</p>`;
+  return `<p style="margin:0;padding:0;text-align:${textAlign};text-indent:1.5em;text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;">${innerHtml}</p>`;
 };
 
 export const parseChapterTitleHierarchy = (title) => {

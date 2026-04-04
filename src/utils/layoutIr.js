@@ -5,7 +5,7 @@
  * This module is intentionally DOM-free and worker-safe.
  */
 
-export const JUSTIFY_SLACK_RATIO = 0.04;
+export const JUSTIFY_SLACK_RATIO = 0.06;
 
 export const htmlToText = (html = '') => (html || '').replace(/<[^>]*>/g, '');
 

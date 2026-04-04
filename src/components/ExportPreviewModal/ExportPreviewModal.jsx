@@ -108,7 +108,7 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
     const gutterForPage = isTitleOnly ? 0 : effectiveGutter;
     const d = calculateContentDimensions(pageFormat, bookConfig, PREVIEW_SCALE, gutterForPage, isEven, totalPages, applyDynamicMargins);
     const effectiveContentHeight = storeDims?.contentHeight ?? d.contentHeight;
-    return { ...d, fontSize, fontFamily, lineHeightPx, textAlign, effectiveContentHeight, baseFontSize };
+    return { ...d, fontSize, fontFamily, lineHeightPx, textAlign, effectiveContentHeight, baseFontSize, previewScale: PREVIEW_SCALE };
   }, [storeDims, pageFormat, effectiveGutter, totalPages, fontSize, lineHeightPx, fontFamily, textAlign, baseFontSize, applyDynamicMargins]);
 
   // Reference dims (odd/right page, no title) used for scale calculation

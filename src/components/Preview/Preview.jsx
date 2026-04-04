@@ -6,8 +6,7 @@ import { usePagination, usePageNavigation } from '../../hooks/usePagination';
 import { useMagnifier } from '../../hooks/useMagnifier';
 import { usePageRenderLayoutFromStore } from '../../hooks/usePageRenderLayout';
 import { DEFAULT_CONFIG } from './utils/previewConfig';
-import { applyKpRendering } from '../../utils/textLayoutEngine';
-import { JUSTIFY_SLACK_RATIO } from '../../utils/layoutIr';
+// import { insertPageLineBreaks, createLayoutContext } from '../../utils/textLayoutEngine';
 import { addDebugTags } from './utils/debugTags';
 import PreviewControls from './PreviewControls';
 import MagnifierPanel from './MagnifierPanel';
@@ -16,6 +15,7 @@ import LayoutGuidesOverlay from './LayoutGuidesOverlay';
 import TOCPanel from './TOCPanel';
 import ValidationErrorDialog from '../ValidationErrorDialog/ValidationErrorDialog';
 import PaginationProgressBar from '../PaginationProgressBar/PaginationProgressBar';
+import { useLayoutVerification, formatLayoutAuditText } from '../../hooks/useLayoutVerification';
 import './Preview.css';
 
 const PX_PER_MM = 3.7795;
@@ -126,6 +126,34 @@ function Preview() {
     if (allPages[0]?.html) console.log('[PREVIEW] Primera página HTML:', allPages[0].html.slice(0, 150));
   }, [allPages, config?.chapterTitle?.layout]);
 
+  // P6: Layout verification — DOM vs Canvas audit (dev mode only)
+  const layoutDims = useEditorStore((s) => s.layoutDims);
+  const layoutAuditReport = useLayoutVerification(pages, layoutDims);
+
+  // When DOM audit completes, append it to the pagination log
+  useEffect(() => {
+    if (!layoutAuditReport || process.env.NODE_ENV !== 'development') return;
+    const auditText = formatLayoutAuditText(layoutAuditReport);
+    if (!auditText) return;
+    // Update the stored pagination log with audit data
+    const currentLog = useEditorStore.getState().paginationLog;
+    if (currentLog && !currentLog.layoutAudit) {
+      useEditorStore.getState().setPaginationLog({
+        ...currentLog,
+        layoutAudit: auditText,
+      });
+      // Also re-post the log with audit appended
+      fetch('/api/pagination-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          log: { ...currentLog, layoutAudit: auditText },
+          summaryText: (currentLog.summaryText || '') + '\n\n' + auditText,
+        })
+      }).catch(() => {});
+    }
+  }, [layoutAuditReport]);
+
   const paginationProgressObj = useEditorStore((s) => s.paginationProgress);
   const isPaginationRunning = paginationProgressObj?.isActive ?? false;
   const paginationPercent = paginationProgressObj?.percent ?? 0;
@@ -161,7 +189,7 @@ function Preview() {
   const {
     pageWidthPx, pageHeightPx,
     marginTop, marginBottom, marginLeft, marginRight,
-    effectiveContentHeight,
+    effectiveContentHeight, engineContentHeight,
     fontSize, fontFamily, lineHeightPx, textAlign, baseFontSize,
     showPageNumber, displayNum, pageNumStyle,
     showHeaders, hasHeaderContent, skipHeader, headerHtml,
@@ -179,32 +207,28 @@ function Preview() {
   // 1 line of breathing room — does NOT affect engine contentHeight.
   const pageNumGapPx = lineHeightPx;
 
-  // ── KP Rendering ─────────────────────────────────────────────────────────────
-  // Frontmatter pages (title, TOC) skip KP rendering — their HTML uses flex
-  // layout that would be corrupted by the word-spacing pass.
-  const renderedHtml = useMemo(() => {
-    if (!debugHtml || currentPageData?.isBlank || isFrontMatterPage || textAlign !== 'justify') return debugHtml;
-    const cw = pageWidthPx - marginLeft - marginRight;
-    return applyKpRendering(debugHtml, {
-      baseFontSizePx: fontSize,
-      fontFamily,
-      contentWidth: cw,
-      widthSlack: cw * JUSTIFY_SLACK_RATIO,
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debugHtml, currentPageData?.isBlank, isFrontMatterPage, textAlign, pageWidthPx, marginLeft, marginRight, fontSize, fontFamily]);
+  // Use page HTML directly — <br> injection disabled (CSS last-line semantics
+  // prevent justify on lines before <br>, making pages taller not shorter).
+  const renderedHtml = debugHtml;
 
   const { showMagnifier, setShowMagnifier, magnifierZoom, setMagnifierZoom, magnifierPanelRef,
     magnifierPos, updateMagnifierPosition, handleMouseEnterPreview, handleMouseLeavePreview,
     handleMouseEnterMagnifier, handleMouseLeaveMagnifier } = useMagnifier(previewPageRef);
 
-  const pageNumHtml = showPageNumber ? (
+  const folioPos   = config?.pageNumberPos   || 'bottom';
+  const folioAlign = config?.pageNumberAlign || 'center';
+  const folioOnOuter = folioAlign === 'outer' || folioAlign === 'paragraph-edge' || folioAlign === 'paragraph';
+  const folioEmbeddedInHeader = folioPos === 'top' && folioOnOuter
+    && showHeaders && !currentPageData?.isBlank && !skipHeader && hasHeaderContent
+    && !isFrontMatterPage;
+  const pageNumHtml = showPageNumber && !folioEmbeddedInHeader ? (
     <span className="page-number" style={pageNumStyle}>{displayNum}</span>
   ) : null;
 
   const sharedPageProps = {
     pageWidthPx, pageHeightPx, marginTop, marginRight, marginBottom, marginLeft,
     fontSize, fontFamily, lineHeightPx, textAlign, effectiveContentHeight,
+    engineContentHeight, showLayoutGuides,
     debugHtml: renderedHtml, pageNumHtml, showHeaders, currentPageData, skipHeader,
     hasHeaderContent, headerHtml, isFrontMatterPage
   };
@@ -250,7 +274,10 @@ function Preview() {
             // Frontmatter pages (title, TOC) use left-aligned layout — no justify, no hyphens
             textAlign: isFrontMatterPage ? 'left' : textAlign,
             textJustify: isFrontMatterPage ? undefined : 'inter-word',
-            hyphens: isFrontMatterPage ? 'none' : 'auto',
+            // hyphens: 'none' — engine handles hyphenation via Liang patterns in KP.
+            // Browser hyphens: auto would break at different points than Canvas measured,
+            // causing DOM height to diverge from engine prediction.
+            hyphens: 'none',
             wordBreak: 'break-word', overflowWrap: 'break-word'
           }}
           onMouseMove={updateMagnifierPosition}
@@ -269,24 +296,28 @@ function Preview() {
                   const pageType = currentPageData?.isTOCPage ? 'TOC'
                     : currentPageData?.isTitlePage ? 'TITLE'
                     : currentPageData?.isFrontMatter ? 'FM' : 'CONTENT';
+                  const isChStart = !!(currentPageData?.isFirstChapterPage || (currentPageData?.html && currentPageData.html.includes('data-chapter-start')));
                   if (overflow > 6) {
-                    console.warn(`[OVERFLOW][${pageType}] Page ${currentPage + 1}: scrollH=${el.scrollHeight}px clientH=${el.clientHeight}px overflow=${overflow.toFixed(1)}px (${(overflow / lineHeightPx).toFixed(1)} lines)`);
-                  } else if (pageType === 'TOC') {
-                    console.log(`[TOC-RENDER] Page ${currentPage + 1}: scrollH=${el.scrollHeight}px clientH=${el.clientHeight}px ok (remain=${(el.clientHeight - el.scrollHeight).toFixed(1)}px)`);
+                    console.warn(`[OVERFLOW][${pageType}] Page ${currentPage + 1}: scrollH=${el.scrollHeight}px clientH=${el.clientHeight}px overflow=${overflow.toFixed(1)}px (${(overflow / lineHeightPx).toFixed(1)} lines)${isChStart ? ' [CHAPTER-START]' : ''}`);
+                    // P6: Visual overflow indicator — red outline on clipped pages
+                    el.style.outline = '2px solid red';
+                    el.title = `OVERFLOW: ${overflow.toFixed(1)}px (${(overflow / lineHeightPx).toFixed(1)} lines)`;
+                  } else {
+                    console.log(`[RENDER] Page ${currentPage + 1} [${pageType}]: scrollH=${el.scrollHeight}px clientH=${el.clientHeight}px remain=${(el.clientHeight - el.scrollHeight).toFixed(1)}px${isChStart ? ' [CHAPTER-START]' : ''}`);
+                    el.style.outline = '';
+                    el.title = '';
                   }
                 });
               }
             }}
             className="preview-content"
-            style={{ height: `${effectiveContentHeight + 2}px` }}
+            style={{ height: `${effectiveContentHeight}px` }}
             dangerouslySetInnerHTML={{ __html: renderedHtml || '' }}
           />
           {showLayoutGuides && !currentPageData.isBlank && !isFrontMatterPage && (
             <LayoutGuidesOverlay
               contentRef={previewContentRef}
-              marginTop={marginTop}
-              marginLeft={marginLeft}
-              effectiveContentHeight={effectiveContentHeight}
+              engineContentHeight={engineContentHeight}
               contentWidth={pageWidthPx - marginLeft - marginRight}
             />
           )}

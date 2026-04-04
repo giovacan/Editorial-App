@@ -171,11 +171,6 @@
   overflow: hidden;
 }
 
-/* FM pages (TOC, title) need overflow visible for their flex layout */
-.preview-page.is-front-matter .preview-content {
-  overflow: visible;
-}
-
 /* All element styles (margins, font-size, line-height, text-indent, etc.)
    are set via inline styles by paginationEngine.js.
    CSS here only provides neutral resets — never override inline values. */

@@ -21,6 +21,8 @@
     "epubjs": "^0.3.93",
     "firebase": "^12.10.0",
     "html2pdf.js": "^0.14.0",
+    "hyphenation.es": "^0.2.1",
+    "hypher": "^0.2.5",
     "jspdf": "^4.2.0",
     "nanoid": "^5.1.6",
     "react": "^19.2.0",

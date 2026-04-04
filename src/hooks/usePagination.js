@@ -547,6 +547,8 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
           baseLineHeight,
           previewScale,
           gutterValue: engineGutter,
+          fontFamily,
+          textAlign,
         };
         console.log(`[PAGINATION] Guardando layoutDims: contentHeight=${contentHeight}px renderContentHeight=${renderContentHeight}px engineGutter=${engineGutter}`);
         setLayoutDims(dimsSnapshot);
@@ -723,6 +725,8 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
           baseLineHeight,
           previewScale,
           gutterValue: engineGutter,
+          fontFamily,
+          textAlign,
         });
         useEditorStore.getState().setPaginationProgress(100);
         // Small delay so the 100% state renders before we hide the progress indicator

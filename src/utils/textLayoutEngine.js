@@ -167,6 +167,53 @@ const collapseWhitespace = (text) => {
   return encoded.replace(/\s+/g, ' ').trim();
 };
 
+// ─── UAX#14: Em/en-dash break opportunities ────────────────────────
+// Em-dash (—, U+2014) and en-dash (–, U+2013) are optional line-break
+// points per Unicode UAX#14 (class BA — Break After). The break happens
+// AFTER the dash: "palabra—" stays on the current line, "otra" wraps.
+//
+// splitWordsAtDashes() takes the word array from `text.split(' ')` and
+// splits any word containing an em/en-dash into sub-tokens.
+// Example: "palabra—otra" → ["palabra—", "otra"]
+//          "esto—es—raro" → ["esto—", "es—", "raro"]
+//          "no-break"     → ["no-break"] (regular hyphens are NOT break points)
+//
+// The regex splits AFTER the dash character, keeping the dash with the
+// preceding fragment.
+
+const _dashSplitRe = /([\u2014\u2013])/;
+
+const splitWordsAtDashes = (words) => {
+  let changed = false;
+  const result = [];
+  for (const w of words) {
+    if (_dashSplitRe.test(w)) {
+      // Split at each em/en-dash, keeping dash with preceding part
+      const parts = w.split(_dashSplitRe);
+      // parts alternates [text, dash, text, dash, text]
+      // Recombine: attach each dash to the preceding text
+      let current = '';
+      for (let i = 0; i < parts.length; i++) {
+        if (!parts[i]) continue;
+        if (parts[i] === '\u2014' || parts[i] === '\u2013') {
+          current += parts[i];
+        } else {
+          if (current) {
+            result.push(current);
+            changed = true;
+          }
+          current = parts[i];
+        }
+      }
+      if (current) result.push(current);
+      if (parts.filter(p => p === '\u2014' || p === '\u2013').length > 0) changed = true;
+    } else {
+      result.push(w);
+    }
+  }
+  return changed ? result : words;
+};
+
 // ─── Inline text runs extractor ─────────────────────────────────────
 // Walks the DOM tree of an element and produces a flat array of "runs":
 // each run = { text, bold, italic, fontSize }
@@ -367,7 +414,11 @@ const countLinesFromRuns = (runs, contentWidth, baseFontSizePx, fontFamily, firs
       if (/^\s+$/.test(part)) {
         tokens.push({ type: 'space', fontStr });
       } else {
-        tokens.push({ type: 'word', text: part, fontStr });
+        // UAX#14: split at em/en-dashes within words
+        const subWords = splitWordsAtDashes([part]);
+        for (const sw of subWords) {
+          tokens.push({ type: 'word', text: sw, fontStr });
+        }
       }
     }
   }
@@ -489,7 +540,7 @@ const countLines = (text, contentWidth, fontString, firstLineIndent = 0, letterS
 
   const collapsed = collapseWhitespace(text);
   const spaceWidth = getSpaceWidth(fontString) + letterSpacingPx + wordSpacingPx;
-  const words = collapsed.split(' ').filter(w => w.length > 0);
+  const words = splitWordsAtDashes(collapsed.split(' ').filter(w => w.length > 0));
   if (words.length === 0) return 0;
 
   let lines = 1;
@@ -515,7 +566,10 @@ const countLines = (text, contentWidth, fontString, firstLineIndent = 0, letterS
       continue;
     }
 
-    const widthWithWord = currentLineWidth + spaceWidth + wordWidth;
+    // UAX#14: zero space after dash-ending words (dash is the visual separator)
+    const prevEndsDash = words[i - 1].endsWith('\u2014') || words[i - 1].endsWith('\u2013');
+    const effectiveSpace = prevEndsDash ? 0 : spaceWidth;
+    const widthWithWord = currentLineWidth + effectiveSpace + wordWidth;
 
     if (widthWithWord > contentWidth) {
       // Word doesn't fit on current line
@@ -529,7 +583,7 @@ const countLines = (text, contentWidth, fontString, firstLineIndent = 0, letterS
         // Try Spanish hyphenation before wrapping the whole word (unless disabled)
         let hyphenated = false;
         if (!noHyphenation) {
-          const available = contentWidth - currentLineWidth - spaceWidth;
+          const available = contentWidth - currentLineWidth - effectiveSpace;
           const hyphenW = getHyphenWidth(fontString);
           const hpts = getSpanishHyphenPoints(words[i]);
           for (let k = hpts.length - 1; k >= 0; k--) {
@@ -579,7 +633,7 @@ const getLineBreakPositions = (text, contentWidth, fontString, firstLineIndent =
 
   const collapsed = collapseWhitespace(text);
   const spaceWidth = getSpaceWidth(fontString) + letterSpacingPx + wordSpacingPx;
-  const words = collapsed.split(' ').filter(w => w.length > 0);
+  const words = splitWordsAtDashes(collapsed.split(' ').filter(w => w.length > 0));
   if (words.length === 0) return [0];
 
   const lineStarts = [0]; // First line always starts at word 0
@@ -596,7 +650,10 @@ const getLineBreakPositions = (text, contentWidth, fontString, firstLineIndent =
       continue;
     }
 
-    const widthWithWord = currentLineWidth + spaceWidth + wordWidth;
+    // UAX#14: zero space after dash-ending words
+    const prevEndsDash = words[i - 1].endsWith('\u2014') || words[i - 1].endsWith('\u2013');
+    const effectiveSpace = prevEndsDash ? 0 : spaceWidth;
+    const widthWithWord = currentLineWidth + effectiveSpace + wordWidth;
 
     if (widthWithWord > contentWidth) {
       lineStarts.push(i);
@@ -625,7 +682,11 @@ const getLineBreakPositionsFromRuns = (runs, contentWidth, baseFontSizePx, fontF
     const parts = run.text.split(/(\s+)/);
     for (const part of parts) {
       if (!part || /^\s+$/.test(part)) continue;
-      wordTokens.push({ text: part, fontStr });
+      // UAX#14: split at em/en-dashes within words
+      const subWords = splitWordsAtDashes([part]);
+      for (const sw of subWords) {
+        wordTokens.push({ text: sw, fontStr });
+      }
     }
   }
 
@@ -646,11 +707,15 @@ const getLineBreakPositionsFromRuns = (runs, contentWidth, baseFontSizePx, fontF
       continue;
     }
 
-    if (currentLineWidth + spaceWidth + wordWidth > contentWidth) {
+    // UAX#14: zero space after dash-ending words
+    const prevEndsDash = i > 0 && (wordTokens[i - 1].text.endsWith('\u2014') || wordTokens[i - 1].text.endsWith('\u2013'));
+    const effectiveSpace = prevEndsDash ? 0 : spaceWidth;
+
+    if (currentLineWidth + effectiveSpace + wordWidth > contentWidth) {
       lineStarts.push(i);
       currentLineWidth = wordWidth;
     } else {
-      currentLineWidth += spaceWidth + wordWidth;
+      currentLineWidth += effectiveSpace + wordWidth;
     }
   }
 
@@ -721,8 +786,8 @@ const parseStyleString = (cssText) => {
   };
   const padding = expandShorthand('padding', ['padding-top', 'padding-right', 'padding-bottom', 'padding-left']);
   const margin  = expandShorthand('margin',  ['margin-top',  'margin-right',  'margin-bottom',  'margin-left']);
-  const getPad  = (k) => padding[k] || '';
-  const getMar  = (k) => margin[k]  || get(k) || '';
+  const getPad  = (k) => get(k) || padding[k] || '';
+  const getMar  = (k) => get(k) || margin[k]  || '';
   return {
     fontSize: parseFloat(get('font-size')) || null,
     fontSizeUnit: (get('font-size') || '').replace(/[\d.]/g, '') || 'pt',
@@ -889,65 +954,21 @@ const parseMultiElementHtmlWorker = (html) => {
   return elements;
 };
 
+// UNIFIED: Delegate to regex parser for consistency with worker measurements.
 const parseHtmlElement = (html) => {
   if (!html || !html.trim()) return null;
-
-  const div = document.createElement('div');
-  div.innerHTML = html;
-  const el = div.firstElementChild;
-  if (!el) return { text: div.textContent || '', tag: 'P', styles: {}, runs: null };
-
-  const tag = el.tagName;
-  const styles = extractStyles(el.style);
-  const text = el.textContent || '';
-
-  // Extract inline text runs for mixed-style measurement
-  const isBold = styles.fontWeight === 'bold' || parseInt(styles.fontWeight) >= 700;
-  const isItalic = styles.fontStyle === 'italic';
-  const runs = extractTextRuns(el, {
-    bold: isBold,
-    italic: isItalic,
-    fontSize: styles.fontSize ? resolveSize(styles.fontSize, styles.fontSizeUnit, 0) : null
-  });
-
-  return { text, tag, styles, runs, innerHTML: el.innerHTML };
+  const elements = parseMultiElementHtmlWorker(html);
+  return elements.length > 0 ? elements[0] : null;
 };
 
 // ─── Multi-element HTML parser ──────────────────────────────────────
 
+// UNIFIED: Always use the regex-based parser so that Worker (engine) and
+// main thread (verification) produce identical measurements for the same HTML.
+// The DOM-based path had a bug: resolveSize(fontSize, 'em', 0) = 0, causing
+// different text run extraction → different line counts → different heights.
 const parseMultiElementHtml = (html) => {
-  if (!html || !html.trim()) return [];
-
-  // Worker-safe path: no DOM available
-  if (typeof document === 'undefined') {
-    return parseMultiElementHtmlWorker(html);
-  }
-
-  const div = document.createElement('div');
-  div.innerHTML = html;
-  const children = Array.from(div.children);
-
-  if (children.length === 0) {
-    const text = div.textContent || '';
-    if (!text.trim()) return [];
-    return [{ text, tag: 'P', styles: {}, runs: null, innerHTML: text }];
-  }
-
-  return children.map(el => {
-    const tag = el.tagName;
-    const styles = extractStyles(el.style);
-    const text = el.textContent || '';
-
-    const isBold = styles.fontWeight === 'bold' || parseInt(styles.fontWeight) >= 700;
-    const isItalic = styles.fontStyle === 'italic';
-    const runs = extractTextRuns(el, {
-      bold: isBold,
-      italic: isItalic,
-      fontSize: styles.fontSize ? resolveSize(styles.fontSize, styles.fontSizeUnit, 0) : null
-    });
-
-    return { text, tag, styles, runs, innerHTML: el.innerHTML };
-  });
+  return parseMultiElementHtmlWorker(html);
 };
 
 // ─── Unit conversion helpers ────────────────────────────────────────
@@ -1369,6 +1390,178 @@ export const insertHtmlLineBreaks = (html, layoutCtx) => {
   }
 };
 
+// ─── Page-level line break injection ─────────────────────────────────────
+//
+// Inserts <br> into every paragraph of a page at the EXACT positions where
+// the Canvas engine breaks lines. This forces the browser to render the same
+// line breaks as Canvas predicted, eliminating the DOM↔Canvas height delta.
+//
+// Must run on the main thread (uses document.createElement / TreeWalker).
+
+/**
+ * Insert explicit <br> line breaks into all paragraphs of a page's HTML.
+ * Uses the same measurement parameters as calculateElementHeight so the
+ * break positions match the engine's line count exactly.
+ *
+ * @param {string} pageHtml - Full page HTML (multiple elements)
+ * @param {object} layoutCtx - { baseFontSizePx, baseLineHeight, contentWidth, fontFamily, widthSlack, noHyphenation }
+ * @returns {string} HTML with <br> inserted at engine-computed line breaks
+ */
+export const insertPageLineBreaks = (pageHtml, layoutCtx) => {
+  if (!pageHtml || !layoutCtx || !layoutCtx.contentWidth) return pageHtml;
+  if (typeof document === 'undefined') return pageHtml; // Worker — no DOM
+
+  try {
+    const container = document.createElement('div');
+    container.innerHTML = pageHtml;
+    let modified = false;
+    const _dbg = process.env.NODE_ENV === 'development';
+    let _dbgProcessed = 0, _dbgSkippedTag = 0, _dbgSkippedEmpty = 0, _dbgSkippedSingle = 0, _dbgSkippedBold = 0, _dbgBrInserted = 0;
+
+    for (const el of Array.from(container.children)) {
+      const tag = el.tagName?.toUpperCase();
+      // Only process text paragraphs and blockquotes
+      if (tag !== 'P' && tag !== 'BLOCKQUOTE') { _dbgSkippedTag++; continue; }
+
+      const text = el.textContent || '';
+      if (!text.trim()) { _dbgSkippedEmpty++; continue; }
+
+      // Extract styles using DOM CSSStyleDeclaration (resolves shorthand correctly)
+      const styles = extractStyles(el.style);
+
+      // Resolve font properties (same logic as calculateElementHeight)
+      const elFontSizePx = styles.fontSize
+        ? resolveSize(styles.fontSize, styles.fontSizeUnit, layoutCtx.baseFontSizePx)
+        : layoutCtx.baseFontSizePx;
+      const isBold = styles.fontWeight === 'bold' || parseInt(styles.fontWeight) >= 700;
+      const isItalic = styles.fontStyle === 'italic';
+      const fontString = buildFontString(elFontSizePx, layoutCtx.fontFamily || 'Georgia, serif', isBold, isItalic);
+
+      // Resolve indent
+      const indentPx = styles.textIndent ? styles.textIndent * elFontSizePx : 0;
+
+      // Resolve word-spacing (already baked into inline style by KP pass)
+      const wordSpacingPx = styles.wordSpacing
+        ? resolveSize(styles.wordSpacing, styles.wordSpacingUnit, elFontSizePx)
+        : 0;
+      const letterSpacingPx = styles.letterSpacing
+        ? resolveSize(styles.letterSpacing, styles.letterSpacingUnit, elFontSizePx)
+        : 0;
+
+      // Resolve available width (same as calculateElementHeight)
+      const paddingH = (styles.paddingLeft || 0) + (styles.paddingRight || 0);
+      const marginLPx = resolveSize(styles.marginLeft, styles.marginLeftUnit, elFontSizePx);
+      const marginRPx = resolveSize(styles.marginRight, styles.marginRightUnit, elFontSizePx);
+      const borderLeft = styles.borderLeftWidth || 0;
+      const widthSlack = layoutCtx.widthSlack || 0;
+      const headingSlack = /^H[1-6]$/.test(tag) ? 3 : 0;
+      const availableWidth = layoutCtx.contentWidth - paddingH - marginLPx - marginRPx - borderLeft - widthSlack - headingSlack;
+      if (availableWidth <= 0) continue;
+
+      // Extract text runs for mixed-style detection
+      const runs = extractTextRuns(el, { bold: isBold, italic: isItalic, fontSize: null });
+      const hasStyled = runs && runs.length > 0 && hasStyledRuns(runs);
+
+      // Skip all-bold/italic paragraphs — inserting <br> inside <strong>/<em>
+      // creates malformed HTML that loses styling on the second fragment.
+      if (runs && runs.length === 1 && (runs[0].bold || runs[0].italic)) { _dbgSkippedBold++; continue; }
+
+      // Get line break positions using the SAME logic as the pagination engine:
+      // KP (Knuth-Plass) with greedy fallback. For styled runs, use greedy only.
+      let lineStarts;
+      if (hasStyled) {
+        lineStarts = getLineBreakPositionsFromRuns(runs, availableWidth, elFontSizePx, layoutCtx.fontFamily || 'Georgia, serif', indentPx, wordSpacingPx);
+      } else {
+        const collapsed = collapseWhitespace(text);
+        const kpResult = getLineBreakPositionsKP(collapsed, availableWidth, fontString, indentPx, wordSpacingPx);
+        lineStarts = kpResult ? kpResult.lineStarts : getLineBreakPositions(collapsed, availableWidth, fontString, indentPx, letterSpacingPx, wordSpacingPx);
+      }
+
+      if (!lineStarts || lineStarts.length <= 1) { _dbgSkippedSingle++; continue; } // Single line — no breaks needed
+
+      _dbgProcessed++;
+
+      // ── Map engine word indices to DOM text node positions ──
+      //
+      // lineStarts[] are indices into the engine's dash-split word array.
+      // We build a flat (node, offset) array with one entry per engine word
+      // by walking all DOM text nodes and splitting their content the same way
+      // the engine does: extract non-whitespace tokens, then split at em/en-dashes.
+
+      const wordMap = []; // { node, offset } for each engine word
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let tNode;
+      while ((tNode = walker.nextNode())) {
+        const nodeText = tNode.textContent;
+        // Find all non-whitespace tokens in this text node (same as space-split after collapse)
+        const tokenRe = /\S+/g;
+        let match;
+        while ((match = tokenRe.exec(nodeText))) {
+          const token = match[0];
+          const tokenStart = match.index;
+          // Apply the same dash-splitting as the engine
+          const subWords = splitWordsAtDashes([token]);
+          let subOffset = tokenStart;
+          for (const sw of subWords) {
+            // Find sw within token starting from subOffset
+            const idx = nodeText.indexOf(sw, subOffset);
+            wordMap.push({ node: tNode, offset: idx !== -1 ? idx : subOffset });
+            subOffset = (idx !== -1 ? idx : subOffset) + sw.length;
+          }
+        }
+      }
+
+      // 3. Insert <br> at line break positions (reverse order to preserve offsets)
+      const breakWordIndices = lineStarts.slice(1);
+      let elModified = false;
+
+      if (_dbg && _dbgProcessed <= 3) {
+        console.log(`[BR-INJECT] el#${_dbgProcessed} tag=${tag} wordMap=${wordMap.length} lineStarts=[${lineStarts.join(',')}] hasStyled=${hasStyled} avW=${availableWidth.toFixed(0)} text="${text.substring(0,50)}..."`);
+      }
+
+      for (let b = breakWordIndices.length - 1; b >= 0; b--) {
+        const wordIdx = breakWordIndices[b];
+        if (wordIdx >= wordMap.length || !wordMap[wordIdx]?.node) continue;
+
+        const { node, offset } = wordMap[wordIdx];
+        const nodeText = node.textContent;
+
+        // Find the start of whitespace before this word (trim trailing spaces from previous line)
+        let splitAt = offset;
+        while (splitAt > 0 && /\s/.test(nodeText[splitAt - 1])) splitAt--;
+
+        if (splitAt > 0 && splitAt < nodeText.length) {
+          const afterNode = node.splitText(splitAt);
+          afterNode.textContent = afterNode.textContent.replace(/^\s+/, '');
+          const br = document.createElement('br');
+          afterNode.parentNode.insertBefore(br, afterNode);
+          elModified = true;
+        } else if (splitAt === 0) {
+          // Word is at the start of a text node — insert <br> before the node
+          node.textContent = nodeText.replace(/^\s+/, '');
+          const br = document.createElement('br');
+          node.parentNode.insertBefore(br, node);
+          elModified = true;
+        }
+      }
+
+      if (elModified) { modified = true; _dbgBrInserted++; }
+    }
+
+    if (_dbg) {
+      console.log(`[BR-INJECT] DONE children=${container.children.length} processed=${_dbgProcessed} brInserted=${_dbgBrInserted} skipTag=${_dbgSkippedTag} skipEmpty=${_dbgSkippedEmpty} skipBold=${_dbgSkippedBold} skipSingle=${_dbgSkippedSingle} modified=${modified}`);
+    }
+
+    return modified ? container.innerHTML : pageHtml;
+
+  } catch (e) {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[insertPageLineBreaks] Error, returning original:', e?.message);
+    }
+    return pageHtml;
+  }
+};
+
 // ─── KP Rendering — apply optimal line breaks + word-spacing to page HTML ───
 //
 // This is the bridge between our KP measurement engine and browser rendering.
@@ -1484,6 +1677,106 @@ export const applyKpRendering = (pageHtml, layoutCtx) => {
   } catch (e) {
     if (process.env.NODE_ENV === 'development') {
       console.warn('[applyKpRendering] Error, returning original:', e?.message);
+    }
+    return pageHtml;
+  }
+};
+
+// ─── Worker-safe KP word-spacing injection ─────────────────────────
+
+/**
+ * Apply Knuth-Plass word-spacing to page HTML — worker-safe version.
+ *
+ * For each <p> / <blockquote>: computes KP-optimal word-spacings, takes the
+ * median, and injects it as an inline `word-spacing` style. This makes the
+ * browser's justify rendering closer to KP-optimal spacing.
+ *
+ * Unlike `applyKpRendering` (which uses `document.createElement`), this
+ * version uses regex-based parsing and works in Web Workers.
+ *
+ * @param {string} pageHtml — full page HTML (multiple elements)
+ * @param {object} layoutCtx — { baseFontSizePx, fontFamily, contentWidth, widthSlack }
+ * @returns {string} HTML with word-spacing injected (or original if no changes)
+ */
+export const applyKpWordSpacingWorkerSafe = (pageHtml, layoutCtx) => {
+  if (!pageHtml || !layoutCtx || !layoutCtx.contentWidth) return pageHtml;
+
+  try {
+    const elements = parseMultiElementHtmlWorker(pageHtml);
+    if (elements.length === 0) return pageHtml;
+
+    let result = pageHtml;
+    let modified = false;
+
+    for (const el of elements) {
+      const tag = el.tag;
+      if (tag !== 'P' && tag !== 'BLOCKQUOTE') continue;
+
+      const text = el.text;
+      if (!text || !text.trim()) continue;
+
+      // Skip styled-run paragraphs (mixed bold/italic/sizes)
+      if (el.runs && hasStyledRuns(el.runs)) continue;
+
+      // Skip uniformly bold or italic (single-style wrapper)
+      if (el.runs && el.runs.length === 1 && (el.runs[0].bold || el.runs[0].italic)) continue;
+
+      const styles = el.styles;
+      const elFontSizePx = styles.fontSize
+        ? resolveSize(styles.fontSize, styles.fontSizeUnit, layoutCtx.baseFontSizePx)
+        : layoutCtx.baseFontSizePx;
+      const isBold   = styles.fontWeight === 'bold' || parseInt(styles.fontWeight) >= 700;
+      const isItalic = styles.fontStyle === 'italic';
+      const fontStr  = buildFontString(elFontSizePx, layoutCtx.fontFamily, isBold, isItalic);
+
+      const indentPx = styles.textIndent ? styles.textIndent * elFontSizePx : 0;
+
+      const paddingH  = (styles.paddingLeft || 0) + (styles.paddingRight || 0);
+      const marginLPx = resolveSize(styles.marginLeft,  styles.marginLeftUnit,  elFontSizePx);
+      const marginRPx = resolveSize(styles.marginRight, styles.marginRightUnit, elFontSizePx);
+      const borderL   = styles.borderLeftWidth || 0;
+      const availW    = layoutCtx.contentWidth - paddingH - marginLPx - marginRPx - borderL
+                        - (layoutCtx.widthSlack || 0);
+      if (availW <= 0) continue;
+
+      const wsFromStyle = styles.wordSpacing
+        ? resolveSize(styles.wordSpacing, styles.wordSpacingUnit, elFontSizePx)
+        : 0;
+
+      const collapsed = collapseWhitespace(text);
+      const kp = getLineBreakPositionsKP(collapsed, availW, fontStr, indentPx, wsFromStyle);
+      if (!kp || kp.lineStarts.length <= 1) continue;
+
+      const nonLastSpacings = kp.wordSpacings.slice(0, kp.lineStarts.length - 1);
+      if (nonLastSpacings.length === 0) continue;
+      nonLastSpacings.sort((a, b) => a - b);
+      const mid = Math.floor(nonLastSpacings.length / 2);
+      const medianWs = nonLastSpacings.length % 2 === 1
+        ? nonLastSpacings[mid]
+        : (nonLastSpacings[mid - 1] + nonLastSpacings[mid]) / 2;
+
+      if (Math.abs(medianWs) < 0.01) continue;
+
+      // Inject word-spacing into the element's inline style via regex.
+      // Match the opening tag of this element using its innerHTML prefix as anchor.
+      const escaped = el.innerHTML.substring(0, 60).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const elPattern = new RegExp(
+        `(<${tag.toLowerCase()}\\b[^>]*?)\\bstyle="([^"]*)"([^>]*>${escaped})`,
+        'i'
+      );
+      const match = result.match(elPattern);
+      if (match) {
+        const currentStyle = match[2].replace(/word-spacing\s*:[^;]+;?/g, '').replace(/;?\s*$/, '');
+        const newStyle = `${currentStyle};word-spacing:${medianWs.toFixed(3)}px`;
+        result = result.replace(elPattern, `$1style="${newStyle}"$3`);
+        modified = true;
+      }
+    }
+
+    return modified ? result : pageHtml;
+  } catch (e) {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[applyKpWordSpacingWorkerSafe] Error, returning original:', e?.message);
     }
     return pageHtml;
   }
