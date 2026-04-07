@@ -109,6 +109,19 @@ export function useLayoutVerification(pages, layoutDims) {
           contentWrapper.innerHTML = page.html;
           const domHeight = contentWrapper.scrollHeight;
 
+          // Measure where the last line of text actually ends (visual bottom of last element).
+          // scrollHeight includes any trailing margin-bottom on the last child.
+          // offsetTop + offsetHeight gives the border-box bottom of the last child
+          // relative to the contentWrapper, without trailing margins.
+          // Note: getBoundingClientRect() is unreliable when the element is off-screen
+          // (position:fixed; left:-99999px), so use offsetTop/offsetHeight instead.
+          const lastChild = contentWrapper.lastElementChild;
+          let textBottom = domHeight; // fallback = scrollHeight
+          if (lastChild) {
+            const measured = lastChild.offsetTop + lastChild.offsetHeight;
+            if (measured > 0) textBottom = measured;
+          }
+
           // Canvas measurement
           const canvasHeight = measureHtmlHeight(page.html, canvasCtx);
 
@@ -133,15 +146,27 @@ export function useLayoutVerification(pages, layoutDims) {
             deltaLines: +deltaLines.toFixed(2),
             overflowLines: +overflowLines.toFixed(2),
             clipped: overflow > 6,  // 6px tolerance (half-line subpixel rounding)
+            textBottom: +textBottom.toFixed(1),
+            textFill: +(textBottom / pageBudget * 100).toFixed(1),
           });
         }
 
-        // Per-element diagnostic for worst pages
+        // Pre-compute worst fill pages (needed for element audit below AND for summary later)
+        const normalPagesForAudit = results.filter(r =>
+          !pages[r.pageIndex]?.isFirstChapterPage &&
+          !pages[r.pageIndex]?.isTitleOnlyPage &&
+          !pages[r.pageIndex]?.isChapterLastPage &&
+          r.textBottom > 0 &&
+          r.textFill >= 75
+        );
+        const worstFillPages = [...normalPagesForAudit].sort((a, b) => a.textBottom - b.textBottom).slice(0, 5);
+
+        // Per-element diagnostic for worst pages (clipped + worst fill)
         if (process.env.NODE_ENV === 'development') {
-          const worstPages = results
-            .filter(r => r.clipped)
-            .sort((a, b) => b.delta - a.delta)
-            .slice(0, 3);
+          const worstPages = [
+            ...results.filter(r => r.clipped).sort((a, b) => b.delta - a.delta).slice(0, 2),
+            ...worstFillPages.slice(0, 2),
+          ].filter((r, i, arr) => arr.findIndex(x => x.pageNumber === r.pageNumber) === i);
 
           for (const wp of worstPages) {
             const page = pages[wp.pageIndex];
@@ -174,10 +199,8 @@ export function useLayoutVerification(pages, layoutDims) {
               `  canvasCtx: bf=${canvasCtx.baseFontSizePx.toFixed(2)} lh=${canvasCtx.baseLineHeight} w=${canvasCtx.contentWidth.toFixed(1)} ws=${canvasCtx.widthSlack?.toFixed(1)} noHyph=${canvasCtx.noHyphenation}\n` +
               elDetails.join('\n')
             );
-            // Also log first page's raw HTML (truncated)
-            if (wp === worstPages[0]) {
-              console.warn(`[ELEMENT-AUDIT-HTML] p${wp.pageNumber} html (first 2000 chars):\n${page.html.substring(0, 2000)}`);
-            }
+            // Log raw HTML for all audited pages
+            console.warn(`[ELEMENT-AUDIT-HTML] p${wp.pageNumber} html (first 2000 chars):\n${page.html.substring(0, 2000)}`);
           }
         }
 
@@ -195,10 +218,35 @@ export function useLayoutVerification(pages, layoutDims) {
         const maxDelta = Math.max(...deltas);
         const minDelta = Math.min(...deltas);
         const avgDelta = deltas.reduce((s, d) => s + d, 0) / deltas.length;
-        const domSlackBudget = Math.round(lineHeightPx * 1.0); // DOM_SLACK used in engine
+        const domSlackBudget = Math.round(lineHeightPx * 0.5); // DOM_SLACK used in engine (0.5 lines)
 
         const worstByDelta = results.reduce((w, r) => Math.abs(r.delta) > Math.abs(w.delta) ? r : w, results[0]);
         const worstByOverflow = results.reduce((w, r) => r.overflow > w.overflow ? r : w, results[0]);
+
+        // Fill uniformity — measure how far the last line of text reaches on normal pages.
+        // Excludes chapter-start, title-only, chapter-last pages (structural whitespace expected).
+        // Also excludes pages with textFill < 75% — these are chapter-ending pages whose last
+        // paragraph happens to be short (no isChapterLastPage flag but structurally partial).
+        const normalPages = normalPagesForAudit; // reuse pre-computed list
+        const textBottoms = normalPages.map(r => r.textBottom);
+        const avgTextBottom = textBottoms.length
+          ? textBottoms.reduce((s, v) => s + v, 0) / textBottoms.length : 0;
+        const maxTextBottomDev = textBottoms.length
+          ? Math.max(...textBottoms.map(v => Math.abs(v - avgTextBottom))) : 0;
+        const maxTextBottomDevLines = lineHeightPx > 0 ? maxTextBottomDev / lineHeightPx : 0;
+
+        // Histogram: bucket pages by textFill % to show distribution
+        const buckets = { '≥95%': 0, '90-94%': 0, '85-89%': 0, '80-84%': 0, '75-79%': 0, '<75%': 0 };
+        for (const r of results) {
+          if (pages[r.pageIndex]?.isFirstChapterPage || pages[r.pageIndex]?.isTitleOnlyPage) continue;
+          if (r.textFill >= 95) buckets['≥95%']++;
+          else if (r.textFill >= 90) buckets['90-94%']++;
+          else if (r.textFill >= 85) buckets['85-89%']++;
+          else if (r.textFill >= 80) buckets['80-84%']++;
+          else if (r.textFill >= 75) buckets['75-79%']++;
+          else buckets['<75%']++;
+        }
+        // worstFillPages already computed above (for element audit)
 
         const summary = {
           totalPages: results.length,
@@ -213,6 +261,10 @@ export function useLayoutVerification(pages, layoutDims) {
           worstDeltaPage: worstByDelta.pageNumber,
           worstOverflowPage: worstByOverflow.pageNumber,
           worstOverflowPx: +worstByOverflow.overflow.toFixed(1),
+          avgTextBottom: +avgTextBottom.toFixed(1),
+          maxTextBottomDev: +maxTextBottomDev.toFixed(1),
+          maxTextBottomDevLines: +maxTextBottomDevLines.toFixed(2),
+          normalPagesAnalyzed: normalPages.length,
         };
 
         const newReport = { summary, pages: results };
@@ -232,6 +284,21 @@ export function useLayoutVerification(pages, layoutDims) {
           `DOM_SLACK budget: ${domSlackBudget.toFixed(1)}px — ${maxDelta <= domSlackBudget ? 'SUFFICIENT' : 'EXCEEDED'}. ` +
           `Clipped: ${clippedPages.length}`
         );
+        console.log(
+          `[LAYOUT-AUDIT] Fill uniformity (${normalPages.length} pages ≥75%): ` +
+          `avg=${avgTextBottom.toFixed(1)}px dev=±${maxTextBottomDev.toFixed(1)}px (${maxTextBottomDevLines.toFixed(2)} lines) ` +
+          `budget=${contentHeight}px`
+        );
+        console.log(
+          `[LAYOUT-AUDIT] Fill histogram (${results.length} total): ` +
+          Object.entries(buckets).map(([k, v]) => `${k}:${v}`).join(' | ')
+        );
+        if (worstFillPages.length > 0) {
+          console.log(
+            `[LAYOUT-AUDIT] Worst fill (normal pages): ` +
+            worstFillPages.map(r => `p${r.pageNumber}=${r.textFill}%(${r.textBottom.toFixed(0)}px)`).join(', ')
+          );
+        }
 
         // Post to API for persistent logging
         try {

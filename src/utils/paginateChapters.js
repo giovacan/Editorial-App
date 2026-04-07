@@ -127,11 +127,50 @@ const simpleHash = (str) => {
   return (h >>> 0).toString(16);
 };
 
+const normalizePolicyTag = (tag) => String(tag || '').toUpperCase();
+
+const normalizePolicyTagSet = (tags) => new Set(
+  (Array.isArray(tags) ? tags : [])
+    .map(normalizePolicyTag)
+    .filter(Boolean)
+);
+
+const mergePolicyTagSets = (...sets) => {
+  const merged = new Set();
+  for (const set of sets) {
+    for (const value of normalizePolicyTagSet(set)) {
+      merged.add(value);
+    }
+  }
+  return merged;
+};
+
+const resolveChapterLayoutPolicy = (chapter, layoutHints) => {
+  const globalHints = layoutHints?.global || {};
+  const chapterHints = (layoutHints?.chapters || []).find((hint) => (
+    (hint?.chapterId && chapter?.id && hint.chapterId === chapter.id)
+    || (hint?.chapterTitle && chapter?.title && hint.chapterTitle === chapter.title)
+  )) || null;
+
+  return {
+    targetFillPct: chapterHints?.targetFillPct ?? globalHints?.targetFillPct ?? null,
+    avoidSplitTags: mergePolicyTagSets(globalHints?.avoidSplitTags, chapterHints?.avoidSplitTags),
+    keepWithNextTags: mergePolicyTagSets(globalHints?.keepWithNextTags, chapterHints?.keepWithNextTags),
+    notes: [
+      ...(Array.isArray(globalHints?.notes) ? globalHints.notes : []),
+      ...(Array.isArray(chapterHints?.notes) ? chapterHints.notes : []),
+    ],
+  };
+};
+
+const policyIncludesTag = (policySet, tag) => policySet?.has(normalizePolicyTag(tag)) === true;
+
 export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, options = null) => {
   if (!chapters || !Array.isArray(chapters)) return { pages: [], log: {}, summaryText: '' };
 
   const logger = options?.logger || null;
   const onProgress = options?.onProgress || null;
+  const layoutHints = options?.layoutHints || null;
   // Incremental layout: previous chapter hashes + pages from last run.
   // If a chapter's hash matches, skip greedyPaginate and reuse its pages.
   const prevChapterHashes = options?.prevChapterHashes || null;
@@ -165,7 +204,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     ),
     widthSlack: justifySlack,
     lineHeightPx: layoutCtx.lineHeightPx,
-    targetFillPct: safeConfig?.pagination?.targetFillPct ?? 0.88,
+    targetFillPct: layoutHints?.global?.targetFillPct ?? safeConfig?.pagination?.targetFillPct ?? 0.88,
     ctx2d: getEngineCtx2d(),
     textAlign: layoutCtx.textAlign || 'left',
     quoteConfig: safeConfig?.quote || {
@@ -181,9 +220,9 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
   const { contentHeight, lineHeightPx, baseFontSize: baseFontSizeTop, baseLineHeight: baseLineHeightTop, minOrphanLines: minOrphanLinesTop } = layoutCtx;
 
   // Set DOM_SLACK proportional to lineHeightPx so it scales with font size.
-  // Canvas text-justify measurement can differ from DOM by up to 1 line per
-  // paragraph due to word-spacing distribution differences. One full line
-  // covers the vast majority of cases.
+  // Canvas↔DOM delta is avg ~0px but distributeVerticalSpace adds margin-bottom
+  // values that Canvas doesn't simulate (up to ~6px per page at 4 elements × 1.5px).
+  // One full line covers the distribute margins + normal Canvas rounding errors.
   DOM_SLACK = Math.round(lineHeightPx * 1.0);
 
   const pageFormat = safeConfig?.pageFormat || layoutCtx.pageFormat || 'unknown';
@@ -243,7 +282,11 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     safeConfig?.chapterTitle?.marginBottom,
     safeConfig?.quote?.indentLeft,
     safeConfig?.quote?.indentRight,
-    'v12' // bump to force cache invalidation after algorithm changes
+    layoutHints?.version || 'no-layout-hints',
+    layoutHints?.global?.targetFillPct,
+    (layoutHints?.global?.avoidSplitTags || []).join(','),
+    (layoutHints?.global?.keepWithNextTags || []).join(','),
+    'v19' // bump to force cache invalidation after algorithm changes
   ].join('|'));
 
   const chapterHashes = [];
@@ -289,6 +332,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
       continue;
     }
 
+    const chapterLayoutPolicy = resolveChapterLayoutPolicy(chapter, layoutHints);
     const elements = flattenChapterElements(chapter, layoutCtx, canvasCtx, measureDiv, safeConfig);
     // DEV: log first 4 paragraph indents to diagnose missing-indent bugs
     if (process.env.NODE_ENV === 'development' && i === 0) {
@@ -298,7 +342,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
         log.record('greedy', 'diag', 0, { note: 'indent-check', para: pi, indent: indentM?.[1] ?? 'none', text: (e.textContent||'').substring(0,50) });
       });
     }
-    const chapterPages = greedyPaginate(elements, layoutCtx, canvasCtx, measureDiv, safeConfig, chapter, log);
+    const chapterPages = greedyPaginate(elements, layoutCtx, canvasCtx, measureDiv, safeConfig, chapter, log, chapterLayoutPolicy);
     allPages.push(...chapterPages);
     chapterPageRanges.push({ start: chapterStartIdx, end: allPages.length });
   }
@@ -451,10 +495,55 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     }
   }
 
-  // E6 final pass: distribute vertical whitespace unconditionally AFTER all
-  // structural mutations (including FASE 6 reoptimization which may have replaced
-  // entire chapter slices). This ensures chapter-start pages always get margins
-  // distributed regardless of whether the reopt branch ran.
+  // ── KP word-spacing pass (before distributeVerticalSpace) ───────────────
+  // Must run BEFORE distributeVerticalSpace so that Canvas measures the
+  // post-word-spacing HTML when computing free space. Word-spacing compacts
+  // DOM lines (each line fills faster), reducing DOM height vs Canvas baseline.
+  // If distribution runs on pre-WS HTML, it underestimates free space and
+  // leaves pages at ~85% fill instead of ≥95%.
+  //
+  // If word-spacing makes a page overflow, revert that page to the original
+  // HTML — a safe fallback that preserves correctness over aesthetics.
+  {
+    const kpCtx = {
+      baseFontSizePx: canvasCtx.baseFontSizePx,
+      fontFamily: canvasCtx.fontFamily || layoutCtx.fontFamily || 'Georgia, serif',
+      contentWidth: layoutCtx.contentWidth,
+      widthSlack: canvasCtx.widthSlack || 0,
+    };
+    let kpApplied = 0;
+    let kpReverted = 0;
+    for (let i = 0; i < allPages.length; i++) {
+      const page = allPages[i];
+      if (!page.html || page.isBlank) continue;
+      const originalHtml = page.html;
+      const wsHtml = applyKpWordSpacingWorkerSafe(originalHtml, kpCtx);
+      if (wsHtml === originalHtml) continue;
+      // Verify the modified HTML still fits within the content budget
+      const wsHeight = measureHtmlHeight(wsHtml, canvasCtx);
+      if (wsHeight <= contentHeight - DOM_SLACK) {
+        allPages[i] = setPageHtml(page, wsHtml);
+        kpApplied++;
+      } else {
+        // Word-spacing caused overflow — revert to original (safe fallback)
+        kpReverted++;
+        if (process.env.NODE_ENV === 'development') {
+          log.record('kp-ws', 'revert', page.pageNumber, {
+            wsHeight: +wsHeight.toFixed(1),
+            budget: +(contentHeight - DOM_SLACK).toFixed(1),
+            overflow: +(wsHeight - contentHeight + DOM_SLACK).toFixed(1)
+          });
+        }
+      }
+    }
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[KP-WS] Applied word-spacing to ${kpApplied} pages, reverted ${kpReverted}`);
+    }
+  }
+
+  // E6 final pass: distribute vertical whitespace AFTER KP word-spacing so that
+  // Canvas free-space calculation reflects post-WS DOM height (word-spacing
+  // compacts lines → more free space → distribution fills pages closer to budget).
   distributeVerticalSpace(allPages, layoutCtx, canvasCtx);
 
   // Re-number again after fill-pass may have emptied some pages.
@@ -665,50 +754,6 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
         if (!p.isBlank) p.pageNumber = pn;
         pn++;
       }
-    }
-  }
-
-  // ── KP word-spacing pass ─────────────────────────────────────────────
-  // Apply KP-optimal word-spacing to each page's paragraphs BEFORE the final
-  // scoring summary. This makes the engine's HTML match what the browser will
-  // render (closing the Canvas↔DOM measurement gap that caused overflow).
-  //
-  // If word-spacing makes a page overflow, revert that page to the original
-  // HTML — a safe fallback that preserves correctness over aesthetics.
-  {
-    const kpCtx = {
-      baseFontSizePx: canvasCtx.baseFontSizePx,
-      fontFamily: canvasCtx.fontFamily || layoutCtx.fontFamily || 'Georgia, serif',
-      contentWidth: layoutCtx.contentWidth,
-      widthSlack: canvasCtx.widthSlack || 0,
-    };
-    let kpApplied = 0;
-    let kpReverted = 0;
-    for (let i = 0; i < allPages.length; i++) {
-      const page = allPages[i];
-      if (!page.html || page.isBlank) continue;
-      const originalHtml = page.html;
-      const wsHtml = applyKpWordSpacingWorkerSafe(originalHtml, kpCtx);
-      if (wsHtml === originalHtml) continue;
-      // Verify the modified HTML still fits within the content budget
-      const wsHeight = measureHtmlHeight(wsHtml, canvasCtx);
-      if (wsHeight <= contentHeight - DOM_SLACK) {
-        allPages[i] = setPageHtml(page, wsHtml);
-        kpApplied++;
-      } else {
-        // Word-spacing caused overflow — revert to original (safe fallback)
-        kpReverted++;
-        if (process.env.NODE_ENV === 'development') {
-          log.record('kp-ws', 'revert', page.pageNumber, {
-            wsHeight: +wsHeight.toFixed(1),
-            budget: +(contentHeight - DOM_SLACK).toFixed(1),
-            overflow: +(wsHeight - contentHeight + DOM_SLACK).toFixed(1)
-          });
-        }
-      }
-    }
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`[KP-WS] Applied word-spacing to ${kpApplied} pages, reverted ${kpReverted}`);
     }
   }
 
@@ -1638,9 +1683,12 @@ const collectBreakpoints = (elements, startIdx, baseHtml, budget, canvasCtx, lay
  *
  * @private
  */
-const scoreBreakpoint = (candidate, canvasCtx, layoutCtx, elements, log) => {
+const scoreBreakpoint = (candidate, canvasCtx, layoutCtx, elements, log, chapterLayoutPolicy = null) => {
   const { contentHeight, lineHeightPx, minOrphanLines } = layoutCtx;
   let penalty = 0;
+  const candidateEl = candidate.elementIndex >= 0 ? elements[candidate.elementIndex] : null;
+  const candidateTag = normalizePolicyTag(candidateEl?.tag);
+  const keepWithNextProtected = policyIncludesTag(chapterLayoutPolicy?.keepWithNextTags, candidateTag);
 
   // 1. PROHIBIDO: overflow
   if (candidate.height > contentHeight) return Infinity;
@@ -1648,7 +1696,7 @@ const scoreBreakpoint = (candidate, canvasCtx, layoutCtx, elements, log) => {
   // 2. PROHIBIDO: heading or bold paragraph at bottom of page
   //    Applies to block-end AND flush candidates (both can leave a heading stranded).
   //    Para-splits can't end with a heading by construction.
-  if ((candidate.type === 'block-end' || candidate.type === 'flush') && candidate.isHeadingOrBold) {
+  if ((candidate.type === 'block-end' || candidate.type === 'flush') && (candidate.isHeadingOrBold || keepWithNextProtected)) {
     // Check if there's a following element (heading at bottom is only bad when
     // content follows — at chapter end it's fine)
     const nextIdx = candidate.elementIndex + 1;
@@ -1656,7 +1704,7 @@ const scoreBreakpoint = (candidate, canvasCtx, layoutCtx, elements, log) => {
       && elements[nextIdx].chapterTitle === elements[candidate.elementIndex].chapterTitle
       && !elements[nextIdx].isTitle;
     if (hasFollowing) {
-      penalty += 2500; // heading-at-bottom (2000) + keep-with-next (500)
+      penalty += keepWithNextProtected && !candidate.isHeadingOrBold ? 1800 : 2500;
     }
   }
 
@@ -1673,6 +1721,9 @@ const scoreBreakpoint = (candidate, canvasCtx, layoutCtx, elements, log) => {
 
   // 5. Split-specific penalties
   if (candidate.type === 'para-split') {
+    if (policyIncludesTag(chapterLayoutPolicy?.avoidSplitTags, candidateTag)) {
+      penalty += 1200;
+    }
     const effectiveMinOrphan = candidate.isLastChapterElement ? 1 : (minOrphanLines || 2);
     const effectiveMinWidow = candidate.isLastChapterElement ? 1 : (minOrphanLines || 2) + 1;
 
@@ -1748,14 +1799,14 @@ const scoreBreakpoint = (candidate, canvasCtx, layoutCtx, elements, log) => {
  * Pick the best breakpoint from a list of candidates.
  * @private
  */
-const pickBestBreakpoint = (candidates, canvasCtx, layoutCtx, elements, log) => {
+const pickBestBreakpoint = (candidates, canvasCtx, layoutCtx, elements, log, chapterLayoutPolicy = null) => {
   if (candidates.length === 0) return null;
 
   let best = candidates[0];
-  let bestScore = scoreBreakpoint(best, canvasCtx, layoutCtx, elements, log);
+  let bestScore = scoreBreakpoint(best, canvasCtx, layoutCtx, elements, log, chapterLayoutPolicy);
 
   for (let i = 1; i < candidates.length; i++) {
-    const score = scoreBreakpoint(candidates[i], canvasCtx, layoutCtx, elements, log);
+    const score = scoreBreakpoint(candidates[i], canvasCtx, layoutCtx, elements, log, chapterLayoutPolicy);
     if (score < bestScore) {
       best = candidates[i];
       bestScore = score;
@@ -1782,7 +1833,7 @@ const pickBestBreakpoint = (candidates, canvasCtx, layoutCtx, elements, log) => 
  *
  * @private
  */
-const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, chapter, log) => {
+const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, chapter, log, chapterLayoutPolicy = null) => {
   const {
     contentHeight, lineHeightPx, baseFontSize, baseLineHeight, textAlign,
     minOrphanLines, minWidowLines, splitLongParagraphs, headerSpaceEstimate: headerSpaceEst
@@ -1816,7 +1867,8 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
       isTitleOnlyPage: opts.isTitleOnlyPage || false,
       isFirstChapterPage: opts.isFirstChapterPage || false,
       currentSubheader,
-      firstElementIndex: currentFirstElementIndex
+      firstElementIndex: currentFirstElementIndex,
+      targetFillPct: chapterLayoutPolicy?.targetFillPct ?? null,
     });
     prevWasTitleOnly = opts.isTitleOnlyPage || false;
     pageHasTitle = false;
@@ -1873,7 +1925,9 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
     const isHeading = /^H[1-6]$/i.test(el.tag);
     const isBoldParagraph = !isHeading && el.tag === 'P' && el.isBold;
 
-    if (isHeading || isBoldParagraph) {
+    const policyKeepWithNext = policyIncludesTag(chapterLayoutPolicy?.keepWithNextTags, el.tag);
+
+    if (isHeading || isBoldParagraph || policyKeepWithNext) {
       log.record('greedy', 'heading-detect', pages.length + 1, { tag: el.tag, text: (el.textContent || '').substring(0, 60), isHeading, isBoldParagraph });
 
       const nextEl = elements[elIdx + 1];
@@ -1888,7 +1942,13 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
         const spaceAfterSub = (contentHeight + (pageHasTitle ? chapterStartExtraBudget : 0)) - pageWithSub;
 
         if (spaceAfterSub < minFollowHeight) {
-          log.record('greedy', 'keep-with-next', pages.length + 1, { tag: el.tag, text: (el.textContent || '').substring(0, 60), effectiveMinLines, availableLines: +(spaceAfterSub / lineHeightPx).toFixed(1) });
+          log.record('greedy', 'keep-with-next', pages.length + 1, {
+            tag: el.tag,
+            text: (el.textContent || '').substring(0, 60),
+            effectiveMinLines,
+            availableLines: +(spaceAfterSub / lineHeightPx).toFixed(1),
+            policyKeepWithNext,
+          });
           flushCurrent(el.html, elIdx);
           currentFirstElementIndex = elIdx;
           continue;
@@ -2016,7 +2076,7 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
       continue;
     }
 
-    const best = pickBestBreakpoint(candidates, canvasCtx, layoutCtx, elements, log);
+    const best = pickBestBreakpoint(candidates, canvasCtx, layoutCtx, elements, log, chapterLayoutPolicy);
 
     if (!best) {
       // Shouldn't happen, but safety fallback
@@ -3027,9 +3087,11 @@ const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
     let bestGap = 0;
     for (let iter = 0; iter < 10; iter++) {
       const mid = (lo + hi) / 2;
-      // Chapter-start pages get an extra 1-line safety margin when distributing
-      // vertical space, because inter-element margins can push DOM 3-5px over Canvas.
-      const distributeSlack = DOM_SLACK + (isChStart ? lineHeightPx : 0);
+      // Use 2× DOM_SLACK for safety: after distribution, DOM may render margins
+      // taller than Canvas predicts (word-spacing causes Canvas to underestimate
+      // when WS is high, and the distributed margins add on top of that error).
+      // Chapter-start pages get an additional 1-line buffer on top.
+      const distributeSlack = DOM_SLACK * 2 + (isChStart ? lineHeightPx : 0);
       if (measure(applyGap(mid)) <= pageBudget - distributeSlack) {
         bestGap = mid;
         lo = mid;
