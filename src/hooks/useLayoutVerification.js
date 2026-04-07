@@ -40,7 +40,9 @@ export function useLayoutVerification(pages, layoutDims) {
       baseLineHeight,
       fontFamily,
       textAlign,
+      headerSpaceEstimate,
     } = layoutDims;
+    const chStartExtra = headerSpaceEstimate || 0;
 
     if (!contentHeight || !contentWidth || !lineHeightPx) return;
 
@@ -110,8 +112,12 @@ export function useLayoutVerification(pages, layoutDims) {
           // Canvas measurement
           const canvasHeight = measureHtmlHeight(page.html, canvasCtx);
 
+          // Chapter-start pages have extra budget (header space reclaimed).
+          const isChStart = !!(page.isFirstChapterPage || (page.html && page.html.includes('data-chapter-start="true"')));
+          const pageBudget = contentHeight + (isChStart ? chStartExtra : 0);
+
           const delta = domHeight - canvasHeight;       // positive = DOM taller
-          const overflow = domHeight - contentHeight;    // positive = clipped
+          const overflow = domHeight - pageBudget;      // positive = clipped
           const deltaLines = lineHeightPx > 0 ? delta / lineHeightPx : 0;
           const overflowLines = lineHeightPx > 0 ? overflow / lineHeightPx : 0;
 
@@ -121,7 +127,7 @@ export function useLayoutVerification(pages, layoutDims) {
             chapterTitle: page.chapterTitle || '',
             domHeight: +domHeight.toFixed(1),
             canvasHeight: +canvasHeight.toFixed(1),
-            budget: +contentHeight.toFixed(1),
+            budget: +pageBudget.toFixed(1),
             delta: +delta.toFixed(1),
             overflow: +overflow.toFixed(1),
             deltaLines: +deltaLines.toFixed(2),

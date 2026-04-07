@@ -243,7 +243,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     safeConfig?.chapterTitle?.marginBottom,
     safeConfig?.quote?.indentLeft,
     safeConfig?.quote?.indentRight,
-    'v11' // bump to force cache invalidation after algorithm changes
+    'v12' // bump to force cache invalidation after algorithm changes
   ].join('|'));
 
   const chapterHashes = [];
@@ -3027,7 +3027,10 @@ const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
     let bestGap = 0;
     for (let iter = 0; iter < 10; iter++) {
       const mid = (lo + hi) / 2;
-      if (measure(applyGap(mid)) <= pageBudget - DOM_SLACK) {
+      // Chapter-start pages get an extra 1-line safety margin when distributing
+      // vertical space, because inter-element margins can push DOM 3-5px over Canvas.
+      const distributeSlack = DOM_SLACK + (isChStart ? lineHeightPx : 0);
+      if (measure(applyGap(mid)) <= pageBudget - distributeSlack) {
         bestGap = mid;
         lo = mid;
       } else {
