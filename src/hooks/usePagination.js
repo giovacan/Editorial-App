@@ -282,7 +282,7 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
       // folio position constant — changing this must re-paginate
       FOLIO_FROM_BOTTOM_MM,
       // engine version — bump to force re-pagination after algorithm changes
-      'ev5',
+      'ev6',
     ].join('|');
     const contentHash = JSON.stringify(safeBookData.chapters.map(ch =>
       ch.id + murmurhash(ch.html || '').result()
@@ -438,7 +438,8 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
         fontFamily,
         minOrphanLines,
         minWidowLines,
-        splitLongParagraphs
+        splitLongParagraphs,
+        headerSpaceEstimate,
       };
 
       if (cancelled) return;
@@ -549,6 +550,7 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
           gutterValue: engineGutter,
           fontFamily,
           textAlign,
+          headerSpaceEstimate,
         };
         console.log(`[PAGINATION] Guardando layoutDims: contentHeight=${contentHeight}px renderContentHeight=${renderContentHeight}px engineGutter=${engineGutter}`);
         setLayoutDims(dimsSnapshot);

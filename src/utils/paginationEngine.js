@@ -134,12 +134,10 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
         : `margin:0;padding:0;text-align:${effectiveTextAlign};text-indent:${indent};text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;`);
 
     // When paragraph continues to next page: the last visible line is a mid-paragraph
-    // line — always justify it regardless of how many words it has.
-    // (text-align-last:left is only correct when the paragraph actually ends on this page)
-    if (newRemainingHtml) {
-      const newAlignLast = effectiveTextAlign === 'justify' ? 'justify' : 'left';
-      finalStyle = finalStyle.replace(/text-align-last:[^;]+;?/gi, '').replace(/;?\s*$/, ';') + `text-align-last:${newAlignLast};`;
-    }
+    // line. Keep text-align-last:left so Canvas and DOM agree on line count.
+    // (text-align-last:justify stretches the last line in the DOM but Canvas doesn't
+    // simulate it, causing Canvas to over-count lines → fill pass thinks page is full)
+    // No replacement needed — finalStyle already has text-align-last:left from above.
 
     if (isBlockquote) {
       chunkHtml = `<blockquote class="quote ${quoteTemplate}" style="${finalStyle}"${newRemainingHtml ? ' data-split-head="true"' : ''}>${chunkHtml}</blockquote>`;
@@ -454,12 +452,16 @@ export const buildChapterTitleHtml = (chapter, config, baseFontSize, lineHeightP
       break;
     }
     default: {
+      // 'continuous' layout: title flows at the top of the page with minimal
+      // top margin. The ctConfig.marginTop setting is editorial for spaced/halfPage;
+      // for continuous it would just create a large blank area before the title.
+      const continuousTop = Math.round(lineHeightPx * 0.5);
       if (ctConfig.showLines) {
         const hrTop = getHrStyle();
         const hrBottom = getHrStyle();
-        titleHtml = `<div data-chapter-start="true" style="margin:${titleMarginTop}px 0 ${titleMarginBottom}px 0;text-align:center;"><div style="${hrTop}"></div><div style="${titleBaseStyle}padding:${titleMarginBottom / 2}px 0;">${renderTitleInner()}</div><div style="${hrBottom}"></div></div>`;
+        titleHtml = `<div data-chapter-start="true" style="margin:${continuousTop}px 0 ${titleMarginBottom}px 0;text-align:center;"><div style="${hrTop}"></div><div style="${titleBaseStyle}padding:${titleMarginBottom / 2}px 0;">${renderTitleInner()}</div><div style="${hrBottom}"></div></div>`;
       } else {
-        titleHtml = `<div data-chapter-start="true" style="${titleBaseStyle}margin:${titleMarginTop}px 0 ${titleMarginBottom}px 0;">${renderTitleInner()}</div>`;
+        titleHtml = `<div data-chapter-start="true" style="${titleBaseStyle}margin:${continuousTop}px 0 ${titleMarginBottom}px 0;">${renderTitleInner()}</div>`;
       }
     }
   }

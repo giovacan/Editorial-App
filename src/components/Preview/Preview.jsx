@@ -297,6 +297,9 @@ function Preview() {
                     : currentPageData?.isTitlePage ? 'TITLE'
                     : currentPageData?.isFrontMatter ? 'FM' : 'CONTENT';
                   const isChStart = !!(currentPageData?.isFirstChapterPage || (currentPageData?.html && currentPageData.html.includes('data-chapter-start')));
+                  if (isChStart) {
+                    console.log(`[CH-START-RENDER] Page ${currentPage + 1}: scrollH=${el.scrollHeight}px clientH=${el.clientHeight}px effectiveCH=${effectiveContentHeight}px engineCH=${engineContentHeight}px remain=${(el.clientHeight - el.scrollHeight).toFixed(1)}px blocks=${el.children.length}`);
+                  }
                   if (overflow > 6) {
                     console.warn(`[OVERFLOW][${pageType}] Page ${currentPage + 1}: scrollH=${el.scrollHeight}px clientH=${el.clientHeight}px overflow=${overflow.toFixed(1)}px (${(overflow / lineHeightPx).toFixed(1)} lines)${isChStart ? ' [CHAPTER-START]' : ''}`);
                     // P6: Visual overflow indicator — red outline on clipped pages

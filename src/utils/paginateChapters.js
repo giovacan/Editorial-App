@@ -181,9 +181,10 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
   const { contentHeight, lineHeightPx, baseFontSize: baseFontSizeTop, baseLineHeight: baseLineHeightTop, minOrphanLines: minOrphanLinesTop } = layoutCtx;
 
   // Set DOM_SLACK proportional to lineHeightPx so it scales with font size.
-  // Canvas measureText slightly underestimates vs DOM rendering due to subpixel
-  // rounding. Half-line buffer covers typical ≤5px DOM-Canvas gap.
-  DOM_SLACK = Math.round(lineHeightPx * 0.5);
+  // Canvas text-justify measurement can differ from DOM by up to 1 line per
+  // paragraph due to word-spacing distribution differences. One full line
+  // covers the vast majority of cases.
+  DOM_SLACK = Math.round(lineHeightPx * 1.0);
 
   const pageFormat = safeConfig?.pageFormat || layoutCtx.pageFormat || 'unknown';
   log.setConfig({ pageFormat, fontSize: baseFontSizeTop, lineHeight: baseLineHeightTop, contentHeight, contentWidth: layoutCtx.contentWidth, minOrphanLines: minOrphanLinesTop, lineHeightPx });
@@ -242,7 +243,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     safeConfig?.chapterTitle?.marginBottom,
     safeConfig?.quote?.indentLeft,
     safeConfig?.quote?.indentRight,
-    'v1' // bump to force cache invalidation after algorithm changes
+    'v11' // bump to force cache invalidation after algorithm changes
   ].join('|'));
 
   const chapterHashes = [];
@@ -515,6 +516,23 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     }
   }
 
+  // DEV: chapter start page fill diagnostic
+  if (process.env.NODE_ENV === 'development') {
+    for (let pi = 0; pi < allPages.length; pi++) {
+      const page = allPages[pi];
+      if (!page?.isFirstChapterPage || page.isBlank || !page.html) continue;
+      const h = measureHtmlHeight(page.html, canvasCtx);
+      const blocks = getPageBlocks(page);
+      const titleBlock = blocks.find(b => b.dataset?.chapterStart === 'true');
+      const titleH = titleBlock ? measureHtmlHeight(titleBlock.outerHtml, canvasCtx) : 0;
+      const headerExtra = layoutCtx.headerSpaceEstimate || 0;
+      const chBudget = contentHeight + headerExtra;
+      const blockHeights = blocks.map(b => Math.round(measureHtmlHeight(b.outerHtml, canvasCtx))).join(',');
+      console.log(`[CH-START] p${page.pageNumber} ch="${page.chapterTitle?.substring(0,30)}" canvasH=${h.toFixed(0)} titleH=${titleH.toFixed(0)} contentH=${(h-titleH).toFixed(0)} budget=${(contentHeight - DOM_SLACK).toFixed(0)} chBudget=${(chBudget - DOM_SLACK).toFixed(0)} headerExtra=${headerExtra} fill=${(h/chBudget*100).toFixed(0)}% blocks=${blocks.length} blockH=[${blockHeights}]`);
+      log.record('ch-start', 'diag', page.pageNumber, { ch: page.chapterTitle?.substring(0,30), canvasH: Math.round(h), titleH: Math.round(titleH), budget: Math.round(contentHeight - DOM_SLACK), chBudget: Math.round(chBudget - DOM_SLACK), blocks: blocks.length, blockH: blocks.map(b => Math.round(measureHtmlHeight(b.outerHtml, canvasCtx))), blockStyles: blocks.map(b => { const m = (b.style||'').match(/text-align-last:[^;\"]+/); return m ? m[0] : 'none'; }) });
+    }
+  }
+
   // ── SAFETY CLAMP PASS ──────────────────────────────────────────────────
   // Final overflow guard: re-measure every page and trim any that exceed the
   // content budget. This catches overflow introduced by mergeSplitFragments,
@@ -526,13 +544,15 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
   // If the removed element would overflow the next page too, insert a new
   // blank-ish page to absorb it.
   {
-    const budget = contentHeight - DOM_SLACK;
+    const chStartExtra = layoutCtx.headerSpaceEstimate || 0;
     let clampCount = 0;
     let clampChecked = 0;
     let clampOverBudget = 0;
     for (let i = 0; i < allPages.length; i++) {
       const page = allPages[i];
       if (!page || page.isBlank || page.isTitleOnlyPage || !page.html) continue;
+      // Chapter-start pages have extra budget (header space reclaimed).
+      const budget = contentHeight - DOM_SLACK + (page.isFirstChapterPage ? chStartExtra : 0);
       clampChecked++;
       let pageH = measureHtmlHeight(page.html, canvasCtx);
       if (pageH > budget) {
@@ -553,6 +573,42 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
         pageH = measureHtmlHeight(newHtml, canvasCtx);
       }
 
+      // Single-element page that still overflows — split the paragraph itself.
+      // splitParagraphByLines returns an array of HTML chunks; first fits, rest overflow.
+      if (overflow.length === 0 && blocks.length === 1 && pageH > budget) {
+        const singleHtml = blocks[0].outerHtml || blocks[0].html || page.html;
+        const chunks = splitParagraphByLines(
+          singleHtml, null, budget, canvasCtx.textAlign || 'justify',
+          false, 1.5, false, canvasCtx
+        );
+        if (chunks && chunks.length >= 2) {
+          const headHtml = chunks[0];
+          const restHtml = chunks.slice(1).join('');
+          Object.assign(page, setPageHtml(page, headHtml));
+          // Insert rest as new page after current
+          const restPage = {
+            html: restHtml,
+            blocks: parseHtmlElements(restHtml),
+            pageNumber: 0,
+            chapterTitle: page.chapterTitle,
+            isBlank: false,
+            isTitleOnlyPage: false,
+            isFirstChapterPage: false,
+            currentSubheader: page.currentSubheader || '',
+            firstElementIndex: 0,
+          };
+          allPages.splice(i + 1, 0, restPage);
+          clampCount++;
+          if (process.env.NODE_ENV === 'development') {
+            log.record('clamp', 'split-single', page.pageNumber || i + 1, {
+              oldH: +pageH.toFixed(0),
+              headH: +measureHtmlHeight(headHtml, canvasCtx).toFixed(0),
+              budget: +budget.toFixed(0),
+            });
+          }
+        }
+        continue;
+      }
       if (overflow.length === 0) continue; // single-element page — can't trim further
 
       // Update current page
@@ -599,7 +655,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     }
 
     if (process.env.NODE_ENV === 'development') {
-      console.log(`[SAFETY-CLAMP] checked=${clampChecked} overBudget=${clampOverBudget} trimmed=${clampCount} budget=${budget.toFixed(1)} contentH=${contentHeight.toFixed(1)} DOM_SLACK=${DOM_SLACK}`);
+      console.log(`[SAFETY-CLAMP] checked=${clampChecked} overBudget=${clampOverBudget} trimmed=${clampCount} baseBudget=${(contentHeight - DOM_SLACK).toFixed(1)} chStartBudget=${(contentHeight - DOM_SLACK + chStartExtra).toFixed(1)} contentH=${contentHeight.toFixed(1)} DOM_SLACK=${DOM_SLACK}`);
     }
 
     // Re-number pages after potential insertions
@@ -1729,8 +1785,11 @@ const pickBestBreakpoint = (candidates, canvasCtx, layoutCtx, elements, log) => 
 const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, chapter, log) => {
   const {
     contentHeight, lineHeightPx, baseFontSize, baseLineHeight, textAlign,
-    minOrphanLines, minWidowLines, splitLongParagraphs
+    minOrphanLines, minWidowLines, splitLongParagraphs, headerSpaceEstimate: headerSpaceEst
   } = layoutCtx;
+  // Chapter start pages that skip the header get extra budget (header space reclaimed).
+  const skipHeaderOnChStart = safeConfig?.header?.skipFirstChapterPage !== false;
+  const chapterStartExtraBudget = (skipHeaderOnChStart && headerSpaceEst > 0) ? headerSpaceEst : 0;
 
   const pages = [];
   let currentHtml = '';
@@ -1826,7 +1885,7 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
           ? subConfig.minLinesAfter
           : Math.max(minOrphanLines, 2);
         const minFollowHeight = effectiveMinLines * lineHeightPx;
-        const spaceAfterSub = (contentHeight - (pageHasTitle ? lineHeightPx : 0)) - pageWithSub;
+        const spaceAfterSub = (contentHeight + (pageHasTitle ? chapterStartExtraBudget : 0)) - pageWithSub;
 
         if (spaceAfterSub < minFollowHeight) {
           log.record('greedy', 'keep-with-next', pages.length + 1, { tag: el.tag, text: (el.textContent || '').substring(0, 60), effectiveMinLines, availableLines: +(spaceAfterSub / lineHeightPx).toFixed(1) });
@@ -1840,11 +1899,14 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
     // ── BREAKPOINT SELECTION ──
     // Instead of greedily checking "does this element fit?", collect ALL valid
     // breakpoints from this position and pick the best one.
-    const pageHeightBudget = contentHeight - DOM_SLACK - (pageHasTitle ? lineHeightPx : 0);
+    // Chapter start pages that skip the header get extra budget (header space reclaimed).
+    const extraBudget = pageHasTitle ? chapterStartExtraBudget : 0;
+    const pageHeightBudget = contentHeight - DOM_SLACK + extraBudget;
 
     // Only trigger breakpoint selection when the current element does NOT fit.
     // If it fits, add it and continue — this keeps the simple case fast.
     const candidateHeight = measure(currentHtml + el.html);
+
 
     if (candidateHeight <= pageHeightBudget) {
       // Element fits — but check for runt/widow traps before blindly adding.
@@ -1968,7 +2030,8 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
       log.record('greedy', 'bp-flush', pages.length + 1, {
         tag: el.tag, text: (el.textContent || '').substring(0, 60),
         reason: 'breakpoint-flush',
-        pageFill: +(best.height / contentHeight * 100).toFixed(1)
+        pageFill: +(best.height / contentHeight * 100).toFixed(1),
+        isChapterStart: pageHasTitle
       });
       flushCurrent(el.html, elIdx);
       currentFirstElementIndex = elIdx;
@@ -2009,6 +2072,7 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
         orphanLines: best.orphanLines,
         widowLines: best.widowLines,
         fill: +(best.height / contentHeight * 100).toFixed(1),
+        isChapterStart: pageHasTitle,
       });
 
       // Propagate fragment IDs in dev mode
@@ -2043,7 +2107,9 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
  */
 const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log) => {
   const { contentHeight, lineHeightPx, minOrphanLines, minWidowLines,
-    baseFontSize, baseLineHeight, textAlign, splitLongParagraphs } = layoutCtx;
+    baseFontSize, baseLineHeight, textAlign, splitLongParagraphs,
+    headerSpaceEstimate } = layoutCtx;
+  const chStartExtraBudget = headerSpaceEstimate || 0;
 
   const quoteOptions = canvasCtx;
 
@@ -2057,6 +2123,11 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
     if (i < 0 || i >= pages.length - 1) continue;
     if (pages[i].isBlank || pages[i].isTitleOnlyPage || !pages[i].html) continue;
 
+    // Chapter-start pages skip the header → they have extra vertical budget.
+    const isChStart = !!pages[i].isFirstChapterPage;
+    const effectiveBudget = contentHeight + (isChStart ? chStartExtraBudget : 0);
+    const effectiveBudgetSlack = effectiveBudget - DOM_SLACK;
+
     // Sliding-window source search: if all attempts with the nearest source page
     // fail (e.g. first element has very high split badness), try the next source in
     // the same chapter before giving up. Limited to MAX_SOURCE_HOPS extra hops so
@@ -2068,8 +2139,8 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
     for (let attempt = 0; attempt < 30; attempt++) {
       const currentHtml = pages[i].html;
       const currentHeight = measure(currentHtml);
-      const currentFill = currentHeight / contentHeight;
-      const remainingSpace = contentHeight - DOM_SLACK - currentHeight;
+      const currentFill = currentHeight / effectiveBudget;
+      const remainingSpace = effectiveBudgetSlack - currentHeight;
       const remainingLines = Math.floor(remainingSpace / lineHeightPx);
 
       if (remainingLines < 1) {
@@ -2127,14 +2198,14 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
       if (isHeader || isBoldPara) {
         log.record('fill', 'heading-group', i + 1, { tag, text: firstEl.textContent.substring(0, 60), isHeader, isBoldPara, remainingLines });
         // Heading doesn't even fit on the page — no point trying group move
-        if (measure(currentHtml + firstElHtml) > contentHeight - DOM_SLACK) break;
+        if (measure(currentHtml + firstElHtml) > effectiveBudgetSlack) break;
 
         let groupHtml = firstElHtml;
         let groupCount = 1;
         for (let si = 1; si < nextPageEls.length; si++) {
           const sibHtml = nextPageEls[si].outerHtml;
           const gh = measure(currentHtml + groupHtml + sibHtml);
-          if (gh > contentHeight - DOM_SLACK) break;
+          if (gh > effectiveBudgetSlack) break;
           groupHtml += sibHtml;
           groupCount++;
         }
@@ -2187,11 +2258,11 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
         if (groupCount === 1 && sib && splitLongParagraphs) {
           const sibTag = sib.tag;
           if (sibTag !== 'UL' && sibTag !== 'OL' && !/^H[1-6]$/i.test(sibTag)) {
-            const spaceForFollow = contentHeight - DOM_SLACK - measure(currentHtml + firstElHtml);
+            const spaceForFollow = effectiveBudgetSlack - measure(currentHtml + firstElHtml);
             if (spaceForFollow >= minOrphanLines * lineHeightPx) {
               const isContChunk = sib.dataset?.continuation === 'true';
               const followSplit = splitInTwo(
-                sib.outerHtml, measureDiv, canvasCtx, spaceForFollow, contentHeight - DOM_SLACK,
+                sib.outerHtml, measureDiv, canvasCtx, spaceForFollow, effectiveBudgetSlack,
                 textAlign, true,
                 safeConfig.paragraph?.firstLineIndent || 1.5,
                 isContChunk, quoteOptions
@@ -2236,7 +2307,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
 
       // Try fitting the whole element (Canvas measurement)
       const candidateFitHeight = measure(currentHtml + firstElHtml);
-      if (candidateFitHeight <= contentHeight - DOM_SLACK) {
+      if (candidateFitHeight <= effectiveBudgetSlack) {
 
         // Remove first element from source page
         const sourceHtml = serializeBlocks(nextPageEls.slice(1)).trim();
@@ -2353,7 +2424,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
         }
         const [listHead, listTail] = listSplit;
         const listHeadH = measure(currentHtml + listHead);
-        if (listHeadH > contentHeight - DOM_SLACK) {
+        if (listHeadH > effectiveBudgetSlack) {
           log.record('fill', 'reject', i + 1, { tag, text: firstEl.textContent.substring(0, 60), reason: 'list-split-overfit', remainingLines });
           break;
         }
@@ -2402,12 +2473,12 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
       // a 1-line smaller budget — up to 3 retries.
       let chunkFitHeight = measure(currentHtml + chunk);
       let overflowRetries = 0;
-      while (chunkFitHeight > contentHeight - DOM_SLACK && overflowRetries < 3) {
+      while (chunkFitHeight > effectiveBudgetSlack && overflowRetries < 3) {
         overflowRetries++;
         const retrySpace = remainingSpace - overflowRetries * lineHeightPx;
         if (retrySpace < lineHeightPx) break;
         const retryResult = splitInTwo(
-          firstElHtml, measureDiv, canvasCtx, retrySpace, contentHeight,
+          firstElHtml, measureDiv, canvasCtx, retrySpace, effectiveBudget,
           textAlign, true,
           safeConfig.paragraph?.firstLineIndent || 1.5,
           isContChunk, quoteOptions
@@ -2416,7 +2487,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
         [chunk, rest] = retryResult;
         chunkFitHeight = measure(currentHtml + chunk);
       }
-      if (chunkFitHeight > contentHeight - DOM_SLACK) {
+      if (chunkFitHeight > effectiveBudgetSlack) {
         log.record('fill', 'reject', i + 1, { tag, text: firstEl.textContent.substring(0, 60), reason: 'split-overfit', chunkFitHeight: +chunkFitHeight.toFixed(0), contentH: +contentHeight.toFixed(0) });
         break;
       }
@@ -2437,7 +2508,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
           const restRLines = Math.floor(measure(restR) / lineHeightPx);
           const chunkRLines = Math.floor(measure(chunkR) / lineHeightPx);
           if (restRLines >= minOrphanLines && chunkRLines >= minOrphanLines
-              && measure(currentHtml + chunkR) <= contentHeight - DOM_SLACK) {
+              && measure(currentHtml + chunkR) <= effectiveBudgetSlack) {
             chunk = chunkR; rest = restR;
             chunkLines = chunkRLines; restLines = restRLines;
             isRetrySplit = true;
@@ -2465,7 +2536,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
           const restSLines = Math.floor(measure(restS) / lineHeightPx);
           const chunkSLines = Math.floor(measure(chunkS) / lineHeightPx);
           if (restSLines >= 3 && chunkSLines >= minOrphanLines
-              && measure(currentHtml + chunkS) <= contentHeight - DOM_SLACK) {
+              && measure(currentHtml + chunkS) <= effectiveBudgetSlack) {
             chunk = chunkS; rest = restS;
             chunkLines = chunkSLines; restLines = restSLines;
             log.record('fill', 'split', i + 1, { tag, text: firstEl.textContent.substring(0, 60), reason: 'shallow-retry', chunkLines: chunkSLines, restLines: restSLines });
@@ -2891,47 +2962,54 @@ const mergeSplitFragments = (pages, log = null) => {
  */
 const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
   const { contentHeight, lineHeightPx } = layoutCtx;
+  const skipHeaderOnChStart = layoutCtx.headerSpaceEstimate > 0;
+  const chStartExtra = skipHeaderOnChStart ? (layoutCtx.headerSpaceEstimate || 0) : 0;
   const measure = (html) => measureHtmlHeight(html, canvasCtx);
 
   for (const page of pages) {
     if (!page || page.isBlank || page.isTitleOnlyPage || page.isChapterLastPage || !page.html) continue;
 
+    // Chapter start pages that skip the header have extra vertical budget.
+    const isChStart = !!page.isFirstChapterPage;
+    const pageBudget = contentHeight + (isChStart ? chStartExtra : 0);
+
     const actualHeight = measure(page.html);
-    const freeSpace = contentHeight - actualHeight;
+    const freeSpace = pageBudget - actualHeight;
     // Need at least half a line of free space to bother distributing.
     if (freeSpace < lineHeightPx * 0.5) continue;
     // Below 60% fill the gap is structural — leave it at the bottom.
-    if (actualHeight / contentHeight < 0.60) continue;
+    if (actualHeight / pageBudget < 0.60) continue;
 
     const children = getPageBlocks(page);
     if (children.length < 2) continue;
     const last = children[children.length - 1];
     if (/^H[1-6]$/i.test(last.tag)) continue;
 
-    // All children participate in distribution — including the chapter title block.
-    // This closes the gap between chapter title and first paragraph that was
-    // previously left untouched (old code excluded title from distributable set).
-    // Distribution is UNIFORM across all gaps to avoid uneven paragraph spacing.
-    const numGaps = children.length - 1;
+    // All children participate in distribution, including the chapter title.
+    // Use a tight per-gap cap so chapter-start pages with few elements
+    // don't get a giant gap between the title and the first paragraph.
+    const distribChildren = children;
+    const numGaps = distribChildren.length - 1;
     if (numGaps < 1) continue;
 
-    // Cap per-gap growth so pages with few elements don't get huge rivers.
-    // Keep spacing subtle: max 0.35 lineH per gap (≈3.5px at lineH=10).
-    // This fills vertical whitespace without creating visible paragraph separation.
-    const perGapCap = lineHeightPx * 0.35;
+    // Cap per-gap growth. Chapter start pages use a tighter cap (0.25 lines)
+    // so the gap between title and first paragraph stays small even when
+    // there is significant free space on the page.
+    const perGapCap = lineHeightPx * (isChStart ? 0.25 : 0.35);
     const maxPerGap = Math.min(freeSpace / numGaps, perGapCap);
 
-    // Capture original margins for ALL children.
-    const origMargins = children.map(el => {
+    // Capture original margins for distributable children.
+    const origMargins = distribChildren.map(el => {
       const m = (el.style || '').match(/margin-bottom:\s*([\d.]+)px/);
       return m ? parseFloat(m[1]) : 0;
     });
 
-    // Apply uniform gap delta to every element except the last.
+    // Apply uniform gap delta to every distributable element except the last.
     const applyGap = (g) => {
-      return children.map((el, idx) => {
-        if (idx >= numGaps) return el.outerHtml;  // last element, no gap after it
-        const newMargin = (origMargins[idx] + g).toFixed(2);
+      return children.map((el) => {
+        const dIdx = distribChildren.indexOf(el);
+        if (dIdx < 0 || dIdx >= numGaps) return el.outerHtml;  // non-distributable or last
+        const newMargin = (origMargins[dIdx] + g).toFixed(2);
         const newStyle = (el.style || '')
           .replace(/margin-bottom:\s*[\d.]+px;?/g, '')
           .trimEnd()
@@ -2949,7 +3027,7 @@ const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
     let bestGap = 0;
     for (let iter = 0; iter < 10; iter++) {
       const mid = (lo + hi) / 2;
-      if (measure(applyGap(mid)) <= contentHeight - DOM_SLACK) {
+      if (measure(applyGap(mid)) <= pageBudget - DOM_SLACK) {
         bestGap = mid;
         lo = mid;
       } else {

@@ -159,10 +159,19 @@ export function getPageLayout({
   const { pageWidthPx, pageHeightPx, marginTop, marginBottom, marginLeft, marginRight } = dims;
 
   // contentHeight: pagination engine value is authoritative (already floor-snapped to line grid).
-  // With explicit <br> injection at render time, DOM line breaks match Canvas exactly.
-  // Minimal DOM_SLACK (0.5 line) handles sub-pixel rounding only.
+  // engineContentHeight has headerSpaceEstimate subtracted globally. On pages that skip
+  // the header (chapter starts), we reclaim that space so the content box is taller.
   const engineContentHeight = layoutDims?.contentHeight ?? dims.contentHeight;
-  const effectiveContentHeight = engineContentHeight;
+  const headerSpaceEstimate = layoutDims?.headerSpaceEstimate ?? 0;
+  // Detect chapter start — same logic as skipHeader below, but need it now for height calc.
+  const pageHasChTitle = !!(safePageData.html && safePageData.html.includes('data-chapter-start="true"'));
+  const isChStartForHeight = safePageData.isFirstChapterPage === true || pageHasChTitle;
+  // Mirror the engine's logic: skipFirstChapterPage defaults to true (opt-out, not opt-in).
+  // paginateChapters.js uses `!== false` — we must match or the content box will be too small.
+  const headerSkippedOnThisPage = (safeConfig.header?.skipFirstChapterPage !== false && isChStartForHeight) || false;
+  const effectiveContentHeight = headerSkippedOnThisPage
+    ? engineContentHeight + headerSpaceEstimate
+    : engineContentHeight;
 
   // Typography
   const fontSize     = (safeConfig.fontSize || bookConfig.fontSize) * (PX_PER_INCH / 72) * previewScale;
@@ -196,7 +205,7 @@ export function getPageLayout({
   // Fall back to checking if the page HTML contains a chapter title element.
   const pageHasChapterTitle = !!(safePageData.html && safePageData.html.includes('data-chapter-start="true"'));
   const isChapterStartPage  = safePageData.isFirstChapterPage === true || pageHasChapterTitle;
-  const skipHeader          = (safeConfig.header?.skipFirstChapterPage && isChapterStartPage) || false;
+  const skipHeader          = (safeConfig.header?.skipFirstChapterPage !== false && isChapterStartPage) || false;
 
   // Header physical geometry (flow element inside page padding, above content)
   const headerFontSizePx     = baseFontSize * ((safeConfig.header?.fontSize ?? 70) / 100);

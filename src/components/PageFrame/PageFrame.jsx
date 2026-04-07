@@ -76,7 +76,7 @@ export default function PageFrame({
   const showHeader = config?.showHeaders !== false && (config?.header?.enabled !== false) && !!headerHtml
     && !!page
     && !isFrontMatterPage
-    && !(config?.header?.skipFirstChapterPage && isChapterStartPage);
+    && !(config?.header?.skipFirstChapterPage !== false && isChapterStartPage);
 
   // ── Page number position ────────────────────────────────────────────────────
   // Fixed 15mm from physical page bottom — same formula as getPageLayout()

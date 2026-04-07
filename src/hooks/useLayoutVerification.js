@@ -189,7 +189,7 @@ export function useLayoutVerification(pages, layoutDims) {
         const maxDelta = Math.max(...deltas);
         const minDelta = Math.min(...deltas);
         const avgDelta = deltas.reduce((s, d) => s + d, 0) / deltas.length;
-        const domSlackBudget = Math.round(lineHeightPx * 0.5); // DOM_SLACK used in engine
+        const domSlackBudget = Math.round(lineHeightPx * 1.0); // DOM_SLACK used in engine
 
         const worstByDelta = results.reduce((w, r) => Math.abs(r.delta) > Math.abs(w.delta) ? r : w, results[0]);
         const worstByOverflow = results.reduce((w, r) => r.overflow > w.overflow ? r : w, results[0]);
