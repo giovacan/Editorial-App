@@ -265,6 +265,8 @@ export function useLayoutVerification(pages, layoutDims) {
           maxTextBottomDev: +maxTextBottomDev.toFixed(1),
           maxTextBottomDevLines: +maxTextBottomDevLines.toFixed(2),
           normalPagesAnalyzed: normalPages.length,
+          fillHistogram: { ...buckets },
+          worstFillPages: worstFillPages.map(r => ({ pageNumber: r.pageNumber, textFill: r.textFill, textBottom: +r.textBottom.toFixed(0) })),
         };
 
         const newReport = { summary, pages: results };
@@ -373,6 +375,22 @@ export function formatLayoutAuditText(report) {
         : `OK (${(r.budget - r.domHeight).toFixed(1)}px margin)`;
       lines.push(`    p${r.pageNumber}: DOM=${r.domHeight}px Canvas=${r.canvasHeight}px budget=${r.budget}px → ${status}`);
     }
+  }
+
+  // Fill uniformity
+  if (summary.normalPagesAnalyzed != null) {
+    lines.push(`  Fill uniformity (${summary.normalPagesAnalyzed} normal pages ≥75%): avg=${summary.avgTextBottom}px dev=±${summary.maxTextBottomDev}px (${summary.maxTextBottomDevLines} lines)`);
+  }
+
+  // Histogram
+  if (summary.fillHistogram) {
+    const hist = summary.fillHistogram;
+    lines.push(`  Fill histogram: ` + Object.entries(hist).map(([k, v]) => `${k}:${v}`).join(' | '));
+  }
+
+  // Worst fill pages
+  if (summary.worstFillPages && summary.worstFillPages.length > 0) {
+    lines.push(`  Worst fill: ` + summary.worstFillPages.map(r => `p${r.pageNumber}=${r.textFill}%(${r.textBottom}px)`).join(', '));
   }
 
   return lines.join('\n');

@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import useEditorStore from '../../store/useEditorStore';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import { calculateContentDimensions, PX_PER_MM, PX_PER_INCH } from '../../utils/textMeasurer';
+import { fitPageScaleToViewport } from '../../utils/transformes';
 import { exportEpub, exportHtml } from '../Layout/utils/exporters';
 import PageFrame from '../PageFrame/PageFrame';
 import './ExportPreviewModal.css';
@@ -107,9 +108,18 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
     const isEven       = page ? (page.pageNumber % 2 === 0) : false;
     const gutterForPage = isTitleOnly ? 0 : effectiveGutter;
     const d = calculateContentDimensions(pageFormat, bookConfig, PREVIEW_SCALE, gutterForPage, isEven, totalPages, applyDynamicMargins);
-    const effectiveContentHeight = storeDims?.contentHeight ?? d.contentHeight;
+    const baseContentHeight = storeDims?.contentHeight ?? d.contentHeight;
+    // Chapter-start pages skip the header — expand content box to match engine budget.
+    const pageHasChTitle = !!(page?.html && page.html.includes('data-chapter-start="true"'));
+    const isChStart = page?.isFirstChapterPage === true || pageHasChTitle;
+    const skipFirstCh = safeConfig?.header?.skipFirstChapterPage !== false;
+    const headerEst = storeDims?.headerSpaceEstimate ?? 0;
+    const clearance = storeDims?.chapterStartBottomClearance ?? 0;
+    const effectiveContentHeight = (isChStart && skipFirstCh)
+      ? baseContentHeight + Math.max(0, headerEst - clearance)
+      : baseContentHeight;
     return { ...d, fontSize, fontFamily, lineHeightPx, textAlign, effectiveContentHeight, baseFontSize, previewScale: PREVIEW_SCALE };
-  }, [storeDims, pageFormat, effectiveGutter, totalPages, fontSize, lineHeightPx, fontFamily, textAlign, baseFontSize, applyDynamicMargins]);
+  }, [storeDims, safeConfig, pageFormat, effectiveGutter, totalPages, fontSize, lineHeightPx, fontFamily, textAlign, baseFontSize, applyDynamicMargins]);
 
   // Reference dims (odd/right page, no title) used for scale calculation
   const refDims      = calculateContentDimensions(pageFormat, bookConfig, PREVIEW_SCALE, effectiveGutter, false, totalPages, applyDynamicMargins);
@@ -120,16 +130,16 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
   const availW = viewport.w - H_PAD;
   const availH = viewport.h - TOOLBAR_H - NAVBAR_H - V_PAD * 2;
 
-  let cssScale;
-  if (format === 'pdf') {
-    cssScale = Math.min(
-      (availW - SPREAD_GAP) / (pageWidthPx * 2),
-      availH / pageHeightPx,
-    );
-  } else {
-    cssScale = Math.min(availW / pageWidthPx, availH / pageHeightPx);
-  }
-  cssScale = Math.max(0.2, Math.min(cssScale, 3));
+  const cssScale = fitPageScaleToViewport({
+    pageWidth: pageWidthPx,
+    pageHeight: pageHeightPx,
+    viewportWidth: availW,
+    viewportHeight: availH,
+    mode: format === 'pdf' ? 'spread' : 'single',
+    gap: SPREAD_GAP,
+    minScale: 0.2,
+    maxScale: 3,
+  });
 
   // ── Spread navigation ──────────────────────────────────────────────────────
   const totalSpreads = format === 'pdf'

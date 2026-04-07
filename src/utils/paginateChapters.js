@@ -56,6 +56,7 @@ import { createPaginationLogger, assignBlockId, deriveFragmentId, injectBlockIdA
 // Computed once per pagination run, after layoutCtx is available.
 // Initial value 0 — overwritten at the start of paginateChapters.
 let DOM_SLACK = 0;
+const DEFAULT_REPAIR_PRIORITY = ['widow', 'orphan', 'runt_line'];
 
 // Per-run cache for evaluatePageQualityCanvas — cleared at the start of each
 // paginateChapters() invocation. Eliminates ~80% of redundant scoring across
@@ -145,6 +146,76 @@ const mergePolicyTagSets = (...sets) => {
   return merged;
 };
 
+const normalizeRepairPriority = (priority) => {
+  const allowed = new Set(DEFAULT_REPAIR_PRIORITY);
+  const normalized = [];
+
+  for (const item of Array.isArray(priority) ? priority : []) {
+    const value = String(item || '').trim().toLowerCase();
+    if (allowed.has(value) && !normalized.includes(value)) {
+      normalized.push(value);
+    }
+  }
+
+  for (const fallback of DEFAULT_REPAIR_PRIORITY) {
+    if (!normalized.includes(fallback)) {
+      normalized.push(fallback);
+    }
+  }
+
+  return normalized;
+};
+
+const countDefectViolations = (qualities, defect) => (
+  (Array.isArray(qualities) ? qualities : []).reduce(
+    (sum, quality) => sum + ((quality?.violations || []).includes(defect) ? 1 : 0),
+    0
+  )
+);
+
+const computeRepairPriorityGain = (beforeQualities, afterQualities, repairPriority) => {
+  const order = normalizeRepairPriority(repairPriority);
+  return order.map((defect) => (
+    countDefectViolations(beforeQualities, defect) - countDefectViolations(afterQualities, defect)
+  ));
+};
+
+const compareRepairPriorityGain = (left, right, repairPriority) => {
+  const leftGain = Array.isArray(left?.priorityGain)
+    ? left.priorityGain
+    : computeRepairPriorityGain([], [], repairPriority);
+  const rightGain = Array.isArray(right?.priorityGain)
+    ? right.priorityGain
+    : computeRepairPriorityGain([], [], repairPriority);
+
+  const length = Math.max(leftGain.length, rightGain.length);
+  for (let i = 0; i < length; i++) {
+    const delta = (leftGain[i] || 0) - (rightGain[i] || 0);
+    if (delta !== 0) return delta;
+  }
+
+  const improvementDelta = (left?.improvement || 0) - (right?.improvement || 0);
+  if (improvementDelta !== 0) return improvementDelta;
+
+  return (right?.scoreAfter || 0) - (left?.scoreAfter || 0);
+};
+
+const clonePageSlice = (pages) => {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(Array.isArray(pages) ? pages : []);
+  }
+
+  return (Array.isArray(pages) ? pages : []).map((page) => ({
+    ...page,
+    blocks: Array.isArray(page?.blocks)
+      ? page.blocks.map((block) => ({
+        ...block,
+        dataset: block?.dataset ? { ...block.dataset } : undefined,
+      }))
+      : [],
+  }));
+};
+
 const resolveChapterLayoutPolicy = (chapter, layoutHints) => {
   const globalHints = layoutHints?.global || {};
   const chapterHints = (layoutHints?.chapters || []).find((hint) => (
@@ -154,6 +225,7 @@ const resolveChapterLayoutPolicy = (chapter, layoutHints) => {
 
   return {
     targetFillPct: chapterHints?.targetFillPct ?? globalHints?.targetFillPct ?? null,
+    repairPriority: normalizeRepairPriority(chapterHints?.repairPriority ?? globalHints?.repairPriority),
     avoidSplitTags: mergePolicyTagSets(globalHints?.avoidSplitTags, chapterHints?.avoidSplitTags),
     keepWithNextTags: mergePolicyTagSets(globalHints?.keepWithNextTags, chapterHints?.keepWithNextTags),
     notes: [
@@ -286,11 +358,11 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     layoutHints?.global?.targetFillPct,
     (layoutHints?.global?.avoidSplitTags || []).join(','),
     (layoutHints?.global?.keepWithNextTags || []).join(','),
-    'v19' // bump to force cache invalidation after algorithm changes
+    'v22' // bump to force cache invalidation after algorithm changes
   ].join('|'));
 
   const chapterHashes = [];
-  const chapterPageRanges = [];
+  const chapterPageSlices = [];
 
   for (let i = 0; i < chapters.length; i++) {
     const chapter = chapters[i];
@@ -300,9 +372,6 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     // Including configFingerprint ensures config changes invalidate cached pages.
     const chHash = simpleHash((chapter.html || '') + '|' + (chapter.title || '') + '|' + configFingerprint);
     chapterHashes.push(chHash);
-
-    // Note the page index where this chapter starts (including any parity-pad blank)
-    const chapterStartIdx = allPages.length;
 
     // Pad to odd page if chapter must start on right
     if (shouldStartOnRightPage(chapter, i, safeConfig) && i > 0) {
@@ -327,8 +396,8 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
       if (process.env.NODE_ENV === 'development') {
         log.record('greedy', 'diag', 0, { note: 'incremental-cache-hit', chapter: i, hash: chHash });
       }
-      allPages.push(...prevChapterPages[i]);
-      chapterPageRanges.push({ start: chapterStartIdx, end: allPages.length });
+      chapterPageSlices.push(clonePageSlice(prevChapterPages[i]));
+      allPages.push(...clonePageSlice(prevChapterPages[i]));
       continue;
     }
 
@@ -343,8 +412,8 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
       });
     }
     const chapterPages = greedyPaginate(elements, layoutCtx, canvasCtx, measureDiv, safeConfig, chapter, log, chapterLayoutPolicy);
+    chapterPageSlices.push(clonePageSlice(chapterPages));
     allPages.push(...chapterPages);
-    chapterPageRanges.push({ start: chapterStartIdx, end: allPages.length });
   }
 
   // Re-number all pages sequentially
@@ -633,14 +702,14 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
   // If the removed element would overflow the next page too, insert a new
   // blank-ish page to absorb it.
   {
-    const chStartExtra = layoutCtx.headerSpaceEstimate || 0;
+    const chStartExtra = Math.max(0, (layoutCtx.headerSpaceEstimate || 0) - (layoutCtx.chapterStartBottomClearance || 0));
     let clampCount = 0;
     let clampChecked = 0;
     let clampOverBudget = 0;
     for (let i = 0; i < allPages.length; i++) {
       const page = allPages[i];
       if (!page || page.isBlank || page.isTitleOnlyPage || !page.html) continue;
-      // Chapter-start pages have extra budget (header space reclaimed).
+      // Chapter-start pages have extra budget (header space reclaimed minus bottom clearance).
       const budget = contentHeight - DOM_SLACK + (page.isFirstChapterPage ? chStartExtra : 0);
       clampChecked++;
       let pageH = measureHtmlHeight(page.html, canvasCtx);
@@ -685,6 +754,8 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
             isFirstChapterPage: false,
             currentSubheader: page.currentSubheader || '',
             firstElementIndex: 0,
+            targetFillPct: page.targetFillPct ?? null,
+            repairPriority: page.repairPriority ?? DEFAULT_REPAIR_PRIORITY,
           };
           allPages.splice(i + 1, 0, restPage);
           clampCount++;
@@ -729,6 +800,8 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
           isFirstChapterPage: false,
           currentSubheader: page.currentSubheader || '',
           firstElementIndex: 0,
+          targetFillPct: page.targetFillPct ?? null,
+          repairPriority: page.repairPriority ?? DEFAULT_REPAIR_PRIORITY,
         };
         allPages.splice(i + 1, 0, newPage);
       }
@@ -764,10 +837,6 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
   // Global passes (fill-pass, smoothPageBalance) may move pages between chapters,
   // but the greedy-pass output per chapter is what matters for cache validity on the
   // next run — since global passes will always re-run on all pages.
-  const chapterPageSlices = chapterPageRanges.map(({ start, end }) =>
-    allPages.slice(start, end)
-  );
-
   // Log scoring cache stats (dev only)
   if (process.env.NODE_ENV === 'development') {
     const total = _evalCacheHits + _evalCacheMisses;
@@ -1869,6 +1938,7 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
       currentSubheader,
       firstElementIndex: currentFirstElementIndex,
       targetFillPct: chapterLayoutPolicy?.targetFillPct ?? null,
+      repairPriority: chapterLayoutPolicy?.repairPriority ?? DEFAULT_REPAIR_PRIORITY,
     });
     prevWasTitleOnly = opts.isTitleOnlyPage || false;
     pageHasTitle = false;
@@ -2169,7 +2239,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
   const { contentHeight, lineHeightPx, minOrphanLines, minWidowLines,
     baseFontSize, baseLineHeight, textAlign, splitLongParagraphs,
     headerSpaceEstimate } = layoutCtx;
-  const chStartExtraBudget = headerSpaceEstimate || 0;
+  const chStartExtraBudget = Math.max(0, (headerSpaceEstimate || 0) - (layoutCtx.chapterStartBottomClearance || 0));
 
   const quoteOptions = canvasCtx;
 
@@ -2183,7 +2253,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
     if (i < 0 || i >= pages.length - 1) continue;
     if (pages[i].isBlank || pages[i].isTitleOnlyPage || !pages[i].html) continue;
 
-    // Chapter-start pages skip the header → they have extra vertical budget.
+    // Chapter-start pages skip the header → they have extra vertical budget minus bottom clearance.
     const isChStart = !!pages[i].isFirstChapterPage;
     const effectiveBudget = contentHeight + (isChStart ? chStartExtraBudget : 0);
     const effectiveBudgetSlack = effectiveBudget - DOM_SLACK;
@@ -2197,7 +2267,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
     let sourceStartIdx = i + 1; // start searching from here for the next source
 
     for (let attempt = 0; attempt < 30; attempt++) {
-      const currentHtml = pages[i].html;
+      let currentHtml = pages[i].html;
       const currentHeight = measure(currentHtml);
       const currentFill = currentHeight / effectiveBudget;
       const remainingSpace = effectiveBudgetSlack - currentHeight;
@@ -3023,13 +3093,15 @@ const mergeSplitFragments = (pages, log = null) => {
 const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
   const { contentHeight, lineHeightPx } = layoutCtx;
   const skipHeaderOnChStart = layoutCtx.headerSpaceEstimate > 0;
-  const chStartExtra = skipHeaderOnChStart ? (layoutCtx.headerSpaceEstimate || 0) : 0;
+  const chStartExtra = skipHeaderOnChStart
+    ? Math.max(0, (layoutCtx.headerSpaceEstimate || 0) - (layoutCtx.chapterStartBottomClearance || 0))
+    : 0;
   const measure = (html) => measureHtmlHeight(html, canvasCtx);
 
   for (const page of pages) {
     if (!page || page.isBlank || page.isTitleOnlyPage || page.isChapterLastPage || !page.html) continue;
 
-    // Chapter start pages that skip the header have extra vertical budget.
+    // Chapter start pages that skip the header have extra vertical budget minus bottom clearance.
     const isChStart = !!page.isFirstChapterPage;
     const pageBudget = contentHeight + (isChStart ? chStartExtra : 0);
 
@@ -3608,6 +3680,7 @@ const repairPageDefects = (pages, layoutCtx, canvasCtx, log) => {
 
       const qPage = evaluatePageQualityCanvas(page.html, contentHeight, lineHeightPx, canvasCtx);
       const viols = qPage.violations;
+      const repairPriority = normalizeRepairPriority(page.repairPriority);
 
       const hasRunt   = viols.includes('runt_line');
       const hasWidow  = viols.includes('widow');
@@ -3625,12 +3698,18 @@ const repairPageDefects = (pages, layoutCtx, canvasCtx, log) => {
 
       const nextPage = nextIdx < pages.length ? pages[nextIdx] : null;
       const prevPage = prevIdx >= 0 ? pages[prevIdx] : null;
+      const qNextPage = nextPage?.html
+        ? evaluatePageQualityCanvas(nextPage.html, contentHeight, lineHeightPx, canvasCtx)
+        : null;
+      const qPrevPage = prevPage?.html
+        ? evaluatePageQualityCanvas(prevPage.html, contentHeight, lineHeightPx, canvasCtx)
+        : null;
       const sameChapterNext = nextPage && !nextPage.isTitleOnlyPage && !nextPage.isFirstChapterPage
         && nextPage.html && page.chapterTitle === nextPage.chapterTitle;
       const sameChapterPrev = prevPage && !prevPage.isTitleOnlyPage && prevPage.html
         && prevPage.chapterTitle === page.chapterTitle;
 
-      let bestMove = null; // { type, improvement, apply() }
+      let bestMove = null; // { type, improvement, priorityGain, scoreAfter, apply() }
 
       // === PUSH LAST ELEMENT FORWARD (fixes runt_line, widow) ===
       if ((hasRunt || hasWidow) && sameChapterNext && !page.isFirstChapterPage) {
@@ -3655,14 +3734,15 @@ const repairPageDefects = (pages, layoutCtx, canvasCtx, log) => {
                   const newNextHtml = lastEl.outerHtml + (nextPage.html || '');
                   if (canAcceptHtml(newNextHtml, contentHeight, canvasCtx)) {
                     const qNewNext = evaluatePageQualityCanvas(newNextHtml, contentHeight, lineHeightPx, canvasCtx);
-                    const nextScore = evaluatePageQualityCanvas(nextPage.html, contentHeight, lineHeightPx, canvasCtx).score;
+                    const nextScore = qNextPage?.score ?? 0;
                     const scoreBefore = qPage.score + nextScore;
                     const scoreAfter = qNewSrc.score + qNewNext.score;
                     const improvement = scoreBefore - scoreAfter;
-                    if (improvement >= -50 && (!bestMove || improvement > bestMove.improvement)) {
-                      bestMove = {
+                    const candidateMove = {
                         type: hasRunt ? 'runt-push' : 'widow-push',
                         improvement,
+                        priorityGain: computeRepairPriorityGain([qPage, qNextPage], [qNewSrc, qNewNext], repairPriority),
+                        scoreAfter,
                         apply: () => {
                           pages[i] = setPageHtml(page, newSrcHtml);
                           pages[nextIdx] = setPageHtml(nextPage, newNextHtml);
@@ -3674,6 +3754,8 @@ const repairPageDefects = (pages, layoutCtx, canvasCtx, log) => {
                           });
                         }
                       };
+                    if (improvement >= -50 && (!bestMove || compareRepairPriorityGain(candidateMove, bestMove, repairPriority) > 0)) {
+                      bestMove = candidateMove;
                     }
                   }
                 }
@@ -3697,15 +3779,16 @@ const repairPageDefects = (pages, layoutCtx, canvasCtx, log) => {
                 const qPulled = evaluatePageQualityCanvas(pulledHtml, contentHeight, lineHeightPx, canvasCtx);
                 if (!qPulled.violations.includes('heading_at_bottom')
                     && !(qPulled.violations.includes('runt_line') && qPulled.score >= qPage.score)) {
-                  const nextScore = evaluatePageQualityCanvas(nextPage.html, contentHeight, lineHeightPx, canvasCtx).score;
+                  const nextScore = qNextPage?.score ?? 0;
                   const qNewNext = evaluatePageQualityCanvas(newNextHtml, contentHeight, lineHeightPx, canvasCtx);
                   const scoreBefore = qPage.score + nextScore;
                   const scoreAfter = qPulled.score + qNewNext.score;
                   const improvement = scoreBefore - scoreAfter;
-                  if (improvement >= -50 && (!bestMove || improvement > bestMove.improvement)) {
-                    bestMove = {
+                  const candidateMove = {
                       type: 'runt-pull',
                       improvement,
+                      priorityGain: computeRepairPriorityGain([qPage, qNextPage], [qPulled, qNewNext], repairPriority),
+                      scoreAfter,
                       apply: () => {
                         pages[i] = setPageHtml(page, pulledHtml);
                         pages[nextIdx] = setPageHtml(nextPage, newNextHtml);
@@ -3717,6 +3800,8 @@ const repairPageDefects = (pages, layoutCtx, canvasCtx, log) => {
                         });
                       }
                     };
+                  if (improvement >= -50 && (!bestMove || compareRepairPriorityGain(candidateMove, bestMove, repairPriority) > 0)) {
+                    bestMove = candidateMove;
                   }
                 }
               }
@@ -3741,14 +3826,15 @@ const repairPageDefects = (pages, layoutCtx, canvasCtx, log) => {
                 const newPageHtml = serializeBlocks(pageEls.slice(1)).trim();
                 if (newPageHtml) {
                   const qNewPage = evaluatePageQualityCanvas(newPageHtml, contentHeight, lineHeightPx, canvasCtx);
-                  const prevScore = evaluatePageQualityCanvas(prevPage.html, contentHeight, lineHeightPx, canvasCtx).score;
+                  const prevScore = qPrevPage?.score ?? 0;
                   const scoreBefore = qPage.score + prevScore;
                   const scoreAfter = qNewPage.score + qNewPrev.score;
                   const improvement = scoreBefore - scoreAfter;
-                  if (improvement >= -50 && (!bestMove || improvement > bestMove.improvement)) {
-                    bestMove = {
+                  const candidateMove = {
                       type: 'orphan-pull',
                       improvement,
+                      priorityGain: computeRepairPriorityGain([qPrevPage, qPage], [qNewPrev, qNewPage], repairPriority),
+                      scoreAfter,
                       apply: () => {
                         pages[prevIdx] = setPageHtml(prevPage, newPrevHtml);
                         pages[i] = setPageHtml(page, newPageHtml);
@@ -3760,6 +3846,8 @@ const repairPageDefects = (pages, layoutCtx, canvasCtx, log) => {
                         });
                       }
                     };
+                  if (improvement >= -50 && (!bestMove || compareRepairPriorityGain(candidateMove, bestMove, repairPriority) > 0)) {
+                    bestMove = candidateMove;
                   }
                 }
               }

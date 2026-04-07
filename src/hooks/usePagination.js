@@ -12,6 +12,7 @@ import {
   shouldStartOnRightPage
 } from '../utils/paginationEngine';
 import { paginateChapters } from '../utils/paginateChapters';
+import { getLayoutHints } from '../services/layoutPlanner';
 import { calculateContentDimensions, calculateDynamicMargins } from '../utils/textMeasurer';
 import { FOLIO_FROM_BOTTOM_MM } from '../utils/pageLayout';
 import { calculateLineHeightPx, ensureFontsReady } from '../utils/textLayoutEngine';
@@ -120,6 +121,7 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
   // Subscribe to TOC config changes to regenerate frontmatter without re-paginating
   const tocConfig      = useEditorStore(s => s.tocConfig);
   const frontMatterConfig = useEditorStore(s => s.frontMatterConfig);
+  const layoutPlannerRevision = useEditorStore(s => s.layoutPlanner?.revision ?? 0);
 
   const safeBookData = bookData || { bookType: 'novela', chapters: [], title: '' };
   const safeConfig = config || DEFAULT_CONFIG;
@@ -282,7 +284,8 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
       // folio position constant — changing this must re-paginate
       FOLIO_FROM_BOTTOM_MM,
       // engine version — bump to force re-pagination after algorithm changes
-      'ev6',
+      'ev7',
+      layoutPlannerRevision,
     ].join('|');
     const contentHash = JSON.stringify(safeBookData.chapters.map(ch =>
       ch.id + murmurhash(ch.html || '').result()
@@ -427,6 +430,11 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
 
       const fontFamily = targetFontFamily;
 
+      // Extra bottom clearance on chapter-start pages so the last line of text
+      // sits at least 1 line above the page number, giving visual breathing room.
+      // Clamped to 0 if headerSpaceEstimate is small (no header space to reclaim).
+      const chapterStartBottomClearance = Math.min(lineHeightPx, headerSpaceEstimate);
+
       const layoutCtx = {
         contentHeight,
         contentWidth,
@@ -440,7 +448,9 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
         minWidowLines,
         splitLongParagraphs,
         headerSpaceEstimate,
+        chapterStartBottomClearance,
       };
+      const layoutHints = await getLayoutHints(safeBookData.chapters, safeConfig, layoutCtx);
 
       if (cancelled) return;
 
@@ -480,6 +490,7 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
             chapters: safeBookData.chapters,
             layoutCtx,
             safeConfig,
+            layoutHints,
             ...(prevHashes && prevSlices
               ? { prevChapterHashes: prevHashes, prevChapterPageSlices: prevSlices }
               : {})
@@ -551,6 +562,7 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
           fontFamily,
           textAlign,
           headerSpaceEstimate,
+          chapterStartBottomClearance,
         };
         console.log(`[PAGINATION] Guardando layoutDims: contentHeight=${contentHeight}px renderContentHeight=${renderContentHeight}px engineGutter=${engineGutter}`);
         setLayoutDims(dimsSnapshot);
@@ -761,7 +773,8 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
     safeConfig.marginLeft,
     safeConfig.marginRight,
     safeConfig.marginStrategy,
-    globalOptMode
+    globalOptMode,
+    layoutPlannerRevision
   ]);
   
   // Re-number FM pages when frontMatterNumbering or folioCase changes without re-paginating

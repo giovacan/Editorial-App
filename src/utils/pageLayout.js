@@ -163,14 +163,17 @@ export function getPageLayout({
   // the header (chapter starts), we reclaim that space so the content box is taller.
   const engineContentHeight = layoutDims?.contentHeight ?? dims.contentHeight;
   const headerSpaceEstimate = layoutDims?.headerSpaceEstimate ?? 0;
+  const chapterStartBottomClearance = layoutDims?.chapterStartBottomClearance ?? 0;
   // Detect chapter start — same logic as skipHeader below, but need it now for height calc.
   const pageHasChTitle = !!(safePageData.html && safePageData.html.includes('data-chapter-start="true"'));
   const isChStartForHeight = safePageData.isFirstChapterPage === true || pageHasChTitle;
   // Mirror the engine's logic: skipFirstChapterPage defaults to true (opt-out, not opt-in).
   // paginateChapters.js uses `!== false` — we must match or the content box will be too small.
   const headerSkippedOnThisPage = (safeConfig.header?.skipFirstChapterPage !== false && isChStartForHeight) || false;
+  // Chapter-start pages reclaim header space but reserve bottom clearance so the last
+  // text line sits at least 1 line above the page number. Mirror engine's chStartExtra calc.
   const effectiveContentHeight = headerSkippedOnThisPage
-    ? engineContentHeight + headerSpaceEstimate
+    ? engineContentHeight + Math.max(0, headerSpaceEstimate - chapterStartBottomClearance)
     : engineContentHeight;
 
   // Typography
