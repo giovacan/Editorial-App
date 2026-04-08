@@ -218,6 +218,30 @@ export const functions = {
             },
           };
 
+        case 'planLayout':
+          return {
+            data: {
+              layoutHints: {
+                version: 'mock-remote-layout-planner',
+                global: {
+                  targetFillPct: data?.config?.targetFillPct ?? 0.92,
+                  repairPriority: ['widow', 'orphan', 'runt_line'],
+                  avoidSplitTags: [],
+                  keepWithNextTags: ['H1', 'H2', 'H3'],
+                  notes: ['mock_remote_planner'],
+                },
+                chapters: (data?.chapters || []).map((chapter) => ({
+                  chapterId: chapter?.id || null,
+                  chapterTitle: chapter?.title || '',
+                  targetFillPct: data?.config?.targetFillPct ?? 0.92,
+                  avoidSplitTags: [],
+                  keepWithNextTags: ['H1', 'H2', 'H3'],
+                  notes: ['mock_remote_planner'],
+                })),
+              },
+            },
+          };
+
         default:
           return { data: {} };
       }

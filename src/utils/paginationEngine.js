@@ -133,11 +133,14 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
         ? getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSizePt, effectiveBaseLineHeight, effectiveTextAlign)
         : `margin:0;padding:0;text-align:${effectiveTextAlign};text-indent:${indent};text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;`);
 
-    // When paragraph continues to next page: the last visible line is a mid-paragraph
-    // line. Keep text-align-last:left so Canvas and DOM agree on line count.
-    // (text-align-last:justify stretches the last line in the DOM but Canvas doesn't
-    // simulate it, causing Canvas to over-count lines → fill pass thinks page is full)
-    // No replacement needed — finalStyle already has text-align-last:left from above.
+    // When this chunk continues on the next page (split-head), apply text-align-last:justify
+    // so the last visible line is fully stretched. Canvas height is unaffected — it only
+    // counts line count based on width, not how the last line is rendered.
+    if (newRemainingHtml) {
+      finalStyle = finalStyle
+        .replace(/text-align-last:[^;]+;?/gi, '')
+        .replace(/;?\s*$/, ';') + 'text-align-last:justify;';
+    }
 
     if (isBlockquote) {
       chunkHtml = `<blockquote class="quote ${quoteTemplate}" style="${finalStyle}"${newRemainingHtml ? ' data-split-head="true"' : ''}>${chunkHtml}</blockquote>`;
@@ -167,19 +170,26 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
 
       let continuationStyle;
       if (isMidSentence) {
-        // ============ FIX 2: Force text-indent: 0 for mid-sentence continuations ============
+        // Mid-sentence continuation: no indent, last line is NOT stretched (it's a true
+        // paragraph ending — left-align the last line like any normal paragraph).
         if (originalStyles) {
-          continuationStyle = originalStyles.replace(/text-indent:[^;]+;?/gi, '').replace(/;?\s*$/, ';') + 'text-indent:0;';
+          continuationStyle = originalStyles
+            .replace(/text-indent:[^;]+;?/gi, '')
+            .replace(/text-align-last:[^;]+;?/gi, '')
+            .replace(/;?\s*$/, ';') + 'text-indent:0;text-align-last:left;';
         } else if (isBlockquote) {
           continuationStyle = getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSizePt, effectiveBaseLineHeight, effectiveTextAlign);
         } else {
           continuationStyle = `margin:0;padding:0;text-align:${effectiveTextAlign};text-indent:0;text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;`;
         }
       } else {
-        // Chunk ends at sentence boundary — rest is a new paragraph, give it indent
+        // Sentence-boundary split: rest is a new paragraph — indent it, last line left-aligned.
         const indentVal = hasIndent ? indentValue + 'em' : '0';
         if (originalStyles) {
-          continuationStyle = originalStyles.replace(/text-indent:[^;]+;?/gi, '').replace(/;?\s*$/, ';') + `text-indent:${indentVal};`;
+          continuationStyle = originalStyles
+            .replace(/text-indent:[^;]+;?/gi, '')
+            .replace(/text-align-last:[^;]+;?/gi, '')
+            .replace(/;?\s*$/, ';') + `text-indent:${indentVal};text-align-last:left;`;
         } else if (isBlockquote) {
           continuationStyle = getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSizePt, effectiveBaseLineHeight, effectiveTextAlign);
         } else {

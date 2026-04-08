@@ -11,6 +11,53 @@
   min-height: 0;
 }
 
+.planner-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  margin: -2px 0 10px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1;
+  border: 1px solid transparent;
+  background: #f8fafc;
+}
+
+.planner-status-text {
+  font-weight: 600;
+}
+
+.planner-status-detail {
+  color: #475569;
+}
+
+.planner-status-loading {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.planner-status-ready {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #047857;
+}
+
+.planner-status-local,
+.planner-status-fallback {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+.planner-status-remote {
+  background: #fff7ed;
+  border-color: #fdba74;
+  color: #c2410c;
+}
+
 .preview-empty {
   display: flex;
   align-items: center;

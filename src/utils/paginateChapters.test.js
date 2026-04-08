@@ -492,4 +492,85 @@ describe('paginateChapters', () => {
       expect(result.length).toBeGreaterThan(0);
     });
   });
+
+  describe('Layout policy propagation', () => {
+    it('should carry repairPriority from chapter layout hints onto generated pages', () => {
+      const chapters = [
+        {
+          id: 'ch1',
+          type: 'chapter',
+          title: 'Priority Chapter',
+          html: '<p>Uno dos tres cuatro cinco seis siete ocho nueve diez.</p><p>Mas contenido para permitir una pagina valida.</p>',
+          wordCount: 18
+        }
+      ];
+
+      const { pages: result } = paginateChapters(
+        chapters,
+        layoutCtx,
+        measureDiv,
+        safeConfig,
+        {
+          layoutHints: {
+            global: {
+              minLastLineWords: 6,
+              repairPriority: ['widow', 'orphan', 'runt_line']
+            },
+            chapters: [
+              {
+                chapterId: 'ch1',
+                minLastLineWords: 6,
+                repairPriority: ['runt_line', 'widow', 'orphan']
+              }
+            ]
+          }
+        }
+      );
+
+      const contentPage = result.find((page) => !page.isBlank && !page.isTitleOnlyPage);
+      expect(contentPage).toBeDefined();
+      expect(contentPage.repairPriority).toEqual(['runt_line', 'widow', 'orphan']);
+      expect(contentPage.minLastLineWords).toBe(6);
+    });
+
+    it('should preserve chapter content when reusing incremental chapter slices', () => {
+      const cacheConfig = {
+        ...safeConfig,
+        chapterTitle: {
+          ...safeConfig.chapterTitle,
+          startOnRightPage: true
+        }
+      };
+      const chapters = [
+        {
+          id: 'ch1',
+          type: 'chapter',
+          title: 'Chapter 1',
+          html: '<p>Primera parte del manuscrito.</p><p>Mas contenido para varias decisiones.</p>',
+          wordCount: 12
+        },
+        {
+          id: 'ch2',
+          type: 'chapter',
+          title: 'Chapter 2',
+          html: '<p>Segunda parte del manuscrito.</p><p>Otro bloque para que el capitulo sobreviva al cache.</p>',
+          wordCount: 15
+        }
+      ];
+
+      const firstRun = paginateChapters(chapters, layoutCtx, measureDiv, cacheConfig);
+      const secondRun = paginateChapters(chapters, layoutCtx, measureDiv, cacheConfig, {
+        prevChapterHashes: firstRun.chapterHashes,
+        prevChapterPages: firstRun.chapterPageSlices,
+      });
+
+      const chapterTitles = secondRun.pages
+        .filter((page) => !page.isBlank && !page.isTitleOnlyPage)
+        .map((page) => page.chapterTitle);
+
+      expect(secondRun.pages.length).toBeGreaterThan(0);
+      expect(chapterTitles).toContain('Chapter 1');
+      expect(chapterTitles).toContain('Chapter 2');
+    });
+  });
 });

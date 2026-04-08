@@ -101,9 +101,10 @@ const FILL_PASS_RUNT_MIN_CURRENT_FILL = 0.70;
 const FILL_PASS_RUNT_MIN_RESULT_FILL = 0.88;
 const SHORT_LAST_LINE_POSTPASS_MIN_SOURCE_FILL = 0.80;
 // Minimum computeRuntLinePenalty score to trigger a hard guard (layout mutation rejection).
-// 900 = "2 words that are already narrow" — captures 1-word (2000) and narrow 2-word (1500),
-// while leaving mildly short 3-4 word lines to the soft scoring path.
-const RUNT_HARD_PENALTY_THRESHOLD = 900;
+// 700: captures 1-2 word lines (always ≥900) plus 3-word lines (≥400 base + width bonus),
+// plus 4-word lines that are visually narrow (<0.45 width). 5-6 word lines with normal
+// width pass through to soft scoring only — their 100+addon is not a hard reject.
+const RUNT_HARD_PENALTY_THRESHOLD = 400;
 
 /**
  * Main entry point — same interface as before.
@@ -200,6 +201,15 @@ const compareRepairPriorityGain = (left, right, repairPriority) => {
   return (right?.scoreAfter || 0) - (left?.scoreAfter || 0);
 };
 
+const resolveMinLastLineWords = (explicitValue, fallbackValue = 0) => {
+  const numeric = Number(explicitValue);
+  if (Number.isFinite(numeric)) {
+    return Math.max(0, Math.round(numeric));
+  }
+  const fallbackNumeric = Number(fallbackValue);
+  return Number.isFinite(fallbackNumeric) ? Math.max(0, Math.round(fallbackNumeric)) : 0;
+};
+
 const clonePageSlice = (pages) => {
   if (typeof structuredClone === 'function') {
     return structuredClone(Array.isArray(pages) ? pages : []);
@@ -225,6 +235,10 @@ const resolveChapterLayoutPolicy = (chapter, layoutHints) => {
 
   return {
     targetFillPct: chapterHints?.targetFillPct ?? globalHints?.targetFillPct ?? null,
+    minLastLineWords: resolveMinLastLineWords(
+      chapterHints?.minLastLineWords,
+      globalHints?.minLastLineWords
+    ),
     repairPriority: normalizeRepairPriority(chapterHints?.repairPriority ?? globalHints?.repairPriority),
     avoidSplitTags: mergePolicyTagSets(globalHints?.avoidSplitTags, chapterHints?.avoidSplitTags),
     keepWithNextTags: mergePolicyTagSets(globalHints?.keepWithNextTags, chapterHints?.keepWithNextTags),
@@ -277,6 +291,10 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     widthSlack: justifySlack,
     lineHeightPx: layoutCtx.lineHeightPx,
     targetFillPct: layoutHints?.global?.targetFillPct ?? safeConfig?.pagination?.targetFillPct ?? 0.88,
+    minLastLineWords: resolveMinLastLineWords(
+      layoutHints?.global?.minLastLineWords,
+      safeConfig?.pagination?.minLastLineWords ?? 0
+    ),
     ctx2d: getEngineCtx2d(),
     textAlign: layoutCtx.textAlign || 'left',
     quoteConfig: safeConfig?.quote || {
@@ -347,6 +365,9 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     layoutCtx.textAlign, layoutCtx.fontFamily,
     layoutCtx.minOrphanLines, layoutCtx.minWidowLines,
     layoutCtx.splitLongParagraphs,
+    layoutCtx.headerSpaceEstimate || 0,
+    layoutCtx.chapterStartBottomClearance || 0,
+    layoutCtx.chapterStartExtraLines || 0,
     safeConfig?.paragraph?.firstLineIndent,
     safeConfig?.chapterTitle?.startOnRightPage,
     safeConfig?.chapterTitle?.sizeMultiplier,
@@ -358,7 +379,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     layoutHints?.global?.targetFillPct,
     (layoutHints?.global?.avoidSplitTags || []).join(','),
     (layoutHints?.global?.keepWithNextTags || []).join(','),
-    'v22' // bump to force cache invalidation after algorithm changes
+    'v45' // bump to force cache invalidation after algorithm changes
   ].join('|'));
 
   const chapterHashes = [];
@@ -588,9 +609,16 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
       const originalHtml = page.html;
       const wsHtml = applyKpWordSpacingWorkerSafe(originalHtml, kpCtx);
       if (wsHtml === originalHtml) continue;
-      // Verify the modified HTML still fits within the content budget
+      // Verify the modified HTML still fits within the content budget.
+      // Chapter-start pages have a larger budget (header space reclaimed minus bottom clearance).
+      const isChStartKP = !!page.isFirstChapterPage;
+      const chStartExtraKP = isChStartKP
+        ? Math.max(0, (layoutCtx.headerSpaceEstimate || 0) - (layoutCtx.chapterStartBottomClearance || 0))
+          + (layoutCtx.chapterStartExtraLines || 0) * lineHeightPx
+        : 0;
+      const kpBudget = contentHeight - DOM_SLACK + chStartExtraKP;
       const wsHeight = measureHtmlHeight(wsHtml, canvasCtx);
-      if (wsHeight <= contentHeight - DOM_SLACK) {
+      if (wsHeight <= kpBudget) {
         allPages[i] = setPageHtml(page, wsHtml);
         kpApplied++;
       } else {
@@ -599,8 +627,8 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
         if (process.env.NODE_ENV === 'development') {
           log.record('kp-ws', 'revert', page.pageNumber, {
             wsHeight: +wsHeight.toFixed(1),
-            budget: +(contentHeight - DOM_SLACK).toFixed(1),
-            overflow: +(wsHeight - contentHeight + DOM_SLACK).toFixed(1)
+            budget: +kpBudget.toFixed(1),
+            overflow: +(wsHeight - kpBudget).toFixed(1)
           });
         }
       }
@@ -702,7 +730,8 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
   // If the removed element would overflow the next page too, insert a new
   // blank-ish page to absorb it.
   {
-    const chStartExtra = Math.max(0, (layoutCtx.headerSpaceEstimate || 0) - (layoutCtx.chapterStartBottomClearance || 0));
+    const chStartExtra = Math.max(0, (layoutCtx.headerSpaceEstimate || 0) - (layoutCtx.chapterStartBottomClearance || 0))
+      + (layoutCtx.chapterStartExtraLines || 0) * lineHeightPx;
     let clampCount = 0;
     let clampChecked = 0;
     let clampOverBudget = 0;
@@ -755,6 +784,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
             currentSubheader: page.currentSubheader || '',
             firstElementIndex: 0,
             targetFillPct: page.targetFillPct ?? null,
+            minLastLineWords: page.minLastLineWords ?? canvasCtx.minLastLineWords ?? 0,
             repairPriority: page.repairPriority ?? DEFAULT_REPAIR_PRIORITY,
           };
           allPages.splice(i + 1, 0, restPage);
@@ -801,6 +831,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
           currentSubheader: page.currentSubheader || '',
           firstElementIndex: 0,
           targetFillPct: page.targetFillPct ?? null,
+          minLastLineWords: page.minLastLineWords ?? canvasCtx.minLastLineWords ?? 0,
           repairPriority: page.repairPriority ?? DEFAULT_REPAIR_PRIORITY,
         };
         allPages.splice(i + 1, 0, newPage);
@@ -844,12 +875,18 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     console.log(`[EVAL-CACHE] ${_evalCacheHits} hits / ${_evalCacheMisses} misses (${hitRate}% hit rate, ${_evalCache.size} entries)`);
   }
 
+  // Compute chStartExtra for the caller (audit needs the same value the engine used).
+  const resultChStartExtra = Math.max(0, (layoutCtx.headerSpaceEstimate || 0) - (layoutCtx.chapterStartBottomClearance || 0))
+    + (layoutCtx.chapterStartExtraLines || 0) * lineHeightPx;
+
   return {
     pages: allPages,
     log: log.getLog(),
     summaryText: log.formatSummaryText(),
     chapterHashes,
-    chapterPageSlices
+    chapterPageSlices,
+    chStartExtra: resultChStartExtra,
+    headerSpaceEstimate: layoutCtx.headerSpaceEstimate || 0,
   };
 };
 
@@ -994,11 +1031,15 @@ const getLastLineMetrics = (plainText, canvasCtx) => {
     }
   }
 
+  const minLastLineWords = resolveMinLastLineWords(canvasCtx?.minLastLineWords, 0);
   let shortLineScore = 0;
   if (lastLineWords === 1)      shortLineScore += 1400;
   else if (lastLineWords === 2) shortLineScore += 900;
   else if (lastLineWords === 3) shortLineScore += 400;
   else if (lastLineWords === 4) shortLineScore += 100;
+  if (minLastLineWords > 0 && lastLineWords > 0 && lastLineWords < minLastLineWords) {
+    shortLineScore += (minLastLineWords - lastLineWords) * 180;
+  }
   if (lastLineWords > 0 && widthRatio < 0.55) shortLineScore += 600;
 
   return {
@@ -1030,14 +1071,27 @@ const getLastLineMetrics = (plainText, canvasCtx) => {
  * @returns {number} raw penalty (0 if no runt)
  * @private
  */
-const computeRuntLinePenalty = (lastLineWords, widthRatio) => {
+const computeRuntLinePenalty = (lastLineWords, widthRatio, minLastLineWords = 0) => {
   if (lastLineWords <= 0) return 0;
   let penalty = 0;
+  // Base penalty by word count — tuned for Spanish (many short words).
+  // Extended to 6 words: a line of 5-6 short Spanish words ("y en la fe") can be
+  // visually narrower than 3 long English words.
   if      (lastLineWords === 1) penalty += 1400;
   else if (lastLineWords === 2) penalty +=  900;
   else if (lastLineWords === 3) penalty +=  400;
-  else if (lastLineWords === 4) penalty +=  100;
-  if (lastLineWords > 0 && widthRatio < 0.55) penalty += 600;
+  else if (lastLineWords === 4) penalty +=  250;
+  else if (lastLineWords === 5) penalty +=  100;
+  // Width-ratio penalty: a visually narrow line is a runt regardless of word count.
+  // Thresholds: <0.35 = very narrow (1-2 words), <0.45 = narrow, <0.55 = short.
+  if      (widthRatio < 0.35) penalty += 800;
+  else if (widthRatio < 0.45) penalty += 500;
+  else if (widthRatio < 0.55) penalty += 300;
+  // minLastLineWords enforcement: each word short of the target adds penalty.
+  const targetMinWords = resolveMinLastLineWords(minLastLineWords, 0);
+  if (targetMinWords > 0 && lastLineWords < targetMinWords) {
+    penalty += (targetMinWords - lastLineWords) * 800;
+  }
   return penalty;
 };
 
@@ -1049,9 +1103,9 @@ const computeRuntLinePenalty = (lastLineWords, widthRatio) => {
  *
  * @private
  */
-const isSevereShortLastLine = (metrics) => {
+const isSevereShortLastLine = (metrics, minLastLineWords = 0) => {
   if (!metrics || metrics.lastLineWords <= 0) return false;
-  return computeRuntLinePenalty(metrics.lastLineWords, metrics.widthRatio ?? 1) >= RUNT_HARD_PENALTY_THRESHOLD;
+  return computeRuntLinePenalty(metrics.lastLineWords, metrics.widthRatio ?? 1, minLastLineWords) >= RUNT_HARD_PENALTY_THRESHOLD;
 };
 
 /**
@@ -1192,7 +1246,7 @@ const scoreCandidate = (firstChunkHtml, restChunkHtml, fullParaHtml, remainingPx
       widthRatioForRunt = ctx2d.measureText(lastLineText).width / effectiveWidth;
     }
   }
-  score += computeRuntLinePenalty(lastLineWords, widthRatioForRunt);
+  score += computeRuntLinePenalty(lastLineWords, widthRatioForRunt, canvasCtx?.minLastLineWords ?? 0);
 
   // 2. Underfill penalty — 1 line short ≈ 4% underfill ≈ 12 pts on typical page.
   // Keep this LOW so it never outweighs a genuine last-line improvement.
@@ -1806,7 +1860,11 @@ const scoreBreakpoint = (candidate, canvasCtx, layoutCtx, elements, log, chapter
     // Runt penalty: last line of the chunk on this page
     const chunkPlainText = htmlToText(candidate.html).trim();
     const metrics = getLastLineMetrics(chunkPlainText, canvasCtx);
-    penalty += computeRuntLinePenalty(metrics.lastLineWords, metrics.widthRatio ?? 1);
+    penalty += computeRuntLinePenalty(
+      metrics.lastLineWords,
+      metrics.widthRatio ?? 1,
+      chapterLayoutPolicy?.minLastLineWords ?? canvasCtx?.minLastLineWords ?? 0
+    );
 
     // Hyphenation at split point — word broken across page boundary
     if (chunkPlainText.endsWith('-')) penalty += 300;
@@ -1817,13 +1875,20 @@ const scoreBreakpoint = (candidate, canvasCtx, layoutCtx, elements, log, chapter
 
   // 6. For block-end candidates: check if the last block is a short 1-line paragraph
   if (candidate.type === 'block-end' && !candidate.isHeadingOrBold) {
-    const el = elements[candidate.elementIndex];
-    if (el && (el.tag === 'P' || el.tag === 'BLOCKQUOTE')) {
-      const plainText = (el.textContent || '').trim();
-      const metrics = getLastLineMetrics(plainText, canvasCtx);
-      if (isSevereShortLastLine(metrics) && unusedLines <= 1) {
-        // Runt-flush: paragraph's short last line is trapped at page bottom
-        penalty += computeRuntLinePenalty(metrics.lastLineWords, metrics.widthRatio ?? 1);
+      const el = elements[candidate.elementIndex];
+      if (el && (el.tag === 'P' || el.tag === 'BLOCKQUOTE')) {
+        const plainText = (el.textContent || '').trim();
+        const metrics = getLastLineMetrics(plainText, canvasCtx);
+        if (isSevereShortLastLine(
+          metrics,
+          chapterLayoutPolicy?.minLastLineWords ?? canvasCtx?.minLastLineWords ?? 0
+        ) && unusedLines <= 1) {
+          // Runt-flush: paragraph's short last line is trapped at page bottom
+          penalty += computeRuntLinePenalty(
+            metrics.lastLineWords,
+            metrics.widthRatio ?? 1,
+            chapterLayoutPolicy?.minLastLineWords ?? canvasCtx?.minLastLineWords ?? 0
+        );
       }
     }
   }
@@ -1938,6 +2003,7 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
       currentSubheader,
       firstElementIndex: currentFirstElementIndex,
       targetFillPct: chapterLayoutPolicy?.targetFillPct ?? null,
+      minLastLineWords: chapterLayoutPolicy?.minLastLineWords ?? canvasCtx?.minLastLineWords ?? 0,
       repairPriority: chapterLayoutPolicy?.repairPriority ?? DEFAULT_REPAIR_PRIORITY,
     });
     prevWasTitleOnly = opts.isTitleOnlyPage || false;
@@ -2046,15 +2112,22 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
       const currentFill = currentPageHeight / contentHeight;
 
       // Runt-flush guard: paragraph's short last line trapped at full page bottom
+      // Guard: currentFirstElementIndex !== elIdx ensures the page has content
+      // before this element — prevents infinite loop when a runt-paragraph is
+      // the very first element on a fresh page (nothing to flush before it).
       if (!isLastChapterElement
           && (el.tag === 'P' || el.tag === 'BLOCKQUOTE')
           && !el.isBold
-          && freeLinesAfter <= 1
+          && freeLinesAfter <= 2
           && currentFill >= 0.70
-          && currentHtml) {
+          && currentHtml
+          && currentFirstElementIndex !== elIdx) {
         const plainText = (el.textContent || '').trim();
         const shortLine = getLastLineMetrics(plainText, canvasCtx);
-        if (isSevereShortLastLine(shortLine)) {
+        if (isSevereShortLastLine(
+          shortLine,
+          chapterLayoutPolicy?.minLastLineWords ?? canvasCtx?.minLastLineWords ?? 0
+        )) {
           log.record('greedy', 'bp-runt-flush', pages.length + 1, {
             tag: el.tag, text: plainText.substring(0, 60),
             lastLineWords: shortLine.lastLineWords,
@@ -2072,7 +2145,8 @@ const greedyPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, 
           && !el.isBold
           && freeLinesAfter <= 0
           && currentFill >= 0.70
-          && currentHtml) {
+          && currentHtml
+          && currentFirstElementIndex !== elIdx) {
         const elLineCount = Math.floor(measure(el.html) / lineHeightPx);
         if (elLineCount <= 1) {
           log.record('greedy', 'bp-widow-flush', pages.length + 1, {
@@ -2239,7 +2313,8 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
   const { contentHeight, lineHeightPx, minOrphanLines, minWidowLines,
     baseFontSize, baseLineHeight, textAlign, splitLongParagraphs,
     headerSpaceEstimate } = layoutCtx;
-  const chStartExtraBudget = Math.max(0, (headerSpaceEstimate || 0) - (layoutCtx.chapterStartBottomClearance || 0));
+  const chStartExtraBudget = Math.max(0, (headerSpaceEstimate || 0) - (layoutCtx.chapterStartBottomClearance || 0))
+    + (layoutCtx.chapterStartExtraLines || 0) * lineHeightPx;
 
   const quoteOptions = canvasCtx;
 
@@ -3095,6 +3170,7 @@ const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
   const skipHeaderOnChStart = layoutCtx.headerSpaceEstimate > 0;
   const chStartExtra = skipHeaderOnChStart
     ? Math.max(0, (layoutCtx.headerSpaceEstimate || 0) - (layoutCtx.chapterStartBottomClearance || 0))
+      + (layoutCtx.chapterStartExtraLines || 0) * lineHeightPx
     : 0;
   const measure = (html) => measureHtmlHeight(html, canvasCtx);
 
@@ -3124,10 +3200,10 @@ const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
     const numGaps = distribChildren.length - 1;
     if (numGaps < 1) continue;
 
-    // Cap per-gap growth. Chapter start pages use a tighter cap (0.25 lines)
-    // so the gap between title and first paragraph stays small even when
-    // there is significant free space on the page.
-    const perGapCap = lineHeightPx * (isChStart ? 0.25 : 0.35);
+    // Cap per-gap growth. Normal pages cap at 0.35 lines to avoid rivers of space.
+    // Chapter-start pages distribute the full free space evenly — the distributeSlack
+    // (DOM_SLACK * 2) already prevents overflow. No artificial cap needed.
+    const perGapCap = isChStart ? (freeSpace / numGaps) : lineHeightPx * 0.35;
     const maxPerGap = Math.min(freeSpace / numGaps, perGapCap);
 
     // Capture original margins for distributable children.
@@ -3160,10 +3236,8 @@ const distributeVerticalSpace = (pages, layoutCtx, canvasCtx) => {
     for (let iter = 0; iter < 10; iter++) {
       const mid = (lo + hi) / 2;
       // Use 2× DOM_SLACK for safety: after distribution, DOM may render margins
-      // taller than Canvas predicts (word-spacing causes Canvas to underestimate
-      // when WS is high, and the distributed margins add on top of that error).
-      // Chapter-start pages get an additional 1-line buffer on top.
-      const distributeSlack = DOM_SLACK * 2 + (isChStart ? lineHeightPx : 0);
+      // taller than Canvas predicts (word-spacing + mixed bold/italic runs).
+      const distributeSlack = DOM_SLACK * 2;
       if (measure(applyGap(mid)) <= pageBudget - distributeSlack) {
         bestGap = mid;
         lo = mid;
@@ -4064,7 +4138,8 @@ const _evaluatePageQualityCanvasCore = (pageHtml, contentHeight, lineHeightPx, c
       if (lastPMetrics.lineCount >= 2) {
         const runtPenalty = computeRuntLinePenalty(
           lastPMetrics.lastLineWords,
-          lastPMetrics.lastLineWidthRatio
+          lastPMetrics.lastLineWidthRatio,
+          canvasCtx?.minLastLineWords ?? 0
         );
         if (runtPenalty > 0) {
           score += runtPenalty * fs;

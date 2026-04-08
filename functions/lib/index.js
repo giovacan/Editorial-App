@@ -38,7 +38,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generatePdf = exports.stripeWebhook = exports.createCustomerPortalSession = exports.createCheckoutSession = void 0;
+exports.planLayout = exports.generatePdf = exports.stripeWebhook = exports.createCustomerPortalSession = exports.createCheckoutSession = void 0;
 const admin = __importStar(require("firebase-admin"));
 // Initialize Firebase Admin
 admin.initializeApp();
@@ -51,4 +51,6 @@ var stripeWebhook_1 = require("./stripeWebhook");
 Object.defineProperty(exports, "stripeWebhook", { enumerable: true, get: function () { return stripeWebhook_1.stripeWebhook; } });
 var generatePdf_1 = require("./generatePdf");
 Object.defineProperty(exports, "generatePdf", { enumerable: true, get: function () { return generatePdf_1.generatePdf; } });
+var planLayout_1 = require("./planLayout");
+Object.defineProperty(exports, "planLayout", { enumerable: true, get: function () { return planLayout_1.planLayout; } });
 //# sourceMappingURL=index.js.map

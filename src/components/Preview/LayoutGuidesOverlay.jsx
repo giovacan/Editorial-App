@@ -1,13 +1,12 @@
 /**
  * LayoutGuidesOverlay — visual layout diagnostic overlay for the preview.
  *
- * Shows:
- *   - Red solid line    = engine contentHeight limit (where pagination cuts)
- *   - Blue dashed rect  = actual content bounding box from DOM measurement
- *   - Colored outlines  = bounding box of each block element (p, h1-h6, blockquote)
- *
- * Uses direct DOM measurement to ensure guides always match actual rendered content,
- * regardless of any desync between calculated and actual dimensions.
+ * Lines shown (all absolute from top of page content area):
+ *   Red solid      = engine budget (contentHeight - DOM_SLACK) — paginator hard cut
+ *   Orange solid   = render box bottom (effectiveContentHeight) — overflow:hidden clips here
+ *   Green dashed   = folio zone top (effectiveContentHeight + marginBottom - folioFromEdge)
+ *   Blue dashed    = actual text bottom (last DOM child)
+ *   Colored rects  = bounding box per block element
  */
 
 import { useEffect, useRef, useState, memo, useCallback } from 'react';
@@ -15,7 +14,12 @@ import { useEffect, useRef, useState, memo, useCallback } from 'react';
 const LayoutGuidesOverlay = memo(function LayoutGuidesOverlay({
   contentRef,
   engineContentHeight,
+  effectiveContentHeight,
+  folioFromEdge,
+  marginBottom,
   contentWidth,
+  pageKey,       // changes with each page navigation → forces re-measure
+  marginLeft,    // gutter-aware left margin → used as fallback offset
 }) {
   const [guides, setGuides] = useState({
     contentTop: 0,
@@ -34,13 +38,14 @@ const LayoutGuidesOverlay = memo(function LayoutGuidesOverlay({
     const containerRect = container.getBoundingClientRect();
     const pageRect = pageEl.getBoundingClientRect();
 
-    // Measure actual content bounding box from DOM
-    const contentLeft = containerRect.left - pageRect.left;
-    const contentTop = containerRect.top - pageRect.top;
-    
+    // Use getBoundingClientRect offset — correctly accounts for gutter/margin changes.
+    // Fall back to marginLeft prop if rects are zero (e.g. hidden panel).
+    const rectLeft = containerRect.left - pageRect.left;
+    const rectTop  = containerRect.top  - pageRect.top;
+    const contentLeft = rectLeft > 0 ? rectLeft : (marginLeft ?? 0);
+    const contentTop  = rectTop  > 0 ? rectTop  : 0;
+
     const actualContentWidth = container.scrollWidth;
-    // Use the bottom edge of the last visible child to get actual text height,
-    // not container.offsetHeight (which is fixed = effectiveContentHeight).
     const allChildren = container.querySelectorAll('p, h1, h2, h3, h4, h5, h6, blockquote, div');
     let lastChildBottom = 0;
     for (const el of allChildren) {
@@ -50,7 +55,6 @@ const LayoutGuidesOverlay = memo(function LayoutGuidesOverlay({
     }
     const actualContentHeight = lastChildBottom > 0 ? lastChildBottom : container.offsetHeight;
 
-    // Measure block positions relative to content container
     const children = container.querySelectorAll('p, h1, h2, h3, h4, h5, h6, blockquote');
     const blocks = [];
     for (const el of children) {
@@ -65,21 +69,20 @@ const LayoutGuidesOverlay = memo(function LayoutGuidesOverlay({
       });
     }
 
-    setGuides({
-      contentTop,
-      contentLeft,
-      contentWidth: actualContentWidth,
-      contentHeight: actualContentHeight,
-      blocks,
-    });
+    setGuides({ contentTop, contentLeft, contentWidth: actualContentWidth, contentHeight: actualContentHeight, blocks });
   }, [contentRef]);
 
   useEffect(() => {
-    rafRef.current = requestAnimationFrame(measure);
-    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [measure]);
+    // Re-measure on every page change (pageKey) and whenever measure fn changes.
+    // Double rAF: first frame renders content, second frame has settled layout.
+    const raf1 = requestAnimationFrame(() => {
+      rafRef.current = requestAnimationFrame(measure);
+    });
+    return () => { cancelAnimationFrame(raf1); if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [measure, pageKey, marginLeft]);
 
   const { contentTop, contentLeft, contentWidth: actualContentWidth, contentHeight: actualContentHeight, blocks } = guides;
+  const w = actualContentWidth || contentWidth;
 
   const tagColor = (tag) => {
     if (tag === 'h1') return 'rgba(231,76,60,0.7)';
@@ -90,63 +93,84 @@ const LayoutGuidesOverlay = memo(function LayoutGuidesOverlay({
     return 'rgba(52,152,219,0.6)';
   };
 
-  return (
-    <div
-      style={{
+  const line = (top, color, style, label, labelSide = 'right') => (
+    <div style={{
+      position: 'absolute',
+      top: contentTop + top,
+      left: contentLeft,
+      width: w,
+      height: 0,
+      borderTop: `1.5px ${style} ${color}`,
+      boxSizing: 'border-box',
+    }}>
+      <span style={{
         position: 'absolute',
-        inset: 0,
-        pointerEvents: 'none',
-        overflow: 'visible',
-        zIndex: 10,
-      }}
-    >
-      {/* Red line = engine cut limit (contentHeight used by paginator) */}
-      <div style={{
-        position: 'absolute',
-        top:   contentTop + engineContentHeight,
-        left:  contentLeft,
-        width: actualContentWidth || contentWidth,
-        height: 0,
-        borderTop: '1.5px solid rgba(220,30,30,0.9)',
-        boxSizing: 'border-box',
-      }}>
-        <span style={{
-          position: 'absolute',
-          right: 0,
-          top: -10,
-          fontSize: 8,
-          color: 'rgba(220,30,30,0.95)',
-          background: 'rgba(255,255,255,0.8)',
-          padding: '0 2px',
-          whiteSpace: 'nowrap',
-          lineHeight: '10px',
-        }}>motor cut</span>
-      </div>
+        [labelSide]: 0,
+        top: -10,
+        fontSize: 7,
+        color,
+        background: 'rgba(255,255,255,0.85)',
+        padding: '0 2px',
+        whiteSpace: 'nowrap',
+        lineHeight: '10px',
+        fontFamily: 'monospace',
+      }}>{label}</span>
+    </div>
+  );
 
-      {/* Blue dashed rect = render div height (contentHeight - 1 line reserved) */}
+  // Folio zone top = effectiveContentHeight + marginBottom - folioFromEdge
+  // (distance from content box top to where the folio number sits)
+  const folioZoneTop = (effectiveContentHeight ?? engineContentHeight) + (marginBottom ?? 0) - (folioFromEdge ?? 0);
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'visible', zIndex: 10 }}>
+
+      {/* Red = engine hard cut (DOM_SLACK already subtracted by engine) */}
+      {line(engineContentHeight, 'rgba(210,30,30,0.9)', 'solid', `motor ${engineContentHeight}px`)}
+
+      {/* Orange = render box bottom (overflow:hidden clips here) */}
+      {effectiveContentHeight != null && effectiveContentHeight !== engineContentHeight &&
+        line(effectiveContentHeight, 'rgba(230,120,0,0.9)', 'solid', `render ${effectiveContentHeight}px`, 'left')}
+
+      {/* Green dashed = folio zone top */}
+      {folioFromEdge != null &&
+        line(folioZoneTop, 'rgba(30,160,30,0.85)', 'dashed', `folio ↑`, 'right')}
+
+      {/* Blue dashed = actual text bottom from DOM */}
       <div style={{
         position: 'absolute',
         top:    contentTop,
         left:   contentLeft,
-        width:  actualContentWidth || contentWidth,
+        width:  w,
         height: actualContentHeight,
-        border: '1px dashed rgba(0,100,255,0.6)',
+        border: '1px dashed rgba(0,100,255,0.55)',
         boxSizing: 'border-box',
-      }} />
+      }}>
+        <span style={{
+          position: 'absolute',
+          left: 0,
+          bottom: -10,
+          fontSize: 7,
+          color: 'rgba(0,80,200,0.9)',
+          background: 'rgba(255,255,255,0.85)',
+          padding: '0 2px',
+          whiteSpace: 'nowrap',
+          lineHeight: '10px',
+          fontFamily: 'monospace',
+        }}>DOM {Math.round(actualContentHeight)}px</span>
+      </div>
 
+      {/* Colored outlines per block element */}
       {blocks.map((b, i) => (
-        <div
-          key={i}
-          style={{
-            position: 'absolute',
-            top:    contentTop + b.top,
-            left:   contentLeft + b.left,
-            width:  b.width,
-            height: b.height,
-            outline: `1px solid ${tagColor(b.tag)}`,
-            boxSizing: 'border-box',
-          }}
-        />
+        <div key={i} style={{
+          position: 'absolute',
+          top:    contentTop + b.top,
+          left:   contentLeft + b.left,
+          width:  b.width,
+          height: b.height,
+          outline: `1px solid ${tagColor(b.tag)}`,
+          boxSizing: 'border-box',
+        }} />
       ))}
     </div>
   );

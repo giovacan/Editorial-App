@@ -164,6 +164,7 @@ export function getPageLayout({
   const engineContentHeight = layoutDims?.contentHeight ?? dims.contentHeight;
   const headerSpaceEstimate = layoutDims?.headerSpaceEstimate ?? 0;
   const chapterStartBottomClearance = layoutDims?.chapterStartBottomClearance ?? 0;
+  const chapterStartExtraLines = layoutDims?.chapterStartExtraLines ?? 0;
   // Detect chapter start — same logic as skipHeader below, but need it now for height calc.
   const pageHasChTitle = !!(safePageData.html && safePageData.html.includes('data-chapter-start="true"'));
   const isChStartForHeight = safePageData.isFirstChapterPage === true || pageHasChTitle;
@@ -172,8 +173,11 @@ export function getPageLayout({
   const headerSkippedOnThisPage = (safeConfig.header?.skipFirstChapterPage !== false && isChStartForHeight) || false;
   // Chapter-start pages reclaim header space but reserve bottom clearance so the last
   // text line sits at least 1 line above the page number. Mirror engine's chStartExtra calc.
+  const lineHeightPxForChStart = layoutDims?.lineHeightPx ?? Math.ceil(dims.contentHeight * 0.044);
   const effectiveContentHeight = headerSkippedOnThisPage
-    ? engineContentHeight + Math.max(0, headerSpaceEstimate - chapterStartBottomClearance)
+    ? engineContentHeight
+      + Math.max(0, headerSpaceEstimate - chapterStartBottomClearance)
+      + chapterStartExtraLines * lineHeightPxForChStart
     : engineContentHeight;
 
   // Typography

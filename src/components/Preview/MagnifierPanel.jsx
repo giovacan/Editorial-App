@@ -1,5 +1,7 @@
 import LayoutGuidesOverlay from './LayoutGuidesOverlay';
 import { useRef } from 'react';
+import { getMagnifierTransform } from '../../utils/transformes';
+import { computeFolioFromEdge } from '../../hooks/usePageRenderLayout';
 
 function MagnifierPanel({
   magnifierPanelRef,
@@ -19,6 +21,7 @@ function MagnifierPanel({
   textAlign,
   effectiveContentHeight,
   engineContentHeight,
+  previewScale,
   showLayoutGuides,
   debugHtml,
   pageNumHtml,
@@ -31,9 +34,13 @@ function MagnifierPanel({
   handleMouseEnterMagnifier,
   handleMouseLeaveMagnifier
 }) {
-  const magScale = magnifierZoom / 100;
-  const tx = -(magnifierPos.x / 100) * pageWidthPx * (magScale - 1);
-  const ty = -(magnifierPos.y / 100) * pageHeightPx * (magScale - 1);
+  const { transform: magnifierTransform } = getMagnifierTransform({
+    zoomPercent: magnifierZoom,
+    focusXPercent: magnifierPos.x,
+    focusYPercent: magnifierPos.y,
+    pageWidth: pageWidthPx,
+    pageHeight: pageHeightPx,
+  });
   const magContentRef = useRef(null);
 
   return (
@@ -95,7 +102,7 @@ function MagnifierPanel({
             background: 'white',
             boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
             boxSizing: 'border-box',
-            transform: `scale(${magScale}) translate(${tx / magScale}px, ${ty / magScale}px)`,
+            transform: magnifierTransform,
             transformOrigin: '0 0'
           }}
         >
@@ -119,7 +126,12 @@ function MagnifierPanel({
             <LayoutGuidesOverlay
               contentRef={magContentRef}
               engineContentHeight={engineContentHeight}
+              effectiveContentHeight={effectiveContentHeight}
+              folioFromEdge={computeFolioFromEdge(previewScale)}
+              marginBottom={marginBottom}
+              marginLeft={marginLeft}
               contentWidth={pageWidthPx - marginLeft - marginRight}
+              pageKey={currentPageData?.pageNumber}
             />
           )}
           {pageNumHtml}

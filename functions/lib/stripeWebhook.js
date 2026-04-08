@@ -59,7 +59,8 @@ exports.stripeWebhook = functions.https.onRequest(async (req, res) => {
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
     if (!webhookSecret) {
         console.error('STRIPE_WEBHOOK_SECRET not configured');
-        return res.status(500).send('Webhook secret not configured');
+        res.status(500).send('Webhook secret not configured');
+        return;
     }
     let event;
     try {
@@ -67,7 +68,8 @@ exports.stripeWebhook = functions.https.onRequest(async (req, res) => {
     }
     catch (err) {
         console.error('Webhook signature verification failed:', err);
-        return res.status(400).send(`Webhook Error: ${err}`);
+        res.status(400).send(`Webhook Error: ${err}`);
+        return;
     }
     try {
         switch (event.type) {

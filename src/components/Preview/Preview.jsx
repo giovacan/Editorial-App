@@ -4,7 +4,7 @@ import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import useEditorStore from '../../store/useEditorStore';
 import { usePagination, usePageNavigation } from '../../hooks/usePagination';
 import { useMagnifier } from '../../hooks/useMagnifier';
-import { usePageRenderLayoutFromStore } from '../../hooks/usePageRenderLayout';
+import { usePageRenderLayoutFromStore, computeFolioFromEdge } from '../../hooks/usePageRenderLayout';
 import { DEFAULT_CONFIG } from './utils/previewConfig';
 // import { insertPageLineBreaks, createLayoutContext } from '../../utils/textLayoutEngine';
 import { addDebugTags } from './utils/debugTags';
@@ -157,8 +157,50 @@ function Preview() {
   const paginationProgressObj = useEditorStore((s) => s.paginationProgress);
   const isPaginationRunning = paginationProgressObj?.isActive ?? false;
   const paginationPercent = paginationProgressObj?.percent ?? 0;
+  const layoutPlannerState = useEditorStore((s) => s.layoutPlanner);
   const { currentPage, goToPage, goToNextPage, goToPrevPage, goToFirstPage, goToLastPage, totalPages } =
     usePageNavigation(allPages.length);
+
+  const plannerBadge = useMemo(() => {
+    const provider = layoutPlannerState?.provider || 'local';
+    const phase = layoutPlannerState?.phase || 'idle';
+    const progress = Math.max(0, Math.min(100, Number(layoutPlannerState?.progress) || 0));
+    const modelLabel = layoutPlannerState?.modelLabel || '';
+
+    if (provider === 'webllm' && phase === 'loading') {
+      return {
+        tone: 'loading',
+        text: progress > 0
+          ? `Preparando IA local (${progress}%)`
+          : 'Preparando IA local',
+        detail: modelLabel,
+      };
+    }
+
+    if (provider === 'webllm' && phase === 'ready') {
+      return {
+        tone: 'ready',
+        text: 'IA local lista',
+        detail: modelLabel,
+      };
+    }
+
+    if (provider === 'remote' && phase === 'ready') {
+      return {
+        tone: 'remote',
+        text: 'Planner remoto activo',
+        detail: modelLabel,
+      };
+    }
+
+    return {
+      tone: phase === 'fallback' ? 'fallback' : 'local',
+      text: 'Usando planner local',
+      detail: layoutPlannerState?.reason === 'webgpu_unavailable'
+        ? 'WebGPU no disponible'
+        : '',
+    };
+  }, [layoutPlannerState]);
 
   const currentPageData = (allPages?.length > 0 && allPages[currentPage])
     ? allPages[currentPage]
@@ -228,7 +270,7 @@ function Preview() {
   const sharedPageProps = {
     pageWidthPx, pageHeightPx, marginTop, marginRight, marginBottom, marginLeft,
     fontSize, fontFamily, lineHeightPx, textAlign, effectiveContentHeight,
-    engineContentHeight, showLayoutGuides,
+    engineContentHeight, previewScale, showLayoutGuides,
     debugHtml: renderedHtml, pageNumHtml, showHeaders, currentPageData, skipHeader,
     hasHeaderContent, headerHtml, isFrontMatterPage
   };
@@ -250,6 +292,13 @@ function Preview() {
         showLayoutGuides={showLayoutGuides}
         setShowLayoutGuides={setShowLayoutGuides}
       />
+
+      <div className={`planner-status planner-status-${plannerBadge.tone}`}>
+        <span className="planner-status-text">{plannerBadge.text}</span>
+        {plannerBadge.detail && (
+          <span className="planner-status-detail">{plannerBadge.detail}</span>
+        )}
+      </div>
 
       {showDebugPanel && (
         <PreviewDebugPanel config={config} onChange={setConfig} onClose={() => setShowDebugPanel(false)} />
@@ -321,7 +370,12 @@ function Preview() {
             <LayoutGuidesOverlay
               contentRef={previewContentRef}
               engineContentHeight={engineContentHeight}
+              effectiveContentHeight={effectiveContentHeight}
+              folioFromEdge={computeFolioFromEdge(previewScale)}
+              marginBottom={marginBottom}
+              marginLeft={marginLeft}
               contentWidth={pageWidthPx - marginLeft - marginRight}
+              pageKey={currentPage}
             />
           )}
           {pageNumHtml}

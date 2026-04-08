@@ -41,8 +41,15 @@ export function useLayoutVerification(pages, layoutDims) {
       fontFamily,
       textAlign,
       headerSpaceEstimate,
+      chapterStartBottomClearance,
+      chapterStartExtraLines,
     } = layoutDims;
-    const chStartExtra = headerSpaceEstimate || 0;
+    // Use pre-computed chStartExtra from dimsSnapshot (matches worker's value exactly).
+    // Fall back to recalculating if not available (backwards compat).
+    const chStartExtra = layoutDims.chStartExtra != null
+      ? layoutDims.chStartExtra
+      : Math.max(0, (headerSpaceEstimate || 0) - (chapterStartBottomClearance || 0))
+        + (chapterStartExtraLines || 0) * lineHeightPx;
 
     if (!contentHeight || !contentWidth || !lineHeightPx) return;
 
@@ -250,6 +257,11 @@ export function useLayoutVerification(pages, layoutDims) {
 
         const summary = {
           totalPages: results.length,
+          contentHeight: +contentHeight.toFixed(1),
+          headerSpaceEstimate: +(headerSpaceEstimate || 0).toFixed(1),
+          chapterStartBottomClearance: +(chapterStartBottomClearance || 0).toFixed(1),
+          chapterStartExtraLines: chapterStartExtraLines || 0,
+          chStartExtra: +chStartExtra.toFixed(1),
           clippedCount: clippedPages.length,
           clippedPages: clippedPages.map(r => `p${r.pageNumber}`),
           maxDelta: +maxDelta.toFixed(1),
@@ -350,6 +362,9 @@ export function formatLayoutAuditText(report) {
   const lines = [];
 
   lines.push(`LAYOUT AUDIT (${summary.totalPages} pages measured):`);
+  if (summary.chStartExtra != null) {
+    lines.push(`  Dims: contentH=${summary.contentHeight}px headerEst=${summary.headerSpaceEstimate}px clearance=${summary.chapterStartBottomClearance}px extraLines=${summary.chapterStartExtraLines} chStartExtra=${summary.chStartExtra}px`);
+  }
 
   if (summary.clippedCount > 0) {
     lines.push(`  ⚠️ CLIPPED: ${summary.clippedCount} pages [${summary.clippedPages.join(', ')}]`);

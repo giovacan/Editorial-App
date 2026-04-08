@@ -13,6 +13,7 @@
 // useMemo removed — no longer needed after KP rendering moved to engine
 import { buildHeaderHtmlPure } from '../../hooks/useHeaderFooter';
 import { computeFolioStyle, computeShowFolio, computeFolioFromEdge } from '../../hooks/usePageRenderLayout';
+import { getScaledSize } from '../../utils/transformes';
 // applyKpRendering removed — KP word-spacing now applied by the engine
 import './PageFrame.css';
 
@@ -170,12 +171,13 @@ export default function PageFrame({
 
   // When scaled, wrap in a slot div that holds the visual footprint
   if (cssScale !== 1) {
+    const slotSize = getScaledSize(pageWidthPx, pageHeightPx, cssScale);
     return (
       <div
         className="pf-slot"
         style={{
-          width:    pageWidthPx * cssScale,
-          height:   pageHeightPx * cssScale,
+          width:    slotSize.width,
+          height:   slotSize.height,
           position: 'relative',
           flexShrink: 0,
         }}

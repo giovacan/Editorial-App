@@ -430,10 +430,12 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
 
       const fontFamily = targetFontFamily;
 
-      // Extra bottom clearance on chapter-start pages so the last line of text
-      // sits at least 1 line above the page number, giving visual breathing room.
-      // Clamped to 0 if headerSpaceEstimate is small (no header space to reclaim).
-      const chapterStartBottomClearance = Math.min(lineHeightPx, headerSpaceEstimate);
+      // 0 clearance: let the engine fill chapter-start pages right up to the folio zone.
+      // The folioReserve above already guarantees 1 line above the folio.
+      const chapterStartBottomClearance = 0;
+      // No extra lines — the full header space is reclaimed via chStartExtra.
+      // clearance=0 lets text fill right up to the folio zone.
+      const chapterStartExtraLines = 0;
 
       const layoutCtx = {
         contentHeight,
@@ -449,6 +451,7 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
         splitLongParagraphs,
         headerSpaceEstimate,
         chapterStartBottomClearance,
+        chapterStartExtraLines,
       };
       const layoutHints = await getLayoutHints(safeBookData.chapters, safeConfig, layoutCtx);
 
@@ -457,6 +460,9 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
       let generatedPages;
       let paginationLog = null;
       let paginationSummaryText = null;
+      let chStartExtraFromEngine = Math.max(0, headerSpaceEstimate - chapterStartBottomClearance)
+        + chapterStartExtraLines * lineHeightPx;
+      let headerSpaceEstimateFromEngine = headerSpaceEstimate;
       try {
         const paginationResult = await new Promise((resolve, reject) => {
           if (paginationWorkerRef.current) {
@@ -500,6 +506,12 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
         generatedPages = paginationResult.pages;
         paginationLog = paginationResult.log;
         paginationSummaryText = paginationResult.summaryText;
+        // Use the chStartExtra the engine actually computed (may differ from hook's
+        // headerSpaceEstimate if header config changed since the last cache-busted run).
+        if (paginationResult.chStartExtra != null) {
+          chStartExtraFromEngine = paginationResult.chStartExtra;
+          headerSpaceEstimateFromEngine = paginationResult.headerSpaceEstimate ?? headerSpaceEstimate;
+        }
         // Save incremental layout cache for the next run.
         if (paginationResult.chapterHashes?.length) {
           paginationCacheRef.current = {
@@ -561,8 +573,10 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
           gutterValue: engineGutter,
           fontFamily,
           textAlign,
-          headerSpaceEstimate,
+          headerSpaceEstimate: headerSpaceEstimateFromEngine,
           chapterStartBottomClearance,
+          chapterStartExtraLines,
+          chStartExtra: chStartExtraFromEngine,
         };
         console.log(`[PAGINATION] Guardando layoutDims: contentHeight=${contentHeight}px renderContentHeight=${renderContentHeight}px engineGutter=${engineGutter}`);
         setLayoutDims(dimsSnapshot);
@@ -741,6 +755,10 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
           gutterValue: engineGutter,
           fontFamily,
           textAlign,
+          headerSpaceEstimate: headerSpaceEstimateFromEngine,
+          chapterStartBottomClearance,
+          chapterStartExtraLines,
+          chStartExtra: chStartExtraFromEngine,
         });
         useEditorStore.getState().setPaginationProgress(100);
         // Small delay so the 100% state renders before we hide the progress indicator

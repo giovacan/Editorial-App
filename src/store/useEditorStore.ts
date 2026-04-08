@@ -196,6 +196,14 @@ const initialState = {
     isActive: false,
     percent: 0
   },
+  layoutPlanner: {
+    provider: 'local' as const,
+    phase: 'idle' as const,
+    progress: 0,
+    modelLabel: '',
+    reason: 'not_initialized',
+    revision: 0,
+  },
   confirmedChapterTitles: [] as string[],
   paginatedPages: [] as any[],
   layoutDims: null as any,
@@ -516,6 +524,17 @@ const useEditorStore = create<EditorState>()(
 
     setPaginationProgress: (percent: number) => set((state) => ({
       paginationProgress: { ...state.paginationProgress, percent }
+    })),
+
+    setLayoutPlannerState: (plannerState) => set((state) => ({
+      layoutPlanner: { ...state.layoutPlanner, ...plannerState }
+    })),
+
+    bumpLayoutPlannerRevision: () => set((state) => ({
+      layoutPlanner: {
+        ...state.layoutPlanner,
+        revision: (state.layoutPlanner?.revision || 0) + 1
+      }
     })),
 
     startPagination: () => set((state) => ({

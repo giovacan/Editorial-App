@@ -11,7 +11,7 @@
  * (e.g. after a hot-reload) — those take precedence over the stored state.
  *
  * Messages IN:
- *   { type: 'START', chapters, layoutCtx, safeConfig,
+ *   { type: 'START', chapters, layoutCtx, safeConfig, layoutHints?,
  *     prevChapterHashes?: string[], prevChapterPageSlices?: Page[][] }
  *
  * Messages OUT:
@@ -31,7 +31,7 @@ let _prevChapterPageSlices = null;
 self.onmessage = ({ data }) => {
   if (data.type !== 'START') return;
 
-  const { chapters, layoutCtx, safeConfig } = data;
+  const { chapters, layoutCtx, safeConfig, layoutHints } = data;
 
   // Prefer hashes/slices passed explicitly from the caller (handles hot-reload /
   // worker restart scenarios where module-level state was reset).
@@ -54,7 +54,8 @@ self.onmessage = ({ data }) => {
           });
         },
         prevChapterHashes,
-        prevChapterPages: prevChapterPageSlices
+        prevChapterPages: prevChapterPageSlices,
+        layoutHints
       }
     );
 
@@ -68,7 +69,9 @@ self.onmessage = ({ data }) => {
       log: result.log,
       summaryText: result.summaryText,
       chapterHashes: result.chapterHashes ?? [],
-      chapterPageSlices: result.chapterPageSlices ?? []
+      chapterPageSlices: result.chapterPageSlices ?? [],
+      chStartExtra: result.chStartExtra ?? 0,
+      headerSpaceEstimate: result.headerSpaceEstimate ?? 0,
     });
   } catch (e) {
     self.postMessage({ type: 'ERROR', message: e?.message || String(e) });

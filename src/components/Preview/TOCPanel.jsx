@@ -3,6 +3,7 @@ import useEditorStore from '../../store/useEditorStore';
 import { getLevelStyle, normalizeTitle, computeTOCNumbers } from '../../utils/generateFrontMatter';
 import { generateRecommendedTOCConfig, detectTitleNormalization } from '../../utils/extractTOC';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
+import { createPreviewPageFrame, getScaledSize } from '../../utils/transformes';
 import './TOCPanel.css';
 
 const PX_PER_MM = 3.7795;
@@ -42,7 +43,7 @@ const TEMPLATES = [
           { label: 'Sección 1.1', pg: '3', isH1: false },
           { label: 'Apartado', pg: '5', isH1: false, indent: 12 },
         ].map((row, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'baseline', paddingLeft: row.indent || 0, borderLeft: row.isH1 ? `2px solid ${active ? '#1e40af' : '#555'}` : 'none', paddingLeft: row.isH1 ? 6 : (row.indent || 0), color: active ? '#1e40af' : '#374151', opacity: active ? 1 : (i === 0 ? 0.9 : 0.55) }}>
+          <div key={i} style={{ display: 'flex', alignItems: 'baseline', borderLeft: row.isH1 ? `2px solid ${active ? '#1e40af' : '#555'}` : 'none', paddingLeft: row.isH1 ? 6 : (row.indent || 0), color: active ? '#1e40af' : '#374151', opacity: active ? 1 : (i === 0 ? 0.9 : 0.55) }}>
             <span style={{ fontWeight: row.isH1 ? 'bold' : 'normal', letterSpacing: row.isH1 ? '0.08em' : 'normal', fontSize: row.isH1 ? '0.88em' : '0.92em', flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', textTransform: row.isH1 ? 'uppercase' : 'none' }}>{row.label}</span>
             <span style={{ fontWeight: row.isH1 ? 'bold' : 'normal', color: row.isH1 ? (active ? '#1e40af' : '#333') : (active ? '#3b82f6' : '#888'), fontSize: '0.85em' }}>{row.pg}</span>
           </div>
@@ -253,22 +254,26 @@ const TOCPanel = memo(function TOCPanel() {
       const ps = layoutDims.previewScale;
       const pageWidthPx  = pf.width  * PX_PER_MM * ps;
       const pageHeightPx = pf.height * PX_PER_MM * ps;
-      const hMargin = Math.max(6, (pageWidthPx - layoutDims.contentWidth) / 2);
-      const vMargin = Math.max(6, (pageHeightPx - layoutDims.contentHeight) / 2);
-      return {
+      return createPreviewPageFrame({
         pageWidthPx,
         pageHeightPx,
-        paddingH: hMargin,
-        paddingV: vMargin,
+        contentWidth: layoutDims.contentWidth,
+        contentHeight: layoutDims.contentHeight,
         fontSize: layoutDims.baseFontSizePx,
         fontFamily: config?.fontFamily || 'Georgia, serif',
-        lineHeight: `${layoutDims.lineHeightPx}px`,
-        contentHeight: layoutDims.contentHeight,
-      };
+        lineHeightPx: layoutDims.lineHeightPx,
+        minInset: 6,
+      });
     } catch {
       return null;
     }
   }, [layoutDims, config]);
+
+  const zoomedPage = useMemo(() => (
+    pageStyle
+      ? getScaledSize(pageStyle.pageWidthPx, pageStyle.pageHeightPx, zoom)
+      : null
+  ), [pageStyle, zoom]);
 
   return (
     <div className="toc-overlay" onMouseDown={handleOverlayClick}>
@@ -716,12 +721,12 @@ const TOCPanel = memo(function TOCPanel() {
 
             {/* Scrollable area with the page */}
             <div className="toc-right-scroll">
-              {tocPages.length > 0 && pageStyle ? (
+              {tocPages.length > 0 && pageStyle && zoomedPage ? (
                 <div
                   className="toc-page-zoom-wrapper"
                   style={{
-                    width:  `${pageStyle.pageWidthPx  * zoom}px`,
-                    height: `${pageStyle.pageHeightPx * zoom}px`,
+                    width:  `${zoomedPage.width}px`,
+                    height: `${zoomedPage.height}px`,
                   }}
                 >
                   <div

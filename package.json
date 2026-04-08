@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@mlc-ai/web-llm": "^0.2.82",
     "@stripe/stripe-js": "^8.8.0",
     "@tiptap/extension-history": "^3.20.1",
     "@tiptap/extension-placeholder": "^3.20.1",

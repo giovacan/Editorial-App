@@ -115,8 +115,9 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
     const skipFirstCh = safeConfig?.header?.skipFirstChapterPage !== false;
     const headerEst = storeDims?.headerSpaceEstimate ?? 0;
     const clearance = storeDims?.chapterStartBottomClearance ?? 0;
+    const extraLines = storeDims?.chapterStartExtraLines ?? 0;
     const effectiveContentHeight = (isChStart && skipFirstCh)
-      ? baseContentHeight + Math.max(0, headerEst - clearance)
+      ? baseContentHeight + Math.max(0, headerEst - clearance) + extraLines * lineHeightPx
       : baseContentHeight;
     return { ...d, fontSize, fontFamily, lineHeightPx, textAlign, effectiveContentHeight, baseFontSize, previewScale: PREVIEW_SCALE };
   }, [storeDims, safeConfig, pageFormat, effectiveGutter, totalPages, fontSize, lineHeightPx, fontFamily, textAlign, baseFontSize, applyDynamicMargins]);
