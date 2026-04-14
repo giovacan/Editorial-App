@@ -10,7 +10,7 @@ import { DEFAULT_CONFIG } from './utils/previewConfig';
 import { addDebugTags } from './utils/debugTags';
 import PreviewControls from './PreviewControls';
 import MagnifierPanel from './MagnifierPanel';
-import PreviewDebugPanel from './PreviewDebugPanel';
+import PreviewDebugPanel from './DebugPanel/PreviewDebugPanel';
 import LayoutGuidesOverlay from './LayoutGuidesOverlay';
 import TOCPanel from './TOCPanel';
 import ValidationErrorDialog from '../ValidationErrorDialog/ValidationErrorDialog';
