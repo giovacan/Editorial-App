@@ -1,4 +1,5 @@
 import { memo, useState } from 'react';
+import useEditorStore from '../../store/useEditorStore';
 import './ChapterDetectionDialog.css';
 
 const ChapterDetectionDialog = memo(function ChapterDetectionDialog({
@@ -28,6 +29,7 @@ const ChapterDetectionDialog = memo(function ChapterDetectionDialog({
 
   const confirmedCount = chapterList.filter(ch => ch.confirmed).length;
   const allChecked = confirmedCount === chapterList.length;
+  const { isActive: paginationActive, percent: paginationPercent } = useEditorStore(s => s.paginationProgress);
 
   return (
     <div className="chapter-detection-overlay">
@@ -111,7 +113,17 @@ const ChapterDetectionDialog = memo(function ChapterDetectionDialog({
             onClick={handleConfirm}
             disabled={confirmedCount === 0}
           >
-            Continuar con {confirmedCount} capítulos
+            <span className="btn-progress-fill" style={{ width: paginationActive ? `${paginationPercent}%` : '0%' }} />
+            <span className="btn-label">
+              {paginationActive
+                ? paginationPercent < 50
+                  ? `Procesando... ${paginationPercent}%`
+                  : paginationPercent < 90
+                    ? `Paginando... ${paginationPercent}%`
+                    : 'Finalizando...'
+                : `Continuar con ${confirmedCount} capítulos`
+              }
+            </span>
           </button>
         </div>
       </div>

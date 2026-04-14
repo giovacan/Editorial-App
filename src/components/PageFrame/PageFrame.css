@@ -7,6 +7,14 @@
 .pf-slot {
   position: relative;
   flex-shrink: 0;
+  /* Allow mouse events to reach the scaled pf-page inside */
+  pointer-events: none;
+}
+
+.pf-slot .pf-page {
+  pointer-events: auto;
+  user-select: text;
+  cursor: text;
 }
 
 /* Margin guide */

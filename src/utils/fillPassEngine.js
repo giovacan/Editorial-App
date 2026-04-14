@@ -176,88 +176,33 @@ export const applyFillPass = (pages, config) => {
 
     const firstElOuter = firstEl.outerHTML;
 
-    // Test if element fits
-    try {
-      measureDiv.innerHTML = (page.html || '') + firstElOuter;
-      const pageWithElHeight = measureDiv.offsetHeight;
+    // Test if element fits (no try/catch — continue inside try confuses some parsers)
+    measureDiv.innerHTML = (page.html || '') + firstElOuter;
+    const pageWithElHeight = measureDiv.offsetHeight || 0;
 
-      if (pageWithElHeight <= contentHeight) {
-        // Element fits - move it
-        firstEl.remove();
-        const restHtml = tmp.innerHTML;
+    if (pageWithElHeight > contentHeight) continue;
 
-        // FIX: Don't empty source page - never allow moves that would completely empty a page
-        if (!restHtml.trim()) {
-          // This would empty the source page - DON'T allow it
-          // Restore the element and try next element
-          tmp.appendChild(firstEl);
-          continue; // Skip this move - would create blank page, try next element
-        }
+    // Element fits — check if move leaves source page with enough content
+    firstEl.remove();
+    const restHtml = tmp.innerHTML;
 
-        // Check: Don't leave source page with too few lines (below orphan threshold)
-        measureDiv.innerHTML = restHtml;
-        const remainingLines = Math.floor((measureDiv.offsetHeight || 0) / lineHeightPx);
-        if (remainingLines < minOrphanLines) {
-          // Would leave source page too empty - skip this move
-          tmp.appendChild(firstEl);
-          continue; // Try next element
-        }
-
-        // Check widow rules
-        measureDiv.innerHTML = restHtml;
-        const widowLines = Math.floor((measureDiv.offsetHeight || 0) / lineHeightPx);
-
-        if (widowLines >= minWidowLines) {
-          const newPageHtml = (page.html || '') + firstElOuter;
-
-            // === ALGORITHM 1: Check paragraph balance before accepting move ===
-            let balanceCheckPassed = true;
-            try {
-              const balanceCheck = balanceParagraphSplit(
-                newPageHtml,
-                restHtml,
-                lineHeightPx,
-                measureDiv
-              );
-              if (balanceCheck.needsRebalance) {
-                balanceCheckPassed = false;
-                if (process.env.NODE_ENV === 'development') {
-                  console.log('[FILL-PASS] Balance violation - rejecting move:', {
-                    reason: balanceCheck.reason,
-                    currentSplit: balanceCheck.currentSplit,
-                    recommended: balanceCheck.recommendedSplit
-                  });
-                }
-              }
-            } catch (e) {
-              // Non-critical: balance check failed, accept move anyway
-            }
-
-            if (balanceCheckPassed) {
-              result[pageIdx] = {
-                ...page,
-                html: newPageHtml
-              };
-              result[nextIdx] = {
-                ...nextPage,
-                html: restHtml
-              };
-              totalIterations++;
-            } else {
-              // Move would violate balance - skip it and try next element
-              if (process.env.NODE_ENV === 'development') {
-                console.log('[FILL-PASS] Skipped move due to balance violation, trying next element');
-              }
-              continue;  // ← TRY NEXT ELEMENT, don't give up on this page
-            }
-          }
-        }
-      }
-    } catch (e) {
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('fillPassEngine: Error testing element fit', e);
-      }
+    if (!restHtml.trim()) {
+      tmp.appendChild(firstEl);
       continue;
+    }
+
+    measureDiv.innerHTML = restHtml;
+    const afterMoveLines = Math.floor((measureDiv.offsetHeight || 0) / lineHeightPx);
+    if (afterMoveLines < minOrphanLines) {
+      tmp.appendChild(firstEl);
+      continue;
+    }
+
+    if (afterMoveLines >= minWidowLines) {
+      const newPageHtml = (page.html || '') + firstElOuter;
+      result[pageIdx] = { ...page, html: newPageHtml };
+      result[nextIdx] = { ...nextPage, html: restHtml };
+      totalIterations++;
     }
   }
 

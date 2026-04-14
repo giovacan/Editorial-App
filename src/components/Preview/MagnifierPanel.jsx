@@ -1,3 +1,8 @@
+import LayoutGuidesOverlay from './LayoutGuidesOverlay';
+import { useRef } from 'react';
+import { getMagnifierTransform } from '../../utils/transformes';
+import { computeFolioFromEdge } from '../../hooks/usePageRenderLayout';
+
 function MagnifierPanel({
   magnifierPanelRef,
   magnifierPageRef,
@@ -15,6 +20,9 @@ function MagnifierPanel({
   lineHeightPx,
   textAlign,
   effectiveContentHeight,
+  engineContentHeight,
+  previewScale,
+  showLayoutGuides,
   debugHtml,
   pageNumHtml,
   showHeaders,
@@ -26,9 +34,14 @@ function MagnifierPanel({
   handleMouseEnterMagnifier,
   handleMouseLeaveMagnifier
 }) {
-  const magScale = magnifierZoom / 100;
-  const tx = -(magnifierPos.x / 100) * pageWidthPx * (magScale - 1);
-  const ty = -(magnifierPos.y / 100) * pageHeightPx * (magScale - 1);
+  const { transform: magnifierTransform } = getMagnifierTransform({
+    zoomPercent: magnifierZoom,
+    focusXPercent: magnifierPos.x,
+    focusYPercent: magnifierPos.y,
+    pageWidth: pageWidthPx,
+    pageHeight: pageHeightPx,
+  });
+  const magContentRef = useRef(null);
 
   return (
     <div
@@ -83,13 +96,13 @@ function MagnifierPanel({
             lineHeight: `${lineHeightPx}px`,
             textAlign: isFrontMatterPage ? 'left' : textAlign,
             textJustify: isFrontMatterPage ? undefined : 'inter-word',
-            hyphens: isFrontMatterPage ? 'none' : 'auto',
+            hyphens: 'none',
             wordBreak: 'break-word',
             overflowWrap: 'break-word',
             background: 'white',
             boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
             boxSizing: 'border-box',
-            transform: `scale(${magScale}) translate(${tx / magScale}px, ${ty / magScale}px)`,
+            transform: magnifierTransform,
             transformOrigin: '0 0'
           }}
         >
@@ -101,11 +114,26 @@ function MagnifierPanel({
             />
           )}
           <div
-            ref={magnifierContentRef}
+            ref={(el) => {
+              magnifierContentRef.current = el;
+              magContentRef.current = el;
+            }}
             className="preview-content"
             style={{ height: `${effectiveContentHeight}px` }}
             dangerouslySetInnerHTML={{ __html: debugHtml || '' }}
           />
+          {showLayoutGuides && !currentPageData.isBlank && !isFrontMatterPage && (
+            <LayoutGuidesOverlay
+              contentRef={magContentRef}
+              engineContentHeight={engineContentHeight}
+              effectiveContentHeight={effectiveContentHeight}
+              folioFromEdge={computeFolioFromEdge(previewScale)}
+              marginBottom={marginBottom}
+              marginLeft={marginLeft}
+              contentWidth={pageWidthPx - marginLeft - marginRight}
+              pageKey={currentPageData?.pageNumber}
+            />
+          )}
           {pageNumHtml}
         </div>
       </div>

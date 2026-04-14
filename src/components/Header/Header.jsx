@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { UserMenu } from '../Auth/UserMenu';
+import useEditorStore from '../../store/useEditorStore';
 import './Header.css';
 
 function Header({ 
@@ -19,6 +20,7 @@ function Header({
 }) {
   const navigate = useNavigate();
   const { user, isAdmin, logOut } = useAuth();
+  const { isActive: paginationActive, percent: paginationPercent } = useEditorStore((s) => s.paginationProgress);
 
   const formatTime = (date) => {
     return new Date(date).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
@@ -184,6 +186,11 @@ function Header({
               Iniciar sesión
             </button>
           )}
+        </div>
+      </div>
+      <div className={`header-progress-track${paginationActive ? ' active' : ''}`} aria-hidden="true">
+        <div className="header-progress-beam" style={{ width: `${paginationPercent}%` }}>
+          <span className="header-progress-sparks" />
         </div>
       </div>
     </header>

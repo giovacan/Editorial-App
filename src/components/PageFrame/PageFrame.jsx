@@ -10,10 +10,11 @@
  * so Preview and PDF always show the same header content.
  */
 
-import { useMemo } from 'react';
+// useMemo removed — no longer needed after KP rendering moved to engine
 import { buildHeaderHtmlPure } from '../../hooks/useHeaderFooter';
-import { applyKpRendering } from '../../utils/textLayoutEngine';
-import { JUSTIFY_SLACK_RATIO } from '../../utils/paginateChapters';
+import { computeFolioStyle, computeShowFolio, computeFolioFromEdge } from '../../hooks/usePageRenderLayout';
+import { getScaledSize } from '../../utils/transformes';
+// applyKpRendering removed — KP word-spacing now applied by the engine
 import './PageFrame.css';
 
 /**
@@ -44,72 +45,62 @@ export default function PageFrame({
     textAlign = 'justify',
     effectiveContentHeight,
     baseFontSize,
+    previewScale = 0.42,
   } = dims;
 
   const rawHtml   = page?.html || '';
   const pageNum   = page?.pageNumber;
   const isBlank   = page?.isBlank;
   const isFrontMatterPage = !!(page?.isTOCPage || page?.isTitlePage || page?.isFrontMatter);
+  const isTitleOnlyPage   = page?.isTitleOnlyPage === true;
+  const isEvenPage        = (pageNum || 1) % 2 === 0;
   const showNums  = config?.showPageNumbers !== false;
   const showFolio = tocConfig?.showFolio !== false;
 
-  // FM pages: show displayPageNumber if non-empty and showFolio is on
   const hasFmNumber = isFrontMatterPage && !!page?.displayPageNumber && showFolio;
-  // Content pages: show pageNumber normally
-  const showPageNum = showNums && !isBlank && (
-    hasFmNumber ||
-    (!isFrontMatterPage && !!pageNum) ||
-    (page?.isExtraEndPage && page?.shouldShowPageNumber)
-  );
-
-  // Display value: roman numeral for FM, arabic for content
+  const showPageNum = computeShowFolio({
+    showNums, isBlank: !!isBlank, isTitleOnlyPage, isFrontMatterPage, hasFmNumber,
+    isExtraEndPage: !!page?.isExtraEndPage, shouldShowPageNumber: !!page?.shouldShowPageNumber,
+  });
   const displayNum = page?.displayPageNumber ?? pageNum;
 
-  // ── KP Rendering ─────────────────────────────────────────────────────────────
-  // Apply Knuth-Plass optimal line breaks + word-spacing as a rendering-only
-  // transform. The pages[] data (rawHtml) stays clean for pagination measurement.
+  // KP word-spacing is now applied by the engine — no render-time modification.
   const contentWidth = pageWidthPx - marginLeft - marginRight;
-  const html = useMemo(() => {
-    if (!rawHtml || isBlank || textAlign !== 'justify') return rawHtml;
-    return applyKpRendering(rawHtml, {
-      baseFontSizePx: fontSize,
-      fontFamily,
-      contentWidth,
-      widthSlack: contentWidth * JUSTIFY_SLACK_RATIO,
-    });
-  }, [rawHtml, isBlank, textAlign, fontSize, fontFamily, contentWidth]);
+  const html = rawHtml;
 
   // ── Header ──────────────────────────────────────────────────────────────────
-  const headerConfig = config?.header || {};
-  const headerHtml   = buildHeaderHtmlPure(page, config, bookTitle, baseFontSize);
-  const showHeader   = !!headerHtml;
+  const headerHtml = buildHeaderHtmlPure(page, config, bookTitle, baseFontSize);
+  // isFirstChapterPage flag may be lost after post-processing — fall back to
+  // checking if the page HTML contains a chapter title element (data-chapter-start).
+  const pageHasChapterTitle = !!(rawHtml && rawHtml.includes('data-chapter-start="true"'));
+  const isChapterStartPage  = page?.isFirstChapterPage === true || pageHasChapterTitle;
+  const showHeader = config?.showHeaders !== false && (config?.header?.enabled !== false) && !!headerHtml
+    && !!page
+    && !isFrontMatterPage
+    && !(config?.header?.skipFirstChapterPage !== false && isChapterStartPage);
 
   // ── Page number position ────────────────────────────────────────────────────
-  const isEvenPage       = (pageNum || 1) % 2 === 0;
-  const pageNumberPos    = config?.pageNumberPos    || 'bottom';
-  const pageNumberAlign  = config?.pageNumberAlign  || 'center';
-  const pageNumMarginPx  = config?.pageNumberMargin ?? 12;
-
-  let pageNumHorizontalStyle = {};
-  switch (pageNumberAlign) {
-    case 'paragraph-edge':
-      pageNumHorizontalStyle = isEvenPage ? { left: `${marginLeft}px` } : { right: `${marginRight}px` };
-      break;
-    case 'paragraph':
-      pageNumHorizontalStyle = isEvenPage ? { left: `${marginLeft + 12}px` } : { right: `${marginRight + 12}px` };
-      break;
-    case 'outer':
-      pageNumHorizontalStyle = isEvenPage ? { left: '12px' } : { right: '12px' };
-      break;
-    default:
-      pageNumHorizontalStyle = { left: '50%', transform: 'translateX(-50%)' };
-  }
+  // Fixed 15mm from physical page bottom — same formula as getPageLayout()
+  const folioFromEdge  = computeFolioFromEdge(previewScale);
+  const contentBoxHeight = effectiveContentHeight;
+  const folioPos   = config?.pageNumberPos   || 'bottom';
+  const folioAlign = config?.pageNumberAlign || 'center';
+  const folioOnOuter = folioAlign === 'outer' || folioAlign === 'paragraph-edge' || folioAlign === 'paragraph';
+  // outer-aligned folio at top: number is embedded inline in header row → suppress separate span
+  const folioEmbeddedInHeader = folioPos === 'top' && folioOnOuter && showHeader;
+  // center-aligned folio at top: number stays absolute, push header down to clear it
+  const headerTopOffset = (folioPos === 'top' && !folioOnOuter && showHeader) ? folioFromEdge + fontSize * 0.3 : 0;
 
   const pageNumStyle = {
-    position: 'absolute',
-    ...(pageNumberPos === 'top' ? { top: `${pageNumMarginPx}px` } : { bottom: `${pageNumMarginPx}px` }),
-    ...pageNumHorizontalStyle,
-    fontSize: `${fontSize * 0.8}px`,
+    ...computeFolioStyle({
+      pos:            folioPos,
+      align:          config?.pageNumberAlign  || 'center',
+      marginFromEdge: folioFromEdge,
+      isEvenPage,
+      marginLeft,
+      marginRight,
+      fontSize,
+    }),
     color: '#333',
   };
 
@@ -123,7 +114,7 @@ export default function PageFrame({
     lineHeight:    `${lineHeightPx}px`,
     textAlign,
     textJustify:   'inter-word',
-    hyphens:       'auto',
+    hyphens:       'none',
     wordBreak:     'break-word',
     overflowWrap:  'break-word',
     backgroundColor: '#fff',
@@ -157,7 +148,7 @@ export default function PageFrame({
       {showHeader && !isBlank && (
         <div
           className="pf-header"
-          style={{ marginBottom: '0.5em' }}
+          style={{ marginTop: headerTopOffset ? `${headerTopOffset}px` : undefined, marginBottom: '0.5em' }}
           dangerouslySetInnerHTML={{ __html: headerHtml }}
         />
       )}
@@ -165,12 +156,12 @@ export default function PageFrame({
       {/* Content */}
       <div
         className="pf-content preview-content"
-        style={{ height: `${effectiveContentHeight}px`, overflow: 'hidden' }}
+        style={{ height: `${contentBoxHeight}px`, overflow: 'hidden' }}
         dangerouslySetInnerHTML={{ __html: html }}
       />
 
-      {/* Page number */}
-      {showPageNum && (
+      {/* Page number — suppressed when embedded in header row (folio-at-top) */}
+      {showPageNum && !folioEmbeddedInHeader && (
         <span className="pf-page-number" style={pageNumStyle}>
           {displayNum}
         </span>
@@ -180,12 +171,13 @@ export default function PageFrame({
 
   // When scaled, wrap in a slot div that holds the visual footprint
   if (cssScale !== 1) {
+    const slotSize = getScaledSize(pageWidthPx, pageHeightPx, cssScale);
     return (
       <div
         className="pf-slot"
         style={{
-          width:    pageWidthPx * cssScale,
-          height:   pageHeightPx * cssScale,
+          width:    slotSize.width,
+          height:   slotSize.height,
           position: 'relative',
           flexShrink: 0,
         }}

@@ -12,25 +12,52 @@ const TemplatePreviewLarge = memo(function TemplatePreviewLarge({
   // Simulate content for preview - shows content based on position
   const getPreviewContent = (content) => {
     switch (content) {
-      case 'title': return 'Mi Libro';
-      case 'chapter': return 'Capítulo 3';
+      case 'title':     return 'Mi Libro';
+      case 'chapter':   return 'Capítulo 3';
       case 'subheader': return 'Sección 2.1';
-      case 'page': return '42';
-      default: return '';
+      case 'page':      return '42';
+      default:          return '';
     }
   };
 
+  const CONTENT_LABELS = {
+    title: 'Título', chapter: 'Capítulo', subheader: 'Subtema', page: 'Pág', none: '—',
+  };
+
   const renderPreviewPage = (pageConfig, side) => {
-    const leftContent = getPreviewContent(pageConfig.leftContent);
-    const centerContent = getPreviewContent(pageConfig.centerContent);
-    const rightContent = getPreviewContent(pageConfig.rightContent);
-    
+    const isEven = side === 'even';
+    const badge  = isEven ? 'PAR' : 'IMPAR';
+    const folioAtTop  = template.pageNumberPos === 'top';
+    const folioAlign  = template.pageNumberAlign || 'center';
+    const folioOnOuter = folioAlign === 'outer' || folioAlign === 'paragraph-edge' || folioAlign === 'paragraph';
+
+    // For folio-at-top templates: inject '42' into the correct slot for the preview
+    let leftContent   = getPreviewContent(pageConfig.leftContent);
+    let centerContent = getPreviewContent(pageConfig.centerContent);
+    let rightContent  = getPreviewContent(pageConfig.rightContent);
+
+    if (folioAtTop && folioOnOuter) {
+      // outer = left on even, right on odd
+      if (isEven) leftContent  = leftContent  ? `42 | ${leftContent}`  : '42';
+      else        rightContent = rightContent ? `${rightContent} | 42` : '42';
+    } else if (folioAtTop) {
+      // center alignment: show number above text line in preview
+      centerContent = centerContent ? `42 | ${centerContent}` : '42';
+    }
+
     return (
       <div className={`preview-page-large preview-${side}`}>
+        <div className="preview-page-badge">{badge}</div>
         <div className="preview-header-large">
-          <span className="preview-header-left">{leftContent}</span>
-          <span className="preview-header-center">{centerContent}</span>
-          <span className="preview-header-right">{rightContent}</span>
+          <span className="preview-header-left" title={CONTENT_LABELS[pageConfig.leftContent]}>
+            {leftContent}
+          </span>
+          <span className="preview-header-center" title={CONTENT_LABELS[pageConfig.centerContent]}>
+            {centerContent}
+          </span>
+          <span className="preview-header-right" title={CONTENT_LABELS[pageConfig.rightContent]}>
+            {rightContent}
+          </span>
         </div>
         {template.showLine && (
           <div className={`preview-line-large preview-line-${template.lineStyle}`} />
@@ -71,10 +98,11 @@ const TemplatePreviewLarge = memo(function TemplatePreviewLarge({
 /**
  * Subtopic configuration panel
  */
-const SubtopicConfigPanel = memo(function SubtopicConfigPanel({ 
-  config, 
-  onChange 
+const SubtopicConfigPanel = memo(function SubtopicConfigPanel({
+  config,
+  onChange
 }) {
+  if (!config) return null;
   const handleSubtopicBehaviorChange = (behavior) => {
     onChange({ ...config, subtopicBehavior: behavior });
   };
@@ -232,8 +260,8 @@ function HeaderTemplateModal({
   if (!isOpen) return null;
 
   const currentTemplate = templates.find(t => t.id === selectedId);
-  const hasSubtopicFeatures = currentTemplate?.trackSubheaders || 
-                             currentTemplate?.subtopicBehavior !== 'none';
+  const hasSubtopicFeatures = !!(currentTemplate?.trackSubheaders ||
+    (currentTemplate?.subtopicBehavior && currentTemplate.subtopicBehavior !== 'none'));
 
   return (
     <div className="header-template-modal-overlay" onClick={onClose}>
@@ -305,8 +333,8 @@ function HeaderTemplateSelector({
   const [isModalOpen, setIsModalOpen] = useState(false);
   
   const currentTemplate = templates.find(t => t.id === value) || templates[0];
-  const hasSubtopicFeatures = currentTemplate?.trackSubheaders || 
-                             currentTemplate?.subtopicBehavior !== 'none';
+  const hasSubtopicFeatures = !!(currentTemplate?.trackSubheaders ||
+    (currentTemplate?.subtopicBehavior && currentTemplate.subtopicBehavior !== 'none'));
 
   const handleOpenModal = () => setIsModalOpen(true);
   const handleCloseModal = () => setIsModalOpen(false);
@@ -315,7 +343,7 @@ function HeaderTemplateSelector({
     onChange(templateId);
     // Apply template defaults to header config
     const template = templates.find(t => t.id === templateId);
-    if (template) {
+    if (template && typeof onHeaderConfigChange === 'function') {
       onHeaderConfigChange({
         ...headerConfig,
         subtopicBehavior: template.subtopicBehavior || 'none',

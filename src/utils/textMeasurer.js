@@ -30,10 +30,11 @@ export const calculateDynamicMargins = (marginTop, marginBottom, estimatedPageCo
       bottom: marginBottom * 0.85
     };
   }
-  // Slight reduction for thin books (< 300 pages) to allow more text
-  return { 
-    top: marginTop, 
-    bottom: marginBottom * 0.75 
+  // Thin books (< 300 pages): reduce bottom margin slightly to tighten
+  // the gap between last text line and page number (~1 line gap target)
+  return {
+    top: marginTop,
+    bottom: marginBottom * 0.88,
   };
 };
 

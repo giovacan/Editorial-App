@@ -151,11 +151,21 @@ export const useHeaderFooter = (config, currentPageData, totalPages, bookTitle) 
  * @param {number} baseFontSize - scaledFontPt = config.fontSize * previewScale
  * @returns {string} HTML string, or '' if header should not be shown
  */
-export const buildHeaderHtmlPure = (page, config, bookTitle, baseFontSize) => {
+/**
+ * Pure: returns resolved text for each header cell on this page.
+ * Extracts the content-resolution logic so PDF renderer and other consumers
+ * can access it directly without building HTML.
+ *
+ * @param {object} page      - {pageNumber, chapterTitle, currentSubheader, isBlank, isFirstChapterPage}
+ * @param {object} config    - safeConfig
+ * @param {string} bookTitle
+ * @returns {{ left: string, center: string, right: string, show: boolean }}
+ */
+export function resolveHeaderContent(page, config, bookTitle) {
   const headerConfig = config?.header || {};
   const showHeaders  = config?.showHeaders !== false && headerConfig.enabled !== false;
-  if (!showHeaders || page?.isBlank) return '';
-  if (headerConfig.skipFirstChapterPage && page?.isFirstChapterPage) return '';
+  if (!showHeaders || page?.isBlank) return { left: '', center: '', right: '', show: false };
+  if (headerConfig.skipFirstChapterPage && page?.isFirstChapterPage) return { left: '', center: '', right: '', show: false };
 
   const pageNumber   = page?.pageNumber || 1;
   const isEvenPage   = pageNumber % 2 === 0;
@@ -220,47 +230,98 @@ export const buildHeaderHtmlPure = (page, config, bookTitle, baseFontSize) => {
       break;
   }
 
-  if (!shouldShowHeader) return '';
+  if (!shouldShowHeader) return { left: '', center: '', right: '', show: false };
 
-  let headerLeft = '', headerCenter = '', headerRight = '';
+  let left = '', center = '', right = '';
 
   if (headerConfig.template) {
-    headerLeft   = getContent(pageConfig?.leftContent);
-    headerCenter = getContent(pageConfig?.centerContent);
-    headerRight  = getContent(pageConfig?.rightContent);
+    left   = getContent(pageConfig?.leftContent);
+    center = getContent(pageConfig?.centerContent);
+    right  = getContent(pageConfig?.rightContent);
   } else {
     // Legacy mode (no template)
-    headerCenter = isEvenPage ? (bookTitle || '') : '';
-    headerRight  = !isEvenPage ? (chapterTitle || '') : '';
+    center = isEvenPage ? (bookTitle || '') : '';
+    right  = !isEvenPage ? (chapterTitle || '') : '';
   }
 
-  if (!headerLeft && !headerCenter && !headerRight) return '';
+  return { left, center, right, show: !!(left || center || right) };
+}
 
-  return buildHeaderHtml(headerLeft, headerCenter, headerRight, headerConfig, baseFontSize);
+export const buildHeaderHtmlPure = (page, config, bookTitle, baseFontSize) => {
+  const { left, center, right, show } = resolveHeaderContent(page, config, bookTitle);
+  if (!show) return '';
+  const pageNumber  = page?.pageNumber || 1;
+  const isEvenPage  = pageNumber % 2 === 0;
+  const folioPos    = config?.pageNumberPos   || 'bottom';
+  const folioAlign  = config?.pageNumberAlign || 'center';
+  // When the folio is at the top on the outer edge, embed the number directly
+  // in the header flex row (avoids absolute-position overlap).
+  // For center alignment, the folio stays absolute and the header stacks below it.
+  const folioOnOuter = folioAlign === 'outer' || folioAlign === 'paragraph-edge' || folioAlign === 'paragraph';
+  const displayNum  = (folioPos === 'top' && folioOnOuter) ? (page?.displayPageNumber ?? pageNumber) : null;
+  return buildHeaderHtml(left, center, right, config?.header || {}, baseFontSize, {
+    folioPos,
+    folioAlign,
+    isEvenPage,
+    displayNum,
+  });
 };
 
-export const buildHeaderHtml = (headerLeft, headerCenter, headerRight, headerConfig, baseFontSize) => {
+/**
+ * @param {string} headerLeft
+ * @param {string} headerCenter
+ * @param {string} headerRight
+ * @param {object} headerConfig
+ * @param {number} baseFontSize
+ * @param {object} [folioCtx]  - { folioPos, folioAlign, isEvenPage, displayNum }
+ *   When folioPos==='top', displayNum is injected directly into the flex row so
+ *   the folio and header text share the same line without absolute-position overlap.
+ *   The folio always gets visual priority: it sits on its edge, the text fills
+ *   remaining space with a thin separator between them.
+ *   Callers (PageFrame) must suppress the separate absolute folio span when
+ *   folioPos==='top' and a header is showing.
+ */
+export const buildHeaderHtml = (headerLeft, headerCenter, headerRight, headerConfig, baseFontSize, folioCtx = {}) => {
   if (!headerLeft && !headerCenter && !headerRight) return '';
-  
+
   const fontSizePercent = headerConfig.fontSize || 70;
-  const fontSize = baseFontSize * (fontSizePercent / 100);
+  const fontSize  = baseFontSize * (fontSizePercent / 100);
   const fontFamily = headerConfig.fontFamily === 'same' ? 'inherit' : (headerConfig.fontFamily || 'inherit');
-  
-  const headerStyle = `
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: ${fontSize}pt;
-    font-family: ${fontFamily};
-    padding-bottom: 0.5em;
-    border-bottom: ${headerConfig.showLine ? `1px ${headerConfig.lineStyle || 'solid'} ${headerConfig.lineColor || 'black'}` : 'none'};
-  `;
-  
-  return `
-    <div style="${headerStyle}">
-      <span style="flex: 1; text-align: left;">${headerLeft}</span>
-      <span style="flex: 1; text-align: center;">${headerCenter}</span>
-      <span style="flex: 1; text-align: right;">${headerRight}</span>
-    </div>
-  `;
+
+  const { folioPos = 'bottom', folioAlign = 'center', isEvenPage = false, displayNum = null } = folioCtx;
+  const folioAtTop = folioPos === 'top' && displayNum !== null;
+
+  const headerStyle = `display:flex;justify-content:space-between;align-items:center;font-size:${fontSize}pt;font-family:${fontFamily};padding-bottom:0.5em;border-bottom:${headerConfig.showLine ? `1px ${headerConfig.lineStyle || 'solid'} ${headerConfig.lineColor || 'black'}` : 'none'};`;
+
+  const spanBase = 'overflow:hidden;white-space:nowrap;text-overflow:ellipsis;';
+
+  if (!folioAtTop) {
+    // ── Normal case: no folio in header row ───────────────────────────────
+    const leftFlex   = headerLeft   ? '1' : '0';
+    const centerFlex = headerCenter ? '1' : '0';
+    const rightFlex  = headerRight  ? '1' : '0';
+    return `<div style="${headerStyle}"><span style="flex:${leftFlex};text-align:left;${spanBase}">${headerLeft}</span><span style="flex:${centerFlex};text-align:center;${spanBase}">${headerCenter}</span><span style="flex:${rightFlex};text-align:right;${spanBase}">${headerRight}</span></div>`;
+  }
+
+  // ── Folio-at-top: embed page number in the flex row ───────────────────────
+  // 'outer'/'paragraph-edge'/'paragraph' → left edge on even, right edge on odd.
+  // 'center' and everything else → folio on right (most common book convention).
+  const folioEdge = (folioAlign === 'outer' || folioAlign === 'paragraph-edge' || folioAlign === 'paragraph')
+    ? (isEvenPage ? 'left' : 'right')
+    : 'right';
+
+  const sepColor = headerConfig.lineColor || '#999';
+  const sep = `<span style="flex:0 0 auto;padding:0 0.3em;color:${sepColor};">|</span>`;
+
+  const folioSpan  = `<span style="flex:0 0 auto;white-space:nowrap;">${displayNum}</span>`;
+  // Collect the non-empty text content (prefer left, then right, then center)
+  const textContent = headerLeft || headerRight || headerCenter || '';
+
+  if (folioEdge === 'left') {
+    // [number | text→right-aligned]
+    return `<div style="${headerStyle}">${folioSpan}${sep}<span style="flex:1;text-align:right;${spanBase}">${textContent}</span></div>`;
+  }
+
+  // folioEdge === 'right': [text→left-aligned | number]
+  return `<div style="${headerStyle}"><span style="flex:1;text-align:left;${spanBase}">${textContent}</span>${sep}${folioSpan}</div>`;
 };

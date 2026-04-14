@@ -1,26 +1,21 @@
-import { measureHtmlHeight, insertHtmlLineBreaks, getLineBreakPositions, buildFontString } from './textLayoutEngine';
-import { JUSTIFY_SLACK_RATIO } from './paginateChapters';
+import { measureHtmlHeight, insertHtmlLineBreaks } from './textLayoutEngine';
+import {
+  extractInlineStyle,
+  getInnerHtml as getIrInnerHtml,
+  getFirstBlock,
+  htmlToText,
+  truncateHtmlByCharsPreservingTags as irTruncateHtmlByCharsPreservingTags,
+  splitHtmlByCharsPreservingTags as irSplitHtmlByCharsPreservingTags
+} from './layoutIr.js';
 
-export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, hasIndent = false, indentValue = 1.5, preserveFirstIndent = false, quoteConfig = null) => {
+export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, textAlign, hasIndent = false, indentValue = 1.5, preserveFirstIndent = false, canvasCtx = null) => {
 
-  // Build Canvas layout context from quoteConfig (passed from paginateChapters)
-  const effectiveBaseFontSize = quoteConfig?.baseFontSize || 12;
-  const effectiveBaseLineHeight = quoteConfig?.baseLineHeight || 1.6;
-  const effectiveTextAlign = quoteConfig?.textAlign || textAlign;
+  // canvasCtx is the canonical layout context built once in paginateChapters.
+  // All layout geometry comes from here — no fallback to measureDiv.style.
   const PX_PER_PT = 96 / 72;
-  const baseFontSizePx = effectiveBaseFontSize * PX_PER_PT;
-
-  // Build canvasCtx for deterministic measurement
-  const effectiveContentWidth = measureDiv ? parseFloat(measureDiv.style?.width) || 400 : 400;
-  const justifySlack = effectiveTextAlign === 'justify' ? effectiveContentWidth * JUSTIFY_SLACK_RATIO : 0;
-  const canvasCtx = {
-    baseFontSizePx,
-    baseLineHeight: effectiveBaseLineHeight,
-    contentWidth: effectiveContentWidth,
-    fontFamily: measureDiv ? (measureDiv.style?.fontFamily || 'Georgia, serif') : 'Georgia, serif',
-    widthSlack: justifySlack,
-    lineHeightPx: quoteConfig?.lineHeightPx || Math.ceil(baseFontSizePx * effectiveBaseLineHeight)
-  };
+  const effectiveTextAlign = canvasCtx?.textAlign || textAlign;
+  const effectiveBaseLineHeight = canvasCtx?.baseLineHeight || 1.6;
+  const effectiveBaseFontSizePt = canvasCtx ? canvasCtx.baseFontSizePx / PX_PER_PT : 12;
 
   // Deterministic measure function (Canvas, no DOM layout)
   const measure = (htmlStr) => measureHtmlHeight(htmlStr, canvasCtx);
@@ -29,28 +24,19 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
   let remainingHtml = html;
   let isFirstChunk = true;
 
-  const isBlockquote = html.toLowerCase().includes('<blockquote');
-  const quoteMatch = html.match(/class="quote\s+(\w+)"/);
-  const quoteTemplate = quoteMatch ? quoteMatch[1] : 'classic';
-
-  const extractInlineStyles = (htmlString) => {
-    const tmp = document.createElement('div');
-    tmp.innerHTML = htmlString;
-    const el = tmp.firstElementChild;
-    if (el && el.style && el.style.cssText) {
-      return el.style.cssText;
-    }
-    return null;
-  };
-
-  const originalStyles = extractInlineStyles(html);
+  const sourceBlock = getFirstBlock(html);
+  const isBlockquote = sourceBlock?.tag === 'BLOCKQUOTE';
+  const quoteTemplate = sourceBlock?.classList?.find((cls) =>
+    ['classic', 'bar', 'italic', 'indent', 'minimal'].includes(cls)
+  ) || 'classic';
+  const originalStyles = extractInlineStyle(html);
 
   const defaultQuoteConfig = {
     enabled: true, indentLeft: 2, indentRight: 2, showLine: true,
     italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1
   };
 
-  const effectiveQuoteConfig = quoteConfig?.config || defaultQuoteConfig;
+  const effectiveQuoteConfig = canvasCtx?.quoteConfig || defaultQuoteConfig;
 
   const computeIndent = (isFirst) =>
     isFirst
@@ -60,13 +46,13 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
   const getChunkStyle = (isFirst) => {
     const indent = computeIndent(isFirst);
     if (originalStyles) {
-      const cleanStyles = originalStyles.replace(/text-indent:[^;]+;?/gi, '');
+      const cleanStyles = originalStyles.replace(/text-indent:[^;]+;?/gi, '').replace(/;?\s*$/, ';');
       return `${cleanStyles}text-indent:${indent};`.replace(/;;/g, ';');
     }
     if (isBlockquote) {
-      return getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSize, effectiveBaseLineHeight, effectiveTextAlign);
+      return getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSizePt, effectiveBaseLineHeight, effectiveTextAlign);
     }
-    return `margin:0;padding:0;text-align:${textAlign};text-indent:${indent};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`;
+    return `margin:0;padding:0;text-align:${effectiveTextAlign};text-indent:${indent};text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;`;
   };
 
   const getDefaultStyle = () => getChunkStyle(isFirstChunk);
@@ -82,9 +68,8 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
       break;
     }
 
-    const tmp = document.createElement('div');
-    tmp.innerHTML = remainingHtml;
-    const text = tmp.textContent || '';
+    // Worker-safe: strip HTML tags to get plain text
+    const text = htmlToText(remainingHtml);
 
     if (!text.trim()) {
       lines.push(remainingHtml);
@@ -95,32 +80,11 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
     let high = text.length;
     let fitLength = 0;
 
-    // Helper: Clone element and truncate textContent to maxChars, preserving HTML structure
-    const truncateHtmlClone = (htmlElement, maxChars) => {
-      const clone = htmlElement.cloneNode(true);
-      let remaining = maxChars;
-      const walker = document.createTreeWalker(clone, NodeFilter.SHOW_TEXT);
-      const toRemove = [];
-      let node;
-      while ((node = walker.nextNode())) {
-        if (remaining <= 0) {
-          toRemove.push(node);
-        } else if (node.length > remaining) {
-          node.textContent = node.textContent.substring(0, remaining);
-          remaining = 0;
-        } else {
-          remaining -= node.length;
-        }
-      }
-      toRemove.forEach(n => n.parentNode && n.parentNode.removeChild(n));
-      return clone.innerHTML;
-    };
-
-    const tmpInner = tmp.firstElementChild || tmp;
+    const innerHtmlStr = getIrInnerHtml(remainingHtml);
 
     while (low < high) {
       const mid = Math.floor((low + high + 1) / 2);
-      const trialHtml = truncateHtmlClone(tmpInner, mid);
+      const trialHtml = irTruncateHtmlByCharsPreservingTags(innerHtmlStr, mid);
       const wrapper = isBlockquote
         ? `<blockquote style="${testStyle}">${trialHtml}</blockquote>`
         : `<p style="${testStyle}">${trialHtml}</p>`;
@@ -135,7 +99,7 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
         high = mid - 1;
       }
     }
-    
+
     if (fitLength === 0) {
       lines.push(remainingHtml);
       break;
@@ -146,61 +110,19 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
 
     const indent = computeIndent(isFirstChunk);
 
-    // ============ FIX 1: DOM-aware split that preserves inline HTML ============
-    // Instead of using text.substring() which loses HTML, walk the DOM to split at exact character
-    const splitDiv = window.document.createElement('div');
-    splitDiv.innerHTML = remainingHtml;
-    const innerEl = splitDiv.firstElementChild || splitDiv;
-
+    // ============ Worker-safe split that preserves inline HTML ============
+    // Split innerHtmlStr at breakPoint (text chars), preserving all HTML tags
     let chunkHtml;
     let newRemainingHtml = '';
 
-    try {
-      const walker = window.document.createTreeWalker(innerEl, NodeFilter.SHOW_TEXT);
-      let accumulated = 0;
-      let cutNode = null;
-      let cutOffset = 0;
-      let node;
-
-      // Find the text node that contains our breakPoint
-      while ((node = walker.nextNode())) {
-        if (accumulated + node.length >= breakPoint) {
-          cutNode = node;
-          cutOffset = breakPoint - accumulated;
-          break;
-        }
-        accumulated += node.length;
-      }
-
-      if (cutNode) {
-        // Split the text node at the exact character offset
-        const afterNode = cutNode.splitText(cutOffset);
-
-        // FIRST: extract the continuation from the DOM (this modifies innerEl)
-        if (afterNode && afterNode.parentNode) {
-          const range = window.document.createRange();
-          range.setStartBefore(afterNode);
-          range.setEnd(innerEl, innerEl.childNodes.length);
-          const frag = range.extractContents();
-
-          const contDiv = window.document.createElement('div');
-          contDiv.appendChild(frag);
-          newRemainingHtml = contDiv.innerHTML.trim();
-        }
-
-        // SECOND: capture the chunk (now innerEl only contains what fits)
-        chunkHtml = innerEl.innerHTML;
-      } else {
-        // If no cutNode found, use the entire HTML as chunk
-        chunkHtml = innerEl.innerHTML;
-        newRemainingHtml = '';
-      }
-    } catch (e) {
-      console.error('❌ DOM split error in splitParagraphByLines, falling back to text split:', e, 'remainingHtml:', remainingHtml.substring(0, 100));
-      // Fallback to text-based split if DOM manipulation fails
-      const chunkText = text.substring(0, breakPoint);
-      chunkHtml = chunkText;
-      newRemainingHtml = text.substring(breakPoint);
+    {
+      const previewChunk = irTruncateHtmlByCharsPreservingTags(innerHtmlStr, breakPoint);
+      const chunkText = htmlToText(previewChunk);
+      const lastSpaceInChunk = chunkText.lastIndexOf(' ');
+      const finalBreakInText = lastSpaceInChunk > breakPoint * 0.5 ? lastSpaceInChunk : breakPoint;
+      const splitResult = irSplitHtmlByCharsPreservingTags(innerHtmlStr, finalBreakInText, { trimLeadingSpace: true });
+      chunkHtml = splitResult.headHtml;
+      newRemainingHtml = splitResult.tailHtml.trim();
     }
 
     // Wrap chunk with the same style used in the binary search measurement (testStyle = getChunkStyle).
@@ -208,37 +130,22 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
     let finalStyle = originalStyles
       ? getChunkStyle(isFirstChunk)
       : (isBlockquote
-        ? getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSize, effectiveBaseLineHeight, effectiveTextAlign)
-        : `margin:0;padding:0;text-align:${textAlign};text-indent:${indent};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`);
+        ? getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSizePt, effectiveBaseLineHeight, effectiveTextAlign)
+        : `margin:0;padding:0;text-align:${effectiveTextAlign};text-indent:${indent};text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;`);
 
-    // When paragraph continues to next page: justify the last visible line ONLY if
-    // it has enough words to look good under justify. Sparse last lines (1–2 words)
-    // stretch to opposite extremes — keep them left-aligned in that case.
+    // When this chunk continues on the next page (split-head), apply text-align-last:justify
+    // so the last visible line is fully stretched. Canvas height is unaffected — it only
+    // counts line count based on width, not how the last line is rendered.
     if (newRemainingHtml) {
-      const plainChunk = chunkHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-      const fontStr = buildFontString(canvasCtx.baseFontSizePx, canvasCtx.fontFamily);
-      const effectiveLineWidth = canvasCtx.contentWidth - (canvasCtx.widthSlack || 0);
-      const lineStarts = getLineBreakPositions(plainChunk, effectiveLineWidth, fontStr);
-      const chunkWords = plainChunk.split(/\s+/).filter(w => w.length > 0);
-      const lastStart = lineStarts.length > 0 ? lineStarts[lineStarts.length - 1] : 0;
-      const lastLineText = chunkWords.slice(lastStart).join(' ');
-      // Use visual width ≥ 50% instead of word count ≥ 3 — word count is not reliable
-      // for Spanish: "y de la" (3 words) occupies only ~18% of line width.
-      // Always override explicitly (originalStyles from prior split may carry justify).
-      const tmpCanvas = document.createElement('canvas');
-      const tmpCtx = tmpCanvas.getContext('2d');
-      tmpCtx.font = fontStr;
-      const widthRatio = effectiveLineWidth > 0
-        ? tmpCtx.measureText(lastLineText).width / effectiveLineWidth
-        : 0;
-      const newAlignLast = widthRatio >= 0.5 ? 'justify' : 'left';
-      finalStyle = finalStyle.replace(/text-align-last:[^;]+;?/gi, '') + `text-align-last:${newAlignLast};`;
+      finalStyle = finalStyle
+        .replace(/text-align-last:[^;]+;?/gi, '')
+        .replace(/;?\s*$/, ';') + 'text-align-last:justify;';
     }
 
     if (isBlockquote) {
-      chunkHtml = `<blockquote class="quote ${quoteTemplate}" style="${finalStyle}">${chunkHtml}</blockquote>`;
+      chunkHtml = `<blockquote class="quote ${quoteTemplate}" style="${finalStyle}"${newRemainingHtml ? ' data-split-head="true"' : ''}>${chunkHtml}</blockquote>`;
     } else {
-      chunkHtml = `<p style="${finalStyle}">${chunkHtml}</p>`;
+      chunkHtml = `<p style="${finalStyle}"${newRemainingHtml ? ' data-split-head="true"' : ''}>${chunkHtml}</p>`;
     }
 
     lines.push(chunkHtml);
@@ -246,31 +153,135 @@ export const splitParagraphByLines = (html, measureDiv, maxHeight, textAlign, ha
     remainingHtml = newRemainingHtml;
 
     if (remainingHtml) {
-      // ============ FIX 2: Force text-indent: 0 for continuations ============ 
-      // Even if originalStyles exists, continuation should NOT have the first-line indent
+      // Detect whether the split happened mid-sentence or at a sentence boundary.
+      // Primary signal: if the rest chunk starts with a lowercase letter, it is
+      // unambiguously a continuation regardless of how the chunk ended.
+      // Secondary signal: if chunk ends without terminal punctuation (.!?»""…),
+      // also treat as mid-sentence.
+      // This covers cases where the chunk ends with a sentence that was itself cut
+      // (e.g. "No se trata" ends with 'a' — no punct — but also cases where the
+      // chunk ends with ." and the rest begins lowercase from the same sentence).
+      const chunkPlainText = htmlToText(chunkHtml).trim();
+      const restPlainText  = htmlToText(remainingHtml).trim();
+      const restFirstLetter = restPlainText.match(/\p{L}/u)?.[0] || '';
+      const restStartsLower = restFirstLetter && restFirstLetter === restFirstLetter.toLowerCase()
+        && restFirstLetter !== restFirstLetter.toUpperCase();
+      const isMidSentence = restStartsLower || !/[.!?»"\u201D\u2026]\s*$/.test(chunkPlainText);
+
       let continuationStyle;
-      if (originalStyles) {
-        // Remove any existing text-indent and force to 0
-        continuationStyle = originalStyles.replace(/text-indent:[^;]+;?/gi, '') + 'text-indent:0;';
-      } else if (isBlockquote) {
-        continuationStyle = getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSize, effectiveBaseLineHeight, effectiveTextAlign);
+      if (isMidSentence) {
+        // Mid-sentence continuation: no indent, last line is NOT stretched (it's a true
+        // paragraph ending — left-align the last line like any normal paragraph).
+        if (originalStyles) {
+          continuationStyle = originalStyles
+            .replace(/text-indent:[^;]+;?/gi, '')
+            .replace(/text-align-last:[^;]+;?/gi, '')
+            .replace(/;?\s*$/, ';') + 'text-indent:0;text-align-last:left;';
+        } else if (isBlockquote) {
+          continuationStyle = getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSizePt, effectiveBaseLineHeight, effectiveTextAlign);
+        } else {
+          continuationStyle = `margin:0;padding:0;text-align:${effectiveTextAlign};text-indent:0;text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;`;
+        }
       } else {
-        continuationStyle = `margin:0;padding:0;text-align:${textAlign};text-indent:0;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;`;
+        // Sentence-boundary split: rest is a new paragraph — indent it, last line left-aligned.
+        const indentVal = hasIndent ? indentValue + 'em' : '0';
+        if (originalStyles) {
+          continuationStyle = originalStyles
+            .replace(/text-indent:[^;]+;?/gi, '')
+            .replace(/text-align-last:[^;]+;?/gi, '')
+            .replace(/;?\s*$/, ';') + `text-indent:${indentVal};text-align-last:left;`;
+        } else if (isBlockquote) {
+          continuationStyle = getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSizePt, effectiveBaseLineHeight, effectiveTextAlign);
+        } else {
+          continuationStyle = `margin:0;padding:0;text-align:${effectiveTextAlign};text-indent:${indentVal};text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;`;
+        }
       }
 
       if (isBlockquote) {
-        remainingHtml = `<blockquote class="quote ${quoteTemplate}" style="${continuationStyle}" data-continuation="true">${remainingHtml}</blockquote>`;
+        remainingHtml = `<blockquote class="quote ${quoteTemplate}" style="${continuationStyle}"${isMidSentence ? ' data-continuation="true"' : ''}>${remainingHtml}</blockquote>`;
       } else {
-        remainingHtml = `<p style="${continuationStyle}" data-continuation="true">${remainingHtml}</p>`;
+        remainingHtml = `<p style="${continuationStyle}"${isMidSentence ? ' data-continuation="true"' : ''}>${remainingHtml}</p>`;
       }
     }
   }
-  
+
   return lines;
 };
 
+/**
+ * Split a UL/OL list at <li> boundaries when it doesn't fit in the available
+ * height. Returns [headHtml, tailHtml] or null if the list can't be split
+ * (e.g., 0 or 1 items, or first item alone doesn't fit).
+ *
+ * The head chunk keeps the list wrapper tag + style + as many <li> items as
+ * fit. The tail chunk wraps the remaining items in the same list tag + style.
+ *
+ * @param {string} html - Full list HTML (<ul ...>...<li>...</li>...</ul>)
+ * @param {number} maxHeight - Available height in px
+ * @param {object} canvasCtx - Canvas layout context for measureHtmlHeight
+ * @param {object} [opts] - { minOrphanItems: number (min items in head, default 1),
+ *                            minWidowItems: number (min items in tail, default 1) }
+ * @returns {[string, string] | null} [headHtml, tailHtml] or null
+ */
+export const splitListByItems = (html, maxHeight, canvasCtx, opts = {}) => {
+  const { minOrphanItems = 1, minWidowItems = 1 } = opts;
+
+  if (!html || !canvasCtx || maxHeight <= 0) return null;
+
+  // Extract the list tag (ul/ol), its attributes, and inner HTML
+  const openMatch = html.match(/^<(ul|ol)(\s[^>]*)?>(.+)<\/\1>$/is);
+  if (!openMatch) return null;
+
+  const listTag = openMatch[1];
+  const listAttrs = openMatch[2] || '';
+  const innerHtml = openMatch[3];
+
+  // Split inner HTML into individual <li>...</li> items
+  // This handles nested lists (li can contain ul/ol) by matching balanced tags
+  const items = [];
+  const liRegex = /<li\b[^>]*>[\s\S]*?<\/li>/gi;
+  let match;
+  while ((match = liRegex.exec(innerHtml)) !== null) {
+    items.push(match[0]);
+  }
+
+  if (items.length < minOrphanItems + minWidowItems) return null;
+
+  // Binary search for the maximum number of items that fit in maxHeight
+  const wrap = (itemSlice) => `<${listTag}${listAttrs}>${itemSlice.join('')}</${listTag}>`;
+  const measure = (itemSlice) => measureHtmlHeight(wrap(itemSlice), canvasCtx);
+
+  // Quick check: if even the minimum head doesn't fit, can't split
+  const minHead = items.slice(0, minOrphanItems);
+  if (measure(minHead) > maxHeight) return null;
+
+  // Find the maximum number of items that fit
+  let lo = minOrphanItems;
+  let hi = items.length - minWidowItems;
+  let bestSplit = minOrphanItems;
+
+  while (lo <= hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    const headItems = items.slice(0, mid);
+    if (measure(headItems) <= maxHeight) {
+      bestSplit = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+
+  if (bestSplit < minOrphanItems) return null;
+  if (items.length - bestSplit < minWidowItems) return null;
+
+  const headHtml = wrap(items.slice(0, bestSplit));
+  const tailHtml = wrap(items.slice(bestSplit));
+
+  return [headHtml, tailHtml];
+};
+
 export const getQuoteStyle = (qConfig, template, baseFontSize, baseLineHeight, textAlign) => {
-  const baseStyle = `font-style:${qConfig.italic ? 'italic' : 'normal'};font-size:${baseFontSize * qConfig.sizeMultiplier}pt;text-align:${textAlign};text-justify:inter-word;hyphens:auto;text-align-last:left;`;
+  const baseStyle = `font-style:${qConfig.italic ? 'italic' : 'normal'};font-size:${baseFontSize * qConfig.sizeMultiplier}pt;text-align:${textAlign};text-justify:inter-word;hyphens:none;text-align-last:left;`;
 
   switch (template) {
     case 'classic':
@@ -289,20 +300,24 @@ export const getQuoteStyle = (qConfig, template, baseFontSize, baseLineHeight, t
 };
 
 export const buildParagraphHtml = (el, config, baseFontSize, baseLineHeight, textAlign, isFirstParagraph = false) => {
-  const tag = el.tagName;
+  // Accept both real DOM elements and descriptor objects { tag, innerHTML, outerHtml, style, dataset }
+  const tag = (el.tagName || el.tag || '').toUpperCase();
+  const innerHtml = el.innerHTML != null ? el.innerHTML : '';
+  const outerHtmlStr = el.outerHTML || el.outerHtml || '';
   const indent = config.paragraph?.firstLineIndent || 1.5;
 
   if (tag === 'P' || tag === 'DIV') {
-    const parentBlockquote = el.closest('blockquote');
+    // Check if this P is a direct child of a blockquote (DOM path) or if outerHtml shows it
+    const parentBlockquote = typeof el.closest === 'function' ? el.closest('blockquote') : null;
     if (parentBlockquote && config.quote?.enabled) {
       const qConfig = config.quote;
       const template = parentBlockquote.classList.contains('quote')
         ? Array.from(parentBlockquote.classList).find(c => ['classic', 'bar', 'italic', 'indent', 'minimal'].includes(c)) || 'classic'
         : 'classic';
-      return `<p style="${getQuoteStyle(qConfig, template, baseFontSize, baseLineHeight, textAlign)}text-indent:${isFirstParagraph ? '0' : indent + 'em'};text-align-last:left;overflow-wrap:break-word;">${el.innerHTML}</p>`;
+      return `<p${isFirstParagraph ? ' data-first-paragraph="true"' : ''} style="${getQuoteStyle(qConfig, template, baseFontSize, baseLineHeight, textAlign)}text-indent:${isFirstParagraph ? '0' : indent + 'em'};text-align-last:left;overflow-wrap:break-word;">${innerHtml}</p>`;
     } else {
       const spacingBetween = config.paragraph?.spacingBetween || 0;
-      return `<p style="margin:${spacingBetween > 0 ? spacingBetween + 'em' : '0'} 0;padding:0;text-align:${textAlign};text-indent:${isFirstParagraph ? '0' : indent + 'em'};text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word">${el.innerHTML}</p>`;
+      return `<p${isFirstParagraph ? ' data-first-paragraph="true"' : ''} style="margin:${spacingBetween > 0 ? spacingBetween + 'em' : '0'} 0;padding:0;text-align:${textAlign};text-indent:${isFirstParagraph ? '0' : indent + 'em'};text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;">${innerHtml}</p>`;
     }
   } else if (tag.match(/^H[1-6]$/i)) {
     const level = tag.slice(1).toLowerCase();
@@ -311,19 +326,28 @@ export const buildParagraphHtml = (el, config, baseFontSize, baseLineHeight, tex
     const lineHeightPx = Math.ceil(baseFontSize * (96 / 72) * baseLineHeight);
     const subMarginTop = subConfig.marginTop * lineHeightPx;
     const subMarginBottom = subConfig.marginBottom * lineHeightPx;
-    return `<h${level} style="font-size:${subSize}pt;font-weight:${subConfig.bold ? 'bold' : 'normal'};margin:${subMarginTop}px 0 ${subMarginBottom}px 0;text-align:${subConfig.align};line-height:1.3;">${el.innerHTML}</h${level}>`;
+    return `<h${level} style="font-size:${subSize}pt;font-weight:${subConfig.bold ? 'bold' : 'normal'};margin:${subMarginTop}px 0 ${subMarginBottom}px 0;text-align:${subConfig.align};line-height:1.3;">${innerHtml}</h${level}>`;
   } else if (tag === 'BLOCKQUOTE' && config.quote?.enabled) {
     const qConfig = config.quote;
-    const template = Array.from(el.classList).find(c => ['classic', 'bar', 'italic', 'indent', 'minimal'].includes(c)) || 'classic';
-    return `<blockquote class="quote ${template}" style="${getQuoteStyle(qConfig, template, baseFontSize, baseLineHeight, textAlign)}">${el.innerHTML}</blockquote>`;
+    // Support both DOM classList and descriptor's outerHtml for class detection
+    let template = 'classic';
+    if (typeof el.classList !== 'undefined' && el.classList) {
+      template = Array.from(el.classList).find(c => ['classic', 'bar', 'italic', 'indent', 'minimal'].includes(c)) || 'classic';
+    } else {
+      const classMatch = outerHtmlStr.match(/class="([^"]*)"/);
+      if (classMatch) {
+        template = classMatch[1].split(/\s+/).find(c => ['classic', 'bar', 'italic', 'indent', 'minimal'].includes(c)) || 'classic';
+      }
+    }
+    return `<blockquote class="quote ${template}" style="${getQuoteStyle(qConfig, template, baseFontSize, baseLineHeight, textAlign)}">${innerHtml}</blockquote>`;
   } else if (tag === 'UL' || tag === 'OL') {
-    return `<${tag.toLowerCase()} style="margin:0.5em 0;padding-left:1.5em;text-align:${textAlign};text-justify:inter-word;hyphens:auto;text-align-last:left;">${el.innerHTML}</${tag.toLowerCase()}>`;
+    return `<${tag.toLowerCase()} style="margin:0.5em 0;padding-left:1.5em;text-align:${textAlign};text-justify:inter-word;hyphens:none;text-align-last:left;">${innerHtml}</${tag.toLowerCase()}>`;
   } else if (tag === 'HR') {
     return '<hr style="border:none;border-top:1px solid #999;margin:1em 0;">';
   } else if (tag === 'BR') {
     return '<br>';
   }
-  return `<p style="margin:0;padding:0;text-align:${textAlign};text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word">${el.innerHTML}</p>`;
+  return `<p style="margin:0;padding:0;text-align:${textAlign};text-indent:1.5em;text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;">${innerHtml}</p>`;
 };
 
 export const parseChapterTitleHierarchy = (title) => {
@@ -351,19 +375,19 @@ export const parseChapterTitleHierarchy = (title) => {
 };
 
 export const buildChapterTitleHtml = (chapter, config, baseFontSize, lineHeightPx, contentHeight) => {
-  
-  const ctConfig = config.chapterTitle || { 
-    align: 'center', 
-    bold: true, 
-    sizeMultiplier: 1.8, 
-    marginTop: 2, 
-    marginBottom: 1, 
-    layout: 'continuous', 
-    showLines: false, 
-    lineWidth: 0.5, 
-    lineStyle: 'solid', 
-    lineColor: '#333333', 
-    lineWidthTitle: false 
+
+  const ctConfig = config.chapterTitle || {
+    align: 'center',
+    bold: true,
+    sizeMultiplier: 1.8,
+    marginTop: 2,
+    marginBottom: 1,
+    layout: 'continuous',
+    showLines: false,
+    lineWidth: 0.5,
+    lineStyle: 'solid',
+    lineColor: '#333333',
+    lineWidthTitle: false
   };
 
   const titleSize = Math.round(baseFontSize * ctConfig.sizeMultiplier);
@@ -391,7 +415,7 @@ export const buildChapterTitleHtml = (chapter, config, baseFontSize, lineHeightP
 
   const layout = ctConfig.layout || 'continuous';
   let titleHtml;
-  
+
   const getHrStyle = (widthMult = 1) => {
     const w = ctConfig.lineWidth || 0.5;
     const thickness = ctConfig.lineStyle === 'double' ? Math.max(3, w * 2) : w;
@@ -403,16 +427,16 @@ export const buildChapterTitleHtml = (chapter, config, baseFontSize, lineHeightP
     }
     return `border:none;border-top:${thickness}px ${ctConfig.lineStyle || 'solid'} ${ctConfig.lineColor || '#333'};width:${hrWidth};margin:${hrMargin};`;
   };
-  
+
   switch (layout) {
     case 'spaced': {
       const spacedTop = Math.round(contentHeight * 0.25);
       if (ctConfig.showLines) {
         const hrTop = getHrStyle();
         const hrBottom = getHrStyle();
-        titleHtml = `<div style="margin:${spacedTop}px 0 ${titleMarginBottom}px 0;text-align:center;"><div style="${hrTop}"></div><div style="${titleBaseStyle}padding:${titleMarginBottom / 2}px 0;">${renderTitleInner()}</div><div style="${hrBottom}"></div></div>`;
+        titleHtml = `<div data-chapter-start="true" style="margin:${spacedTop}px 0 ${titleMarginBottom}px 0;text-align:center;"><div style="${hrTop}"></div><div style="${titleBaseStyle}padding:${titleMarginBottom / 2}px 0;">${renderTitleInner()}</div><div style="${hrBottom}"></div></div>`;
       } else {
-        titleHtml = `<div style="${titleBaseStyle}margin:${spacedTop}px 0 ${titleMarginBottom}px 0;">${renderTitleInner()}</div>`;
+        titleHtml = `<div data-chapter-start="true" style="${titleBaseStyle}margin:${spacedTop}px 0 ${titleMarginBottom}px 0;">${renderTitleInner()}</div>`;
       }
       break;
     }
@@ -421,9 +445,9 @@ export const buildChapterTitleHtml = (chapter, config, baseFontSize, lineHeightP
       if (ctConfig.showLines) {
         const hrTop = getHrStyle();
         const hrBottom = getHrStyle();
-        titleHtml = `<div style="margin:${Math.max(0, halfTop)}px 0 ${titleMarginBottom}px 0;text-align:center;"><div style="${hrTop}"></div><div style="${titleBaseStyle}padding:${titleMarginBottom / 2}px 0;">${renderTitleInner()}</div><div style="${hrBottom}"></div></div>`;
+        titleHtml = `<div data-chapter-start="true" style="margin:${Math.max(0, halfTop)}px 0 ${titleMarginBottom}px 0;text-align:center;"><div style="${hrTop}"></div><div style="${titleBaseStyle}padding:${titleMarginBottom / 2}px 0;">${renderTitleInner()}</div><div style="${hrBottom}"></div></div>`;
       } else {
-        titleHtml = `<div style="${titleBaseStyle}margin:${Math.max(0, halfTop)}px 0 ${titleMarginBottom}px 0;">${renderTitleInner()}</div>`;
+        titleHtml = `<div data-chapter-start="true" style="${titleBaseStyle}margin:${Math.max(0, halfTop)}px 0 ${titleMarginBottom}px 0;">${renderTitleInner()}</div>`;
       }
       break;
     }
@@ -431,188 +455,31 @@ export const buildChapterTitleHtml = (chapter, config, baseFontSize, lineHeightP
       if (ctConfig.showLines) {
         const hrTop = getHrStyle(ctConfig.lineStyle === 'double' ? 3 : 1);
         const hrBottom = getHrStyle(ctConfig.lineStyle === 'double' ? 3 : 1);
-        titleHtml = `<div style="${titleBaseStyle}display:flex;align-items:center;justify-content:center;min-height:${contentHeight}px;flex-direction:column;"><div style="${hrTop}"></div><div>${renderTitleInner()}</div><div style="${hrBottom}"></div></div>`;
+        titleHtml = `<div data-chapter-start="true" style="${titleBaseStyle}display:flex;align-items:center;justify-content:center;min-height:${contentHeight}px;flex-direction:column;"><div style="${hrTop}"></div><div>${renderTitleInner()}</div><div style="${hrBottom}"></div></div>`;
       } else {
-        titleHtml = `<div style="${titleBaseStyle}display:flex;align-items:center;justify-content:center;min-height:${contentHeight}px;flex-direction:column;"><div>${renderTitleInner()}</div></div>`;
+        titleHtml = `<div data-chapter-start="true" style="${titleBaseStyle}display:flex;align-items:center;justify-content:center;min-height:${contentHeight}px;flex-direction:column;"><div>${renderTitleInner()}</div></div>`;
       }
       break;
     }
     default: {
+      // 'continuous' layout: title flows at the top of the page with minimal
+      // top margin. The ctConfig.marginTop setting is editorial for spaced/halfPage;
+      // for continuous it would just create a large blank area before the title.
+      const continuousTop = Math.round(lineHeightPx * 0.5);
       if (ctConfig.showLines) {
         const hrTop = getHrStyle();
         const hrBottom = getHrStyle();
-        titleHtml = `<div style="margin:${titleMarginTop}px 0 ${titleMarginBottom}px 0;text-align:center;"><div style="${hrTop}"></div><div style="${titleBaseStyle}padding:${titleMarginBottom / 2}px 0;">${renderTitleInner()}</div><div style="${hrBottom}"></div></div>`;
+        titleHtml = `<div data-chapter-start="true" style="margin:${continuousTop}px 0 ${titleMarginBottom}px 0;text-align:center;"><div style="${hrTop}"></div><div style="${titleBaseStyle}padding:${titleMarginBottom / 2}px 0;">${renderTitleInner()}</div><div style="${hrBottom}"></div></div>`;
       } else {
-        titleHtml = `<div style="${titleBaseStyle}margin:${titleMarginTop}px 0 ${titleMarginBottom}px 0;">${renderTitleInner()}</div>`;
+        titleHtml = `<div data-chapter-start="true" style="${titleBaseStyle}margin:${continuousTop}px 0 ${titleMarginBottom}px 0;">${renderTitleInner()}</div>`;
       }
     }
   }
-  
+
   return { titleHtml, ctConfig };
 };
 
 export const shouldStartOnRightPage = (chapter, _chapterIndex, config) => {
   const isSection = chapter.type === 'section';
   return isSection ? false : (config.chapterTitle?.startOnRightPage !== false);
-};
-
-export const detectQuotes = (html) => {
-  if (process.env.NODE_ENV === 'development') {
-    console.log('🔍 detectQuotes called with:', {
-      htmlLength: html.length,
-      htmlPreview: html.substring(0, 100) + '...'
-    });
-  }
-
-  const detectedQuotes = [];
-  const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = html;
-
-  const patterns = {
-    guionLargo: /^[\s]*—/,
-    comillasItalianas: /^[\s]*[«『]/,
-    comillasInglesas: /^[\s]*[""]/,
-    comillasBajas: /^[\s]*[„]/,
-  };
-
-  const findQuotes = (element, parentIndex = 0) => {
-    if (element.nodeType === Node.TEXT_NODE) {
-      const text = element.textContent;
-      if (!text.trim()) return;
-
-      for (const [patternName, pattern] of Object.entries(patterns)) {
-        if (pattern.test(text)) {
-          const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
-          detectedQuotes.push({
-            text: text.trim(),
-            type: 'quote',
-            detectedBy: patternName,
-            wordCount,
-            startIndex: parentIndex,
-            confidence: 0.9
-          });
-          if (process.env.NODE_ENV === 'development') {
-            console.log('✅ Quote detected:', {
-              pattern: patternName,
-              text: text.trim().substring(0, 50) + '...',
-              wordCount,
-              startIndex: parentIndex
-            });
-          }
-          break;
-        }
-      }
-      return;
-    }
-    
-    if (element.nodeType === Node.ELEMENT_NODE) {
-      const tagName = element.tagName.toLowerCase();
-      
-      if (tagName === 'em' || tagName === 'i' || element.style.fontStyle === 'italic') {
-        const text = element.textContent || '';
-        const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
-        
-        if (wordCount > 15) {
-          detectedQuotes.push({
-            text: text.trim(),
-            type: 'quote',
-            detectedBy: 'long_italic',
-            wordCount,
-            startIndex: parentIndex,
-            confidence: 0.7
-          });
-        } else if (wordCount <= 5) {
-          detectedQuotes.push({
-            text: text.trim(),
-            type: 'emphasis',
-            detectedBy: 'short_italic',
-            wordCount,
-            startIndex: parentIndex,
-            confidence: 0.8
-          });
-        }
-      }
-      
-      if (tagName === 'blockquote') {
-        const text = element.textContent || '';
-        detectedQuotes.push({
-          text: text.trim(),
-          type: 'quote',
-          detectedBy: 'existing_blockquote',
-          wordCount: text.split(/\s+/).length,
-          startIndex: parentIndex,
-          confidence: 1.0,
-          isManual: true
-        });
-      }
-      
-      let childIndex = parentIndex;
-      for (const child of element.childNodes) {
-        findQuotes(child, childIndex);
-        childIndex++;
-      }
-    }
-  };
-  
-  findQuotes(tempDiv);
-  return detectedQuotes;
-};
-
-export const applyQuoteTemplate = (text, template = 'classic', config = {}) => {
-  if (process.env.NODE_ENV === 'development') {
-    console.log('🎭 applyQuoteTemplate called with:', {
-      textLength: text.length,
-      textPreview: text.substring(0, 50) + '...',
-      template,
-      config
-    });
-  }
-  
-  const templates = {
-    classic: {
-      open: '<blockquote class="quote classic">',
-      close: '</blockquote>'
-    },
-    bar: {
-      open: '<blockquote class="quote bar">',
-      close: '</blockquote>'
-    },
-    italic: {
-      open: '<blockquote class="quote italic">',
-      close: '</blockquote>'
-    },
-    indent: {
-      open: '<blockquote class="quote indent">',
-      close: '</blockquote>'
-    },
-    minimal: {
-      open: '<blockquote class="quote minimal">',
-      close: '</blockquote>'
-    }
-  };
-  
-  const tpl = templates[template] || templates.classic;
-  return tpl.open + text + tpl.close;
-};
-
-export const wrapInQuote = (html, template = 'classic') => {
-  const result = applyQuoteTemplate(html, template);
-  return result;
-};
-
-export const unwrapQuote = (html) => {
-  
-  const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = html;
-  
-  const blockquotes = tempDiv.querySelectorAll('blockquote.quote');
-  blockquotes.forEach(bq => {
-    const parent = bq.parentNode;
-    while (bq.firstChild) {
-      parent.insertBefore(bq.firstChild, bq);
-    }
-    parent.removeChild(bq);
-  });
-  
-  return tempDiv.innerHTML;
 };

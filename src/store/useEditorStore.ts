@@ -71,7 +71,7 @@ const initialState = {
     pageNumberAlign: 'center' as const,
     pageNumberMargin: 12,
     frontMatterNumbering: 'roman' as 'roman' | 'arabic' | 'none',
-    showHeaders: false,
+    showHeaders: true,
     headerContent: 'both' as const,
     headerPosition: 'top' as const,
     headerLine: true,
@@ -81,7 +81,7 @@ const initialState = {
       preserveFormatting: true
     },
     header: {
-      enabled: false,
+      enabled: true,
       template: 'classic' as const,
       displayMode: 'alternate' as const,
       evenPage: {
@@ -103,7 +103,7 @@ const initialState = {
       subheaderFormat: 'full' as const,
       fontFamily: 'same' as const,
       fontSize: 70,
-      showLine: true,
+      showLine: false,
       lineStyle: 'solid' as const,
       lineWidth: 0.5,
       lineColor: 'black' as const,
@@ -195,6 +195,14 @@ const initialState = {
   paginationProgress: {
     isActive: false,
     percent: 0
+  },
+  layoutPlanner: {
+    provider: 'local' as const,
+    phase: 'idle' as const,
+    progress: 0,
+    modelLabel: '',
+    reason: 'not_initialized',
+    revision: 0,
   },
   confirmedChapterTitles: [] as string[],
   paginatedPages: [] as any[],
@@ -516,6 +524,17 @@ const useEditorStore = create<EditorState>()(
 
     setPaginationProgress: (percent: number) => set((state) => ({
       paginationProgress: { ...state.paginationProgress, percent }
+    })),
+
+    setLayoutPlannerState: (plannerState) => set((state) => ({
+      layoutPlanner: { ...state.layoutPlanner, ...plannerState }
+    })),
+
+    bumpLayoutPlannerRevision: () => set((state) => ({
+      layoutPlanner: {
+        ...state.layoutPlanner,
+        revision: (state.layoutPlanner?.revision || 0) + 1
+      }
     })),
 
     startPagination: () => set((state) => ({

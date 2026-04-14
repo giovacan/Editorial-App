@@ -36,6 +36,8 @@ Create a `.env.local` file in the functions directory with:
 STRIPE_SECRET_KEY=sk_test_xxx
 STRIPE_WEBHOOK_SECRET=whsec_xxx
 DOMAIN=http://localhost:5173  # Change to your domain in production
+OPENAI_API_KEY=sk-xxx
+OPENAI_LAYOUT_MODEL=gpt-4.1-mini
 ```
 
 Or use Firebase config:
@@ -43,6 +45,14 @@ Or use Firebase config:
 ```bash
 firebase functions:config:set stripe.secret_key=sk_test_xxx
 firebase functions:config:set stripe.webhook_secret=whsec_xxx
+```
+
+For the editorial layout planner, configure environment variables in your
+deployment/runtime:
+
+```
+OPENAI_API_KEY=sk-xxx
+OPENAI_LAYOUT_MODEL=gpt-4.1-mini
 ```
 
 ## Cloud Functions

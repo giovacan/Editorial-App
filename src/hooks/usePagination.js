@@ -6,14 +6,15 @@ import { extractTOC, ENABLE_TOC, generateRecommendedTOCConfig } from '../utils/e
 import { mapTOCToPages } from '../utils/mapTOCToPages';
 import { generateFrontMatter, combineFrontMatterWithContent } from '../utils/generateFrontMatter';
 import {
-  splitParagraphByLines,
   buildParagraphHtml,
   buildChapterTitleHtml,
   getQuoteStyle,
   shouldStartOnRightPage
 } from '../utils/paginationEngine';
 import { paginateChapters } from '../utils/paginateChapters';
+import { getLayoutHints } from '../services/layoutPlanner';
 import { calculateContentDimensions, calculateDynamicMargins } from '../utils/textMeasurer';
+import { FOLIO_FROM_BOTTOM_MM } from '../utils/pageLayout';
 import { calculateLineHeightPx, ensureFontsReady } from '../utils/textLayoutEngine';
 import { useParagraphValidation } from './useParagraphValidation';
 
@@ -60,7 +61,7 @@ const DEFAULT_CONFIG = {
   },
   paragraph: { firstLineIndent: 1.5, align: 'justify', spacingBetween: 0 },
   quote: { enabled: true, indentLeft: 2, indentRight: 2, showLine: true, italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1, template: 'classic', autoDetect: true },
-  pagination: { minOrphanLines: 2, minWidowLines: 2, splitLongParagraphs: true },
+  pagination: { minOrphanLines: 2, minWidowLines: 2, splitLongParagraphs: true, targetFillPct: 0.92 },
   header: {
     enabled: false,
     template: 'classic',
@@ -112,7 +113,7 @@ const validatePages = (pages) => {
   return validPages;
 };
 
-export const usePagination = (bookData, config, measureRef) => {
+export const usePagination = (bookData, config, measureRef, externalPreviewScale) => {
   const [pages, setPages] = useState([]);
   const [calculatedPageCount, setCalculatedPageCount] = useState(0);
   const [layoutDims, setLayoutDims] = useState(null);
@@ -120,6 +121,7 @@ export const usePagination = (bookData, config, measureRef) => {
   // Subscribe to TOC config changes to regenerate frontmatter without re-paginating
   const tocConfig      = useEditorStore(s => s.tocConfig);
   const frontMatterConfig = useEditorStore(s => s.frontMatterConfig);
+  const layoutPlannerRevision = useEditorStore(s => s.layoutPlanner?.revision ?? 0);
 
   const safeBookData = bookData || { bookType: 'novela', chapters: [], title: '' };
   const safeConfig = config || DEFAULT_CONFIG;
@@ -128,6 +130,25 @@ export const usePagination = (bookData, config, measureRef) => {
     () => KDP_STANDARDS.getBookTypeConfig(safeBookData.bookType),
     [safeBookData.bookType]
   );
+
+  // Derive previewScale once: use external if provided, otherwise compute from format
+  const pageFormatForScale = useMemo(() => {
+    if (safeConfig.pageFormat === 'custom') {
+      const customDims = KDP_STANDARDS.getCustomPageDimensions(
+        safeConfig.customPageFormat?.width || 6,
+        safeConfig.customPageFormat?.height || 9,
+        safeConfig.customPageFormat?.unit || 'in'
+      );
+      return { width: customDims.widthMm };
+    }
+    const format = KDP_STANDARDS.getPageFormat(safeConfig.pageFormat || bookConfig.recommendedFormat);
+    return { width: format.width };
+  }, [safeConfig.pageFormat, safeConfig.customPageFormat, bookConfig]);
+
+  const previewScale = useMemo(() => {
+    if (externalPreviewScale != null) return externalPreviewScale;
+    return Math.min(0.42, AVAILABLE_SIDEBAR_WIDTH / (pageFormatForScale.width * PX_PER_MM));
+  }, [externalPreviewScale, pageFormatForScale.width]);
 
   const pageFormat = useMemo(() => {
     if (safeConfig.pageFormat === 'custom') {
@@ -161,6 +182,12 @@ export const usePagination = (bookData, config, measureRef) => {
   const [gutterValue, setGutterValue] = useState(() => calculateGutter(0));
   const gutterValueRef = useRef(gutterValue);
   const previousPageCountRef = useRef(0);
+  const paginationWorkerRef = useRef(null);
+  // Incremental layout cache — survives across re-paginations in this session.
+  // On each successful DONE message we store chapterHashes + chapterPageSlices
+  // and pass them back when the worker is restarted so unchanged chapters skip
+  // the expensive greedyPaginate step.
+  const paginationCacheRef = useRef({ chapterHashes: null, chapterPageSlices: null });
 
   // Keep ref in sync with state, but don't trigger pagination effect
   useEffect(() => {
@@ -253,7 +280,12 @@ export const usePagination = (bookData, config, measureRef) => {
       safeConfig.showHeaders, safeConfig.chaptersOnRight,
       safeConfig.extraEndPages, safeConfig.extraEndPagesNumbered,
       // optimization mode
-      useEditorStore.getState().layoutOptimization?.globalMode || 'auto'
+      useEditorStore.getState().layoutOptimization?.globalMode || 'auto',
+      // folio position constant — changing this must re-paginate
+      FOLIO_FROM_BOTTOM_MM,
+      // engine version — bump to force re-pagination after algorithm changes
+      'ev7',
+      layoutPlannerRevision,
     ].join('|');
     const contentHash = JSON.stringify(safeBookData.chapters.map(ch =>
       ch.id + murmurhash(ch.html || '').result()
@@ -307,8 +339,6 @@ export const usePagination = (bookData, config, measureRef) => {
         console.warn('Error resetting measureDiv:', e);
       }
 
-      const previewScale = Math.min(0.42, AVAILABLE_SIDEBAR_WIDTH / (pageFormat.width * PX_PER_MM));
-
       const totalContentLength = safeBookData.chapters.reduce((sum, ch) => sum + (ch.html?.length || 0), 0);
       const estimatedPages = Math.ceil(totalContentLength / 3000);
 
@@ -347,23 +377,65 @@ export const usePagination = (bookData, config, measureRef) => {
         return;
       }
 
-      // Reserve space for header — 3.0 lines covers 2-line headers + padding + border.
-      // TODO: replace with measureHtmlHeight(buildHeaderHtmlPure(...), canvasCtx) for exact measurement.
-      const headerSpaceEstimate = safeConfig.header?.enabled ? Math.round(lineHeightPx * 3.0) : 0;
+      // Reserve exact space for header — derived from known typographic values, no DOM needed.
+      // Header is always 1 line tall. Total vertical budget consumed by the header block:
+      //   headerLineH   = headerFontSizePx * baseLineHeight   (1 text line at header font size)
+      //   paddingBottom = headerFontSizePx * 0.5              (padding-bottom: 0.5em in header font)
+      //   border        = headerConfig.showLine ? 1 : 0       (border-bottom: 1px solid)
+      //   marginBottom  = baseFontSizePx * 0.5                (margin-bottom: 0.5em on wrapper, in body font)
+      const headerSpaceEstimate = (() => {
+        if (!safeConfig.header?.enabled) return 0;
+        const headerConfig = safeConfig.header;
+        const fontSizePercent = headerConfig.fontSize || 70;
+        const headerFontSizePx = baseFontSizePx * (fontSizePercent / 100);
+        const headerLineH    = headerFontSizePx * baseLineHeight;
+        const paddingBottom  = headerFontSizePx * 0.5;
+        const border         = headerConfig.showLine !== false ? 1 : 0;
+        const marginBottom   = baseFontSizePx * baseLineHeight; // 1 line gap between header and text
+        return Math.ceil(headerLineH + paddingBottom + border + marginBottom);
+      })();
       const minOrphanLines = safeConfig.pagination?.minOrphanLines ?? 2;
-      // Floor to line grid — rounding provides up to 1 line of safety.
-      const rawContentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight) - headerSpaceEstimate;
+      // Folio is fixed at FOLIO_FROM_BOTTOM_MM (15mm) from the physical page bottom edge.
+      // The content box must end at least 1 full line ABOVE the folio top edge.
+      //
+      // Layout (bottom of page, measuring upward from physical edge):
+      //   0px              → physical bottom edge
+      //   folioFromEdgePx  → folio baseline (15mm up)
+      //   folioFromEdgePx + lineHeightPx → minimum bottom of content box
+      //   marginBottomPx   → CSS padding (content box floor when no reserve)
+      //
+      // folioReserve = extra px to subtract from rawContentHeight so that
+      // content box bottom stays at least 1 line above the folio:
+      //   required clearance from edge = folioFromEdgePx + lineHeightPx
+      //   already provided by marginBottom = marginBottomPx
+      //   reserve = required - provided (clamped to 0)
+      const folioFromEdgePx = Math.round(FOLIO_FROM_BOTTOM_MM * PX_PER_MM * previewScale);
+      const marginBottomPx  = Math.min(dimsOdd.marginBottom, dimsEven.marginBottom);
+      const folioReserve    = Math.max(folioFromEdgePx + lineHeightPx - marginBottomPx, 0);
+      // Snap DOWN to the nearest full line grid boundary so the engine never
+      // allocates more px than fits in the page. ceil() caused DOM overflow
+      // (engine budget > available px → text spilled over the folio).
+      // The render subtracts 1 lineHeight from effectiveContentHeight (see store save below)
+      // to guarantee a visible gap between the last text line and the folio.
+      const rawContentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight) - headerSpaceEstimate - folioReserve;
       const contentHeight = Math.floor(rawContentHeight / lineHeightPx) * lineHeightPx;
 
       if (process.env.NODE_ENV === 'development') {
         const floorDrop = rawContentHeight - contentHeight;
-        console.log(`[PAGINATION-SETUP] marginBottom=${dimsOdd.marginBottom.toFixed(1)}px, headerSpace=${headerSpaceEstimate}px, floorDrop=${floorDrop.toFixed(1)}px`);
+        console.log(`[PAGINATION-SETUP] marginBottom=${dimsOdd.marginBottom.toFixed(1)}px, headerSpace=${headerSpaceEstimate}px, folioReserve=${folioReserve.toFixed(1)}px, floorDrop=${floorDrop.toFixed(1)}px`);
         console.log(`[PAGINATION-SETUP] previewScale=${previewScale.toFixed(3)}, baseFontSize=${baseFontSize.toFixed(1)}pt, lineHeightPx=${lineHeightPx}px, contentWidth=${contentWidth.toFixed(1)}px, pageHeight=${pageHeightPx.toFixed(1)}px, contentHeight=${contentHeight.toFixed(1)}px, gutter=${gutterValueRef.current}`);
       }
       const minWidowLines = safeConfig.pagination?.minWidowLines ?? 2;
       const splitLongParagraphs = safeConfig.pagination?.splitLongParagraphs !== false;
 
       const fontFamily = targetFontFamily;
+
+      // 0 clearance: let the engine fill chapter-start pages right up to the folio zone.
+      // The folioReserve above already guarantees 1 line above the folio.
+      const chapterStartBottomClearance = 0;
+      // No extra lines — the full header space is reclaimed via chStartExtra.
+      // clearance=0 lets text fill right up to the folio zone.
+      const chapterStartExtraLines = 0;
 
       const layoutCtx = {
         contentHeight,
@@ -376,29 +448,86 @@ export const usePagination = (bookData, config, measureRef) => {
         fontFamily,
         minOrphanLines,
         minWidowLines,
-        splitLongParagraphs
+        splitLongParagraphs,
+        headerSpaceEstimate,
+        chapterStartBottomClearance,
+        chapterStartExtraLines,
       };
+      const layoutHints = await getLayoutHints(safeBookData.chapters, safeConfig, layoutCtx);
 
       if (cancelled) return;
 
       let generatedPages;
+      let paginationLog = null;
+      let paginationSummaryText = null;
+      let chStartExtraFromEngine = Math.max(0, headerSpaceEstimate - chapterStartBottomClearance)
+        + chapterStartExtraLines * lineHeightPx;
+      let headerSpaceEstimateFromEngine = headerSpaceEstimate;
       try {
-        const paginationResult = paginateChapters(
-          safeBookData.chapters,
-          layoutCtx,
-          measureDiv,
-          safeConfig
-        );
+        const paginationResult = await new Promise((resolve, reject) => {
+          if (paginationWorkerRef.current) {
+            paginationWorkerRef.current.terminate();
+          }
+          paginationWorkerRef.current = new Worker(
+            new URL('../workers/paginationWorker.js', import.meta.url),
+            { type: 'module' }
+          );
+          paginationWorkerRef.current.onmessage = ({ data: msg }) => {
+            if (msg.type === 'PROGRESS') {
+              if (!cancelled) {
+                useEditorStore.getState().setPaginationProgress(msg.percent);
+              }
+            } else if (msg.type === 'DONE') {
+              resolve(msg);
+            } else if (msg.type === 'ERROR') {
+              reject(new Error(msg.message));
+            }
+          };
+          paginationWorkerRef.current.onerror = (e) => {
+            const msg = `Worker error: ${e?.message || '(no message)'} @ ${e?.filename || '?'}:${e?.lineno || '?'}:${e?.colno || '?'}`;
+            console.error('[WORKER ONERROR]', msg, e);
+            reject(new Error(msg));
+          };
+          // Pass the cached chapter hashes + page slices from the previous run so
+          // the worker can skip greedyPaginate for unchanged chapters.
+          const { chapterHashes: prevHashes, chapterPageSlices: prevSlices } = paginationCacheRef.current;
+          paginationWorkerRef.current.postMessage({
+            type: 'START',
+            chapters: safeBookData.chapters,
+            layoutCtx,
+            safeConfig,
+            layoutHints,
+            ...(prevHashes && prevSlices
+              ? { prevChapterHashes: prevHashes, prevChapterPageSlices: prevSlices }
+              : {})
+          });
+        });
+        if (cancelled) return;
         generatedPages = paginationResult.pages;
-        if (paginationResult.log) {
-          useEditorStore.getState().setPaginationLog(paginationResult.log);
+        paginationLog = paginationResult.log;
+        paginationSummaryText = paginationResult.summaryText;
+        // Use the chStartExtra the engine actually computed (may differ from hook's
+        // headerSpaceEstimate if header config changed since the last cache-busted run).
+        if (paginationResult.chStartExtra != null) {
+          chStartExtraFromEngine = paginationResult.chStartExtra;
+          headerSpaceEstimateFromEngine = paginationResult.headerSpaceEstimate ?? headerSpaceEstimate;
+        }
+        // Save incremental layout cache for the next run.
+        if (paginationResult.chapterHashes?.length) {
+          paginationCacheRef.current = {
+            chapterHashes: paginationResult.chapterHashes,
+            chapterPageSlices: paginationResult.chapterPageSlices ?? null
+          };
+        }
+        if (paginationLog) {
+          useEditorStore.getState().setPaginationLog(paginationLog);
           if (process.env.NODE_ENV === 'development') {
             fetch('/api/pagination-log', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                log: paginationResult.log,
-                summaryText: paginationResult.summaryText
+                log: paginationLog,
+                summaryText: paginationSummaryText
               })
             }).catch(() => {})
           }
@@ -429,16 +558,29 @@ export const usePagination = (bookData, config, measureRef) => {
         const validatedPages = validatePages(generatedPages);
         // Batch both state updates together to avoid re-render between them
         // which would trigger effect cleanup and set cancelled=true
-        console.log(`[PAGINATION] Guardando layoutDims: contentHeight=${contentHeight}px, engineGutter=${engineGutter}`);
-        setLayoutDims({
-          contentHeight,
+        // renderContentHeight = engine budget exactly.
+        // The Canvas measurement engine now recursively measures nested block
+        // elements (chapter titles with inner divs/padding/borders), so the
+        // engine budget matches DOM rendering. No buffer needed.
+        const renderContentHeight = contentHeight;
+        const dimsSnapshot = {
+          contentHeight: renderContentHeight,
           contentWidth,
           lineHeightPx,
           baseFontSizePx,
           baseLineHeight,
           previewScale,
           gutterValue: engineGutter,
-        });
+          fontFamily,
+          textAlign,
+          headerSpaceEstimate: headerSpaceEstimateFromEngine,
+          chapterStartBottomClearance,
+          chapterStartExtraLines,
+          chStartExtra: chStartExtraFromEngine,
+        };
+        console.log(`[PAGINATION] Guardando layoutDims: contentHeight=${contentHeight}px renderContentHeight=${renderContentHeight}px engineGutter=${engineGutter}`);
+        setLayoutDims(dimsSnapshot);
+        useEditorStore.getState().setLayoutDims(dimsSnapshot);
         setPages(validatedPages);
         useEditorStore.getState().setPaginatedPages(validatedPages);
         
@@ -611,8 +753,18 @@ export const usePagination = (bookData, config, measureRef) => {
           baseLineHeight,
           previewScale,
           gutterValue: engineGutter,
+          fontFamily,
+          textAlign,
+          headerSpaceEstimate: headerSpaceEstimateFromEngine,
+          chapterStartBottomClearance,
+          chapterStartExtraLines,
+          chStartExtra: chStartExtraFromEngine,
         });
         useEditorStore.getState().setPaginationProgress(100);
+        // Small delay so the 100% state renders before we hide the progress indicator
+        setTimeout(() => {
+          if (!cancelled) useEditorStore.getState().endPagination();
+        }, 500);
       }
     };
 
@@ -620,6 +772,10 @@ export const usePagination = (bookData, config, measureRef) => {
 
     return () => {
       cancelled = true;
+      if (paginationWorkerRef.current) {
+        paginationWorkerRef.current.terminate();
+        paginationWorkerRef.current = null;
+      }
       useEditorStore.getState().endPagination();
     };
   }, [
@@ -635,7 +791,8 @@ export const usePagination = (bookData, config, measureRef) => {
     safeConfig.marginLeft,
     safeConfig.marginRight,
     safeConfig.marginStrategy,
-    globalOptMode
+    globalOptMode,
+    layoutPlannerRevision
   ]);
   
   // Re-number FM pages when frontMatterNumbering or folioCase changes without re-paginating

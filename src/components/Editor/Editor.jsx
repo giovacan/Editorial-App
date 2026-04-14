@@ -2,7 +2,6 @@ import { useEffect, useCallback, useState, useRef, useMemo } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
-import Underline from '@tiptap/extension-underline';
 import useEditorStore from '../../store/useEditorStore';
 import { usePagination } from '../../hooks/usePagination';
 import PageBreakMarkers from './PageBreakMarkers';
@@ -48,7 +47,6 @@ function Editor({ pushChange, onContentChange }) {
       Placeholder.configure({
         placeholder: 'Escribe tu contenido aquí...',
       }),
-      Underline,
     ],
     content: activeChapter?.html || '',
     onUpdate: ({ editor: ed }) => {
@@ -169,12 +167,13 @@ function Editor({ pushChange, onContentChange }) {
 
   useEffect(() => {
     if (editor && activeChapter) {
-      const currentContent = editor.getHTML();
-      if (currentContent !== activeChapter.html) {
-        editor.commands.setContent(activeChapter.html || '');
-      }
+      editor.commands.setContent(activeChapter.html || '');
     }
-  }, [activeChapterId, activeChapter?.html, editor]);
+    // Only reload content when the active chapter ID changes, not when html changes.
+    // Including activeChapter.html would cause the editor to overwrite user edits
+    // during the 1-second debounce window before the store is updated.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeChapterId, editor]);
 
   const wordCount = activeChapter?.wordCount || 0;
 

@@ -239,6 +239,96 @@ export const HEADER_TEMPLATES = {
     subtopicBehavior: 'none',
     subtopicSeparator: ' | ',
     subtopicMaxLength: 60
+  },
+
+  // ── Folio-at-top templates ──────────────────────────────────────────────────
+  // These set pageNumberPos: 'top' and pageNumberAlign so the folio lives
+  // in the same horizontal band as the header text.
+
+  folioOuter: {
+    id: 'folioOuter',
+    name: 'Número exterior',
+    description: 'Número en borde externo, texto del capítulo al lado — estilo libro moderno',
+    icon: '↔',
+    // Even pages: number on left (outer), chapter title on right
+    evenPage: {
+      leftContent: 'none',
+      centerContent: 'none',
+      rightContent: 'chapter'
+    },
+    // Odd pages: chapter title on left, number on right (outer)
+    oddPage: {
+      leftContent: 'chapter',
+      centerContent: 'none',
+      rightContent: 'none'
+    },
+    pageNumberPos: 'top',
+    pageNumberAlign: 'outer',
+    showLine: false,
+    lineStyle: 'solid',
+    lineWidth: 0.5,
+    lineColor: '#999',
+    fontSize: 70,
+    fontFamily: 'same',
+    subtopicBehavior: 'none',
+    subtopicSeparator: ' | ',
+    subtopicMaxLength: 60
+  },
+
+  folioInline: {
+    id: 'folioInline',
+    name: 'Número + Título',
+    description: 'Número y título en la misma línea con separador vertical',
+    icon: '▌',
+    evenPage: {
+      leftContent: 'title',
+      centerContent: 'none',
+      rightContent: 'none'
+    },
+    oddPage: {
+      leftContent: 'chapter',
+      centerContent: 'none',
+      rightContent: 'none'
+    },
+    pageNumberPos: 'top',
+    pageNumberAlign: 'outer',
+    showLine: true,
+    lineStyle: 'solid',
+    lineWidth: 0.25,
+    lineColor: '#ccc',
+    fontSize: 70,
+    fontFamily: 'same',
+    subtopicBehavior: 'none',
+    subtopicSeparator: ' | ',
+    subtopicMaxLength: 60
+  },
+
+  folioCentered: {
+    id: 'folioCentered',
+    name: 'Número centrado',
+    description: 'Número centrado arriba, texto del capítulo centrado debajo',
+    icon: '⬆',
+    evenPage: {
+      leftContent: 'none',
+      centerContent: 'chapter',
+      rightContent: 'none'
+    },
+    oddPage: {
+      leftContent: 'none',
+      centerContent: 'chapter',
+      rightContent: 'none'
+    },
+    pageNumberPos: 'top',
+    pageNumberAlign: 'center',
+    showLine: false,
+    lineStyle: 'solid',
+    lineWidth: 0,
+    lineColor: '#999',
+    fontSize: 70,
+    fontFamily: 'same',
+    subtopicBehavior: 'none',
+    subtopicSeparator: ' | ',
+    subtopicMaxLength: 60
   }
 };
 
@@ -288,7 +378,7 @@ export function getHeaderTemplateConfig(templateId) {
     return DEFAULT_HEADER_CONFIG;
   }
   
-  return {
+  const cfg = {
     template: templateId,
     evenPage: { ...template.evenPage },
     oddPage: { ...template.oddPage },
@@ -302,6 +392,10 @@ export function getHeaderTemplateConfig(templateId) {
     subheaderLevels: template.subheaderLevels || ['h1', 'h2'],
     subheaderFormat: template.subheaderFormat || 'full'
   };
+  // Folio-at-top templates carry their own pageNumberPos/Align
+  if (template.pageNumberPos) cfg.pageNumberPos = template.pageNumberPos;
+  if (template.pageNumberAlign) cfg.pageNumberAlign = template.pageNumberAlign;
+  return cfg;
 }
 
 /**

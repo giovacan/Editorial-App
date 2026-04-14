@@ -1,0 +1,2762 @@
+{
+  "totalPages": 212,
+  "perfect": 133,
+  "above90": 178,
+  "below80": 14,
+  "below60": 7,
+  "withViol": 39,
+  "avgFill": 94.59433962264151,
+  "totalScore": 24138,
+  "problemPages": [
+    {
+      "page": 11,
+      "fillPct": 67,
+      "score": 549,
+      "chapter": "INTRODUCCIÓN",
+      "violations": []
+    },
+    {
+      "page": 22,
+      "fillPct": 58,
+      "score": 569,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "violations": []
+    },
+    {
+      "page": 54,
+      "fillPct": 71,
+      "score": 842,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA L",
+      "violations": [
+        "split_shallow",
+        "fragment"
+      ]
+    },
+    {
+      "page": 59,
+      "fillPct": 75,
+      "score": 534,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA L",
+      "violations": []
+    },
+    {
+      "page": 101,
+      "fillPct": 67,
+      "score": 649,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA N",
+      "violations": [
+        "fragment"
+      ]
+    },
+    {
+      "page": 110,
+      "fillPct": 62,
+      "score": 661,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA N",
+      "violations": [
+        "fragment"
+      ]
+    },
+    {
+      "page": 115,
+      "fillPct": 65,
+      "score": 853,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA N",
+      "violations": [
+        "split_shallow",
+        "fragment"
+      ]
+    },
+    {
+      "page": 182,
+      "fillPct": 58,
+      "score": 569,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO D",
+      "violations": []
+    }
+  ],
+  "worstPages": [
+    {
+      "page": 123,
+      "fillPct": 19,
+      "score": 646,
+      "violations": []
+    },
+    {
+      "page": 218,
+      "fillPct": 22,
+      "score": 639,
+      "violations": []
+    },
+    {
+      "page": 76,
+      "fillPct": 31,
+      "score": 622,
+      "violations": []
+    },
+    {
+      "page": 149,
+      "fillPct": 37,
+      "score": 611,
+      "violations": []
+    },
+    {
+      "page": 216,
+      "fillPct": 42,
+      "score": 599,
+      "violations": []
+    },
+    {
+      "page": 22,
+      "fillPct": 58,
+      "score": 569,
+      "violations": []
+    },
+    {
+      "page": 182,
+      "fillPct": 58,
+      "score": 569,
+      "violations": []
+    },
+    {
+      "page": 110,
+      "fillPct": 62,
+      "score": 661,
+      "violations": [
+        "fragment"
+      ]
+    }
+  ],
+  "pageMap": {
+    "1": {
+      "page": 1,
+      "chapter": "INTRODUCCIÓN",
+      "fillPct": 98,
+      "score": 11,
+      "violations": [],
+      "elements": 3,
+      "events": 23,
+      "splits": 5,
+      "moves": 0,
+      "unstable": true
+    },
+    "2": {
+      "page": 2,
+      "chapter": "INTRODUCCIÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 2,
+      "events": 21,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "3": {
+      "page": 3,
+      "chapter": "INTRODUCCIÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 3,
+      "events": 27,
+      "splits": 4,
+      "moves": 0,
+      "unstable": true
+    },
+    "4": {
+      "page": 4,
+      "chapter": "INTRODUCCIÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 27,
+      "splits": 7,
+      "moves": 0,
+      "unstable": true
+    },
+    "5": {
+      "page": 5,
+      "chapter": "INTRODUCCIÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 3,
+      "events": 36,
+      "splits": 7,
+      "moves": 0,
+      "unstable": true
+    },
+    "6": {
+      "page": 6,
+      "chapter": "INTRODUCCIÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 29,
+      "splits": 6,
+      "moves": 0,
+      "unstable": true
+    },
+    "7": {
+      "page": 7,
+      "chapter": "INTRODUCCIÓN",
+      "fillPct": 92,
+      "score": 161,
+      "violations": [],
+      "elements": 5,
+      "events": 37,
+      "splits": 4,
+      "moves": 4,
+      "unstable": true
+    },
+    "8": {
+      "page": 8,
+      "chapter": "INTRODUCCIÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 25,
+      "splits": 6,
+      "moves": 0,
+      "unstable": true
+    },
+    "9": {
+      "page": 9,
+      "chapter": "INTRODUCCIÓN",
+      "fillPct": 87,
+      "score": 311,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 2,
+      "events": 31,
+      "splits": 4,
+      "moves": 0,
+      "unstable": true
+    },
+    "10": {
+      "page": 10,
+      "chapter": "INTRODUCCIÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 20,
+      "splits": 4,
+      "moves": 0,
+      "unstable": true
+    },
+    "11": {
+      "page": 11,
+      "chapter": "INTRODUCCIÓN",
+      "fillPct": 67,
+      "score": 549,
+      "violations": [],
+      "elements": 2,
+      "events": 30,
+      "splits": 4,
+      "moves": 0,
+      "unstable": true
+    },
+    "12": {
+      "page": 12,
+      "chapter": "INTRODUCCIÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 3,
+      "events": 23,
+      "splits": 3,
+      "moves": 0,
+      "unstable": true
+    },
+    "13": {
+      "page": 13,
+      "chapter": "INTRODUCCIÓN",
+      "fillPct": 100,
+      "score": 116,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 3,
+      "events": 14,
+      "splits": 2,
+      "moves": 0,
+      "unstable": true
+    },
+    "14": {
+      "page": 14,
+      "chapter": "INTRODUCCIÓN",
+      "fillPct": 96,
+      "score": 188,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 3,
+      "events": 13,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "15": {
+      "page": 15,
+      "chapter": "INTRODUCCIÓN",
+      "fillPct": 71,
+      "score": 542,
+      "violations": [],
+      "elements": 2,
+      "events": 26,
+      "splits": 5,
+      "moves": 0,
+      "unstable": true
+    },
+    "17": {
+      "page": 17,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 98,
+      "score": 11,
+      "violations": [],
+      "elements": 4,
+      "events": 11,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "18": {
+      "page": 18,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 100,
+      "score": 116,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 3,
+      "events": 12,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "19": {
+      "page": 19,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 15,
+      "splits": 4,
+      "moves": 0,
+      "unstable": true
+    },
+    "20": {
+      "page": 20,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 3,
+      "events": 10,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "21": {
+      "page": 21,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 100,
+      "score": 116,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 5,
+      "events": 22,
+      "splits": 4,
+      "moves": 0,
+      "unstable": true
+    },
+    "22": {
+      "page": 22,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 58,
+      "score": 569,
+      "violations": [],
+      "elements": 1,
+      "events": 24,
+      "splits": 2,
+      "moves": 0,
+      "unstable": true
+    },
+    "23": {
+      "page": 23,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 3,
+      "events": 15,
+      "splits": 4,
+      "moves": 0,
+      "unstable": true
+    },
+    "24": {
+      "page": 24,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 98,
+      "score": 12,
+      "violations": [],
+      "elements": 4,
+      "events": 14,
+      "splits": 4,
+      "moves": 0,
+      "unstable": true
+    },
+    "25": {
+      "page": 25,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 14,
+      "splits": 3,
+      "moves": 0,
+      "unstable": true
+    },
+    "26": {
+      "page": 26,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 3,
+      "events": 13,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "27": {
+      "page": 27,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "28": {
+      "page": 28,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 100,
+      "score": 116,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 5,
+      "events": 3,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "29": {
+      "page": 29,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 5,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "30": {
+      "page": 30,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 6,
+      "events": 8,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "31": {
+      "page": 31,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 88,
+      "score": 207,
+      "violations": [],
+      "elements": 3,
+      "events": 15,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "32": {
+      "page": 32,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 3,
+      "events": 8,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "33": {
+      "page": 33,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 98,
+      "score": 12,
+      "violations": [],
+      "elements": 2,
+      "events": 9,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "34": {
+      "page": 34,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 100,
+      "score": 316,
+      "violations": [
+        "split_shallow",
+        "fragment"
+      ],
+      "elements": 8,
+      "events": 19,
+      "splits": 3,
+      "moves": 4,
+      "unstable": true
+    },
+    "35": {
+      "page": 35,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 3,
+      "events": 14,
+      "splits": 0,
+      "moves": 3,
+      "unstable": true
+    },
+    "36": {
+      "page": 36,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 12,
+      "splits": 1,
+      "moves": 3,
+      "unstable": true
+    },
+    "37": {
+      "page": 37,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 5,
+      "splits": 0,
+      "moves": 1,
+      "unstable": false
+    },
+    "38": {
+      "page": 38,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 11,
+      "splits": 2,
+      "moves": 1,
+      "unstable": true
+    },
+    "39": {
+      "page": 39,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 96,
+      "score": 88,
+      "violations": [],
+      "elements": 3,
+      "events": 7,
+      "splits": 0,
+      "moves": 2,
+      "unstable": true
+    },
+    "40": {
+      "page": 40,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 87,
+      "score": 211,
+      "violations": [],
+      "elements": 4,
+      "events": 22,
+      "splits": 1,
+      "moves": 3,
+      "unstable": true
+    },
+    "41": {
+      "page": 41,
+      "chapter": "CAPÍTULO #1 – NEPSIS",
+      "fillPct": 88,
+      "score": 207,
+      "violations": [],
+      "elements": 3,
+      "events": 12,
+      "splits": 1,
+      "moves": 1,
+      "unstable": true
+    },
+    "42": {
+      "page": 42,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+      "fillPct": 99,
+      "score": 14,
+      "violations": [],
+      "elements": 4,
+      "events": 2,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "43": {
+      "page": 43,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 7,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "44": {
+      "page": 44,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 3,
+      "events": 5,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "45": {
+      "page": 45,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+      "fillPct": 100,
+      "score": 116,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 5,
+      "events": 2,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "46": {
+      "page": 46,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+      "fillPct": 98,
+      "score": 12,
+      "violations": [],
+      "elements": 4,
+      "events": 2,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "47": {
+      "page": 47,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 3,
+      "events": 4,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "48": {
+      "page": 48,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 9,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "49": {
+      "page": 49,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+      "fillPct": 98,
+      "score": 12,
+      "violations": [],
+      "elements": 2,
+      "events": 7,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "50": {
+      "page": 50,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+      "fillPct": 100,
+      "score": 116,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 4,
+      "events": 6,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "51": {
+      "page": 51,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 9,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "52": {
+      "page": 52,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+      "fillPct": 90,
+      "score": 163,
+      "violations": [],
+      "elements": 4,
+      "events": 10,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "53": {
+      "page": 53,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 8,
+      "splits": 2,
+      "moves": 0,
+      "unstable": true
+    },
+    "54": {
+      "page": 54,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+      "fillPct": 71,
+      "score": 842,
+      "violations": [
+        "split_shallow",
+        "fragment"
+      ],
+      "elements": 4,
+      "events": 16,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "55": {
+      "page": 55,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+      "fillPct": 98,
+      "score": 12,
+      "violations": [],
+      "elements": 2,
+      "events": 7,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "56": {
+      "page": 56,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+      "fillPct": 100,
+      "score": 116,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 3,
+      "events": 4,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "57": {
+      "page": 57,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+      "fillPct": 100,
+      "score": 116,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 5,
+      "events": 5,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "58": {
+      "page": 58,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+      "fillPct": 92,
+      "score": 461,
+      "violations": [
+        "split_shallow",
+        "fragment"
+      ],
+      "elements": 3,
+      "events": 12,
+      "splits": 0,
+      "moves": 1,
+      "unstable": false
+    },
+    "59": {
+      "page": 59,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+      "fillPct": 75,
+      "score": 534,
+      "violations": [],
+      "elements": 2,
+      "events": 14,
+      "splits": 1,
+      "moves": 4,
+      "unstable": true
+    },
+    "60": {
+      "page": 60,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 3,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "61": {
+      "page": 61,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 3,
+      "events": 3,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "62": {
+      "page": 62,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+      "fillPct": 98,
+      "score": 112,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 4,
+      "events": 1,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "63": {
+      "page": 63,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+      "fillPct": 100,
+      "score": 116,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 3,
+      "events": 4,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "64": {
+      "page": 64,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 3,
+      "events": 5,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "65": {
+      "page": 65,
+      "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 2,
+      "events": 2,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "66": {
+      "page": 66,
+      "chapter": "CAPÍTULO #3 - LA VIRTUD DEL PUDOR",
+      "fillPct": 99,
+      "score": 14,
+      "violations": [],
+      "elements": 4,
+      "events": 1,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "67": {
+      "page": 67,
+      "chapter": "CAPÍTULO #3 - LA VIRTUD DEL PUDOR",
+      "fillPct": 100,
+      "score": 116,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 4,
+      "events": 5,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "68": {
+      "page": 68,
+      "chapter": "CAPÍTULO #3 - LA VIRTUD DEL PUDOR",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 3,
+      "events": 4,
+      "splits": 0,
+      "moves": 4,
+      "unstable": true
+    },
+    "69": {
+      "page": 69,
+      "chapter": "CAPÍTULO #3 - LA VIRTUD DEL PUDOR",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "70": {
+      "page": 70,
+      "chapter": "CAPÍTULO #3 - LA VIRTUD DEL PUDOR",
+      "fillPct": 100,
+      "score": 116,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 5,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "71": {
+      "page": 71,
+      "chapter": "CAPÍTULO #3 - LA VIRTUD DEL PUDOR",
+      "fillPct": 100,
+      "score": 116,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 4,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "72": {
+      "page": 72,
+      "chapter": "CAPÍTULO #3 - LA VIRTUD DEL PUDOR",
+      "fillPct": 100,
+      "score": 116,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 4,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "73": {
+      "page": 73,
+      "chapter": "CAPÍTULO #3 - LA VIRTUD DEL PUDOR",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "74": {
+      "page": 74,
+      "chapter": "CAPÍTULO #3 - LA VIRTUD DEL PUDOR",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 2,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "75": {
+      "page": 75,
+      "chapter": "CAPÍTULO #3 - LA VIRTUD DEL PUDOR",
+      "fillPct": 96,
+      "score": 88,
+      "violations": [],
+      "elements": 3,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "76": {
+      "page": 76,
+      "chapter": "CAPÍTULO #3 - LA VIRTUD DEL PUDOR",
+      "fillPct": 31,
+      "score": 622,
+      "violations": [],
+      "elements": 1,
+      "events": 8,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "78": {
+      "page": 78,
+      "chapter": "CAPÍTULO #4 - RECONCILIACIÓN",
+      "fillPct": 90,
+      "score": 165,
+      "violations": [],
+      "elements": 4,
+      "events": 8,
+      "splits": 0,
+      "moves": 4,
+      "unstable": true
+    },
+    "79": {
+      "page": 79,
+      "chapter": "CAPÍTULO #4 - RECONCILIACIÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "80": {
+      "page": 80,
+      "chapter": "CAPÍTULO #4 - RECONCILIACIÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "81": {
+      "page": 81,
+      "chapter": "CAPÍTULO #4 - RECONCILIACIÓN",
+      "fillPct": 100,
+      "score": 116,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 5,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "82": {
+      "page": 82,
+      "chapter": "CAPÍTULO #4 - RECONCILIACIÓN",
+      "fillPct": 88,
+      "score": 207,
+      "violations": [],
+      "elements": 3,
+      "events": 8,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "83": {
+      "page": 83,
+      "chapter": "CAPÍTULO #4 - RECONCILIACIÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "84": {
+      "page": 84,
+      "chapter": "CAPÍTULO #4 - RECONCILIACIÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 4,
+      "splits": 0,
+      "moves": 4,
+      "unstable": true
+    },
+    "85": {
+      "page": 85,
+      "chapter": "CAPÍTULO #4 - RECONCILIACIÓN",
+      "fillPct": 88,
+      "score": 207,
+      "violations": [],
+      "elements": 3,
+      "events": 8,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "86": {
+      "page": 86,
+      "chapter": "CAPÍTULO #4 - RECONCILIACIÓN",
+      "fillPct": 94,
+      "score": 84,
+      "violations": [],
+      "elements": 4,
+      "events": 8,
+      "splits": 0,
+      "moves": 4,
+      "unstable": true
+    },
+    "87": {
+      "page": 87,
+      "chapter": "CAPÍTULO #4 - RECONCILIACIÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "88": {
+      "page": 88,
+      "chapter": "CAPÍTULO #4 - RECONCILIACIÓN",
+      "fillPct": 100,
+      "score": 116,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 5,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "90": {
+      "page": 90,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 97,
+      "score": 10,
+      "violations": [],
+      "elements": 4,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "91": {
+      "page": 91,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 100,
+      "score": 116,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 5,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "92": {
+      "page": 92,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "93": {
+      "page": 93,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "94": {
+      "page": 94,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "95": {
+      "page": 95,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 90,
+      "score": 263,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 4,
+      "events": 8,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "96": {
+      "page": 96,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 90,
+      "score": 163,
+      "violations": [],
+      "elements": 2,
+      "events": 8,
+      "splits": 0,
+      "moves": 4,
+      "unstable": true
+    },
+    "97": {
+      "page": 97,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 6,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "98": {
+      "page": 98,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 100,
+      "score": 316,
+      "violations": [
+        "split_shallow",
+        "fragment"
+      ],
+      "elements": 3,
+      "events": 4,
+      "splits": 0,
+      "moves": 2,
+      "unstable": true
+    },
+    "99": {
+      "page": 99,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 3,
+      "events": 4,
+      "splits": 0,
+      "moves": 2,
+      "unstable": true
+    },
+    "100": {
+      "page": 100,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 11,
+      "splits": 1,
+      "moves": 3,
+      "unstable": true
+    },
+    "101": {
+      "page": 101,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 67,
+      "score": 649,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 2,
+      "events": 16,
+      "splits": 0,
+      "moves": 2,
+      "unstable": true
+    },
+    "102": {
+      "page": 102,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 98,
+      "score": 12,
+      "violations": [],
+      "elements": 2,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "103": {
+      "page": 103,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 98,
+      "score": 12,
+      "violations": [],
+      "elements": 4,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "104": {
+      "page": 104,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "105": {
+      "page": 105,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 100,
+      "score": 116,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 4,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "106": {
+      "page": 106,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "107": {
+      "page": 107,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 88,
+      "score": 307,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 3,
+      "events": 8,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "108": {
+      "page": 108,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 96,
+      "score": 88,
+      "violations": [],
+      "elements": 3,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "109": {
+      "page": 109,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 3,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "110": {
+      "page": 110,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 62,
+      "score": 661,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 3,
+      "events": 12,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "111": {
+      "page": 111,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "112": {
+      "page": 112,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 100,
+      "score": 116,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 6,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "113": {
+      "page": 113,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 100,
+      "score": 116,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 4,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "114": {
+      "page": 114,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 3,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "115": {
+      "page": 115,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 65,
+      "score": 853,
+      "violations": [
+        "split_shallow",
+        "fragment"
+      ],
+      "elements": 3,
+      "events": 12,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "116": {
+      "page": 116,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 96,
+      "score": 88,
+      "violations": [],
+      "elements": 3,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "117": {
+      "page": 117,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 3,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "118": {
+      "page": 118,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 3,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "119": {
+      "page": 119,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 6,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "120": {
+      "page": 120,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "121": {
+      "page": 121,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 88,
+      "score": 307,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 3,
+      "events": 8,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "122": {
+      "page": 122,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 6,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "123": {
+      "page": 123,
+      "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+      "fillPct": 19,
+      "score": 646,
+      "violations": [],
+      "elements": 1,
+      "events": 8,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "125": {
+      "page": 125,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 6,
+      "splits": 2,
+      "moves": 0,
+      "unstable": true
+    },
+    "126": {
+      "page": 126,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 90,
+      "score": 463,
+      "violations": [
+        "split_shallow",
+        "fragment"
+      ],
+      "elements": 4,
+      "events": 8,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "127": {
+      "page": 127,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 94,
+      "score": 84,
+      "violations": [],
+      "elements": 4,
+      "events": 8,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "128": {
+      "page": 128,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 94,
+      "score": 84,
+      "violations": [],
+      "elements": 4,
+      "events": 8,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "129": {
+      "page": 129,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "130": {
+      "page": 130,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "131": {
+      "page": 131,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 92,
+      "score": 161,
+      "violations": [],
+      "elements": 5,
+      "events": 8,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "132": {
+      "page": 132,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 94,
+      "score": 84,
+      "violations": [],
+      "elements": 4,
+      "events": 8,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "133": {
+      "page": 133,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 3,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "134": {
+      "page": 134,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 83,
+      "score": 219,
+      "violations": [],
+      "elements": 4,
+      "events": 12,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "135": {
+      "page": 135,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 6,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "136": {
+      "page": 136,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "137": {
+      "page": 137,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 90,
+      "score": 163,
+      "violations": [],
+      "elements": 4,
+      "events": 8,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "138": {
+      "page": 138,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 98,
+      "score": 12,
+      "violations": [],
+      "elements": 4,
+      "events": 4,
+      "splits": 0,
+      "moves": 4,
+      "unstable": true
+    },
+    "139": {
+      "page": 139,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "140": {
+      "page": 140,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 96,
+      "score": 188,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 3,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "141": {
+      "page": 141,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 94,
+      "score": 84,
+      "violations": [],
+      "elements": 4,
+      "events": 8,
+      "splits": 0,
+      "moves": 4,
+      "unstable": true
+    },
+    "142": {
+      "page": 142,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "143": {
+      "page": 143,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 87,
+      "score": 211,
+      "violations": [],
+      "elements": 4,
+      "events": 12,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "144": {
+      "page": 144,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "145": {
+      "page": 145,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 6,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "146": {
+      "page": 146,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 6,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "147": {
+      "page": 147,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 92,
+      "score": 161,
+      "violations": [],
+      "elements": 5,
+      "events": 8,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "148": {
+      "page": 148,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "149": {
+      "page": 149,
+      "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+      "fillPct": 37,
+      "score": 611,
+      "violations": [],
+      "elements": 2,
+      "events": 8,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "151": {
+      "page": 151,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 99,
+      "score": 14,
+      "violations": [],
+      "elements": 4,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "152": {
+      "page": 152,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 90,
+      "score": 163,
+      "violations": [],
+      "elements": 4,
+      "events": 8,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "153": {
+      "page": 153,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 83,
+      "score": 219,
+      "violations": [],
+      "elements": 4,
+      "events": 12,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "154": {
+      "page": 154,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 4,
+      "splits": 0,
+      "moves": 4,
+      "unstable": true
+    },
+    "155": {
+      "page": 155,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 6,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "156": {
+      "page": 156,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 116,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 6,
+      "events": 5,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "157": {
+      "page": 157,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 81,
+      "score": 822,
+      "violations": [
+        "split_shallow",
+        "fragment"
+      ],
+      "elements": 5,
+      "events": 12,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "158": {
+      "page": 158,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "159": {
+      "page": 159,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "160": {
+      "page": 160,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "161": {
+      "page": 161,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "162": {
+      "page": 162,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 6,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "163": {
+      "page": 163,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "164": {
+      "page": 164,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 88,
+      "score": 207,
+      "violations": [],
+      "elements": 3,
+      "events": 9,
+      "splits": 0,
+      "moves": 3,
+      "unstable": true
+    },
+    "165": {
+      "page": 165,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 6,
+      "events": 3,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "166": {
+      "page": 166,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 92,
+      "score": 161,
+      "violations": [],
+      "elements": 3,
+      "events": 8,
+      "splits": 0,
+      "moves": 4,
+      "unstable": true
+    },
+    "167": {
+      "page": 167,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "168": {
+      "page": 168,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 94,
+      "score": 84,
+      "violations": [],
+      "elements": 4,
+      "events": 8,
+      "splits": 0,
+      "moves": 4,
+      "unstable": true
+    },
+    "169": {
+      "page": 169,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "170": {
+      "page": 170,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "171": {
+      "page": 171,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 88,
+      "score": 207,
+      "violations": [],
+      "elements": 5,
+      "events": 12,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "172": {
+      "page": 172,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 6,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "173": {
+      "page": 173,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "174": {
+      "page": 174,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 96,
+      "score": 188,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 5,
+      "events": 8,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "175": {
+      "page": 175,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 6,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "176": {
+      "page": 176,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 88,
+      "score": 207,
+      "violations": [],
+      "elements": 3,
+      "events": 8,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "177": {
+      "page": 177,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "178": {
+      "page": 178,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 98,
+      "score": 12,
+      "violations": [],
+      "elements": 4,
+      "events": 4,
+      "splits": 0,
+      "moves": 4,
+      "unstable": true
+    },
+    "179": {
+      "page": 179,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 6,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "180": {
+      "page": 180,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 116,
+      "violations": [
+        "fragment"
+      ],
+      "elements": 6,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "181": {
+      "page": 181,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "182": {
+      "page": 182,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 58,
+      "score": 569,
+      "violations": [],
+      "elements": 3,
+      "events": 12,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "183": {
+      "page": 183,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 3,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "184": {
+      "page": 184,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 4,
+      "splits": 0,
+      "moves": 4,
+      "unstable": true
+    },
+    "185": {
+      "page": 185,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 88,
+      "score": 207,
+      "violations": [],
+      "elements": 5,
+      "events": 12,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "186": {
+      "page": 186,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "187": {
+      "page": 187,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "188": {
+      "page": 188,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 6,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "189": {
+      "page": 189,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "190": {
+      "page": 190,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 6,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "191": {
+      "page": 191,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 96,
+      "score": 88,
+      "violations": [],
+      "elements": 3,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "192": {
+      "page": 192,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "193": {
+      "page": 193,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "194": {
+      "page": 194,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "195": {
+      "page": 195,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 96,
+      "score": 88,
+      "violations": [],
+      "elements": 5,
+      "events": 8,
+      "splits": 0,
+      "moves": 4,
+      "unstable": true
+    },
+    "196": {
+      "page": 196,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 6,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "197": {
+      "page": 197,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "198": {
+      "page": 198,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 92,
+      "score": 161,
+      "violations": [],
+      "elements": 5,
+      "events": 8,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "199": {
+      "page": 199,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 3,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "200": {
+      "page": 200,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 7,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "201": {
+      "page": 201,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 98,
+      "score": 12,
+      "violations": [],
+      "elements": 6,
+      "events": 8,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "202": {
+      "page": 202,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 6,
+      "splits": 1,
+      "moves": 0,
+      "unstable": true
+    },
+    "203": {
+      "page": 203,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 316,
+      "violations": [
+        "split_shallow",
+        "fragment"
+      ],
+      "elements": 3,
+      "events": 4,
+      "splits": 0,
+      "moves": 2,
+      "unstable": true
+    },
+    "204": {
+      "page": 204,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 81,
+      "score": 522,
+      "violations": [],
+      "elements": 5,
+      "events": 14,
+      "splits": 0,
+      "moves": 1,
+      "unstable": false
+    },
+    "205": {
+      "page": 205,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 2,
+      "splits": 0,
+      "moves": 1,
+      "unstable": false
+    },
+    "206": {
+      "page": 206,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 6,
+      "splits": 0,
+      "moves": 1,
+      "unstable": false
+    },
+    "207": {
+      "page": 207,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 6,
+      "splits": 0,
+      "moves": 3,
+      "unstable": true
+    },
+    "208": {
+      "page": 208,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 87,
+      "score": 211,
+      "violations": [],
+      "elements": 4,
+      "events": 18,
+      "splits": 0,
+      "moves": 3,
+      "unstable": true
+    },
+    "209": {
+      "page": 209,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 7,
+      "events": 9,
+      "splits": 0,
+      "moves": 5,
+      "unstable": true
+    },
+    "210": {
+      "page": 210,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 88,
+      "score": 207,
+      "violations": [],
+      "elements": 3,
+      "events": 8,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "211": {
+      "page": 211,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 6,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "212": {
+      "page": 212,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 6,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "213": {
+      "page": 213,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 4,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "214": {
+      "page": 214,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 87,
+      "score": 211,
+      "violations": [],
+      "elements": 4,
+      "events": 12,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "215": {
+      "page": 215,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 100,
+      "score": 16,
+      "violations": [],
+      "elements": 5,
+      "events": 4,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "216": {
+      "page": 216,
+      "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+      "fillPct": 42,
+      "score": 599,
+      "violations": [],
+      "elements": 3,
+      "events": 8,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    },
+    "218": {
+      "page": 218,
+      "chapter": "CAPÍTULO #8 – LO QUE NO SERÁ PERDONADO",
+      "fillPct": 22,
+      "score": 639,
+      "violations": [],
+      "elements": 1,
+      "events": 0,
+      "splits": 0,
+      "moves": 0,
+      "unstable": false
+    }
+  }
+}

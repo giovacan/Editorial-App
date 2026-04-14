@@ -221,6 +221,18 @@ export interface PaginationProgress {
   percent: number;
 }
 
+export type LayoutPlannerProvider = 'local' | 'webllm' | 'remote';
+export type LayoutPlannerPhase = 'idle' | 'loading' | 'ready' | 'fallback';
+
+export interface LayoutPlannerState {
+  provider: LayoutPlannerProvider;
+  phase: LayoutPlannerPhase;
+  progress: number;
+  modelLabel: string;
+  reason: string;
+  revision: number;
+}
+
 export type TOCResolvedEntry = {
   title: string;
   level: number;
@@ -244,6 +256,7 @@ export interface EditorState {
   config: Config;
   ui: UI;
   paginationProgress: PaginationProgress;
+  layoutPlanner: LayoutPlannerState;
   confirmedChapterTitles: string[];
   paginatedPages: any[];
   layoutDims: any | null;
@@ -259,6 +272,8 @@ export interface EditorState {
   setConfig: (config: Partial<Config>) => void;
   setUi: (ui: Partial<UI>) => void;
   setPaginationProgress: (percent: number) => void;
+  setLayoutPlannerState: (state: Partial<LayoutPlannerState>) => void;
+  bumpLayoutPlannerRevision: () => void;
   startPagination: () => void;
   endPagination: () => void;
   addChapter: (title?: string) => Chapter;

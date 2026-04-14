@@ -132,7 +132,6 @@ export const exportPdf = async (bookData, config, paginatedPages, dims, onProgre
     return;
   }
 
-  // Import libraries — both available in node_modules
   let jsPDFModule, html2canvasModule;
   try {
     [jsPDFModule, html2canvasModule] = await Promise.all([
@@ -143,10 +142,9 @@ export const exportPdf = async (bookData, config, paginatedPages, dims, onProgre
     alert('Error cargando dependencias PDF: ' + err.message);
     return;
   }
-  const { jsPDF }     = jsPDFModule;
-  const html2canvas   = html2canvasModule.default;
+  const { jsPDF } = jsPDFModule;
+  const html2canvas = html2canvasModule.default;
 
-  // Page dimensions in mm
   const toMM = (val, unit) => unit === 'inches' ? val * 25.4 : val;
   const W = toMM(pageFormat.width,  pageFormat.unit);
   const H = toMM(pageFormat.height, pageFormat.unit);
@@ -159,8 +157,6 @@ export const exportPdf = async (bookData, config, paginatedPages, dims, onProgre
     previewScale = 0.42,
   } = dims;
 
-  // Dynamic DPI: target_dpi / 96 * (1 / previewScale)
-  // 'fast' → ~80 DPI (quick preview), 'print' → ~220 DPI (KDP min), 'high' → ~300 DPI (images)
   const TARGET_DPI   = quality === 'fast' ? 80 : quality === 'high' ? 300 : 220;
   const CANVAS_SCALE = (TARGET_DPI / 96) * (1 / previewScale);
   // Example A5 (previewScale=0.42): fast → 1.98×, print → 5.46×, high → 7.44×
@@ -202,7 +198,7 @@ export const exportPdf = async (bookData, config, paginatedPages, dims, onProgre
     'word-break:break-word',
     'overflow-wrap:break-word',
     'overflow:hidden',
-    'hyphens:auto',
+    'hyphens:none',
     'position:relative',
   ].join(';');
 
@@ -244,6 +240,11 @@ export const exportPdf = async (bookData, config, paginatedPages, dims, onProgre
     logging: false,
     scrollX: 0,
     scrollY: 0,
+    imageTimeout: 0,
+    removeDOM: true,
+    onclone: (clonedDoc, clone) => {
+      clone.style.visibility = 'hidden';
+    },
   };
 
   // Render pages in parallel batches to maximise throughput.
@@ -403,4 +404,139 @@ export const exportHtml = (bookData) => {
   html += `\n</body>\n</html>`;
 
   downloadBlob(new Blob([html], { type: 'text/html' }), `libro-${Date.now()}.html`);
+};
+
+/**
+ * Export PDF using window.print() - fast and faithful to preview.
+ * Uses browser's native print dialog which renders HTML exactly like the preview.
+ */
+export const exportPdfPrint = async (bookData, config, paginatedPages, dims, onProgress) => {
+  if (!paginatedPages?.length || !dims) {
+    alert('No hay páginas para exportar. Abre la Vista previa primero.');
+    return;
+  }
+
+  const bookConfig = KDP_STANDARDS.getBookTypeConfig(bookData?.bookType || 'novela');
+  const formatId   = config?.pageFormat || bookConfig?.recommendedFormat || '6x9';
+  const pageFormat = KDP_STANDARDS.getPageFormat(formatId);
+
+  if (!pageFormat) {
+    alert('Formato de página no reconocido: ' + formatId);
+    return;
+  }
+
+  const { pageWidthPx, pageHeightPx, marginTop, marginRight, marginBottom, marginLeft, fontSize, fontFamily, lineHeightPx, previewScale = 0.42, baseFontSize, effectiveContentHeight } = dims;
+
+  const W = pageFormat.width;
+  const H = pageFormat.height;
+  const unit = pageFormat.unit || 'in';
+  const toMM = (val, u) => u === 'inches' ? val * 25.4 : val;
+  const Wmm = toMM(W, unit);
+  const Hmm = toMM(H, unit);
+  const widthInches = Wmm / 25.4;
+  const heightInches = Hmm / 25.4;
+
+  const pageBaseStyle = [
+    `width:${pageWidthPx}px`,
+    `height:${pageHeightPx}px`,
+    'background:#fff',
+    'color:#000',
+    'box-sizing:border-box',
+    `padding:${marginTop}px ${marginRight}px ${marginBottom}px ${marginLeft}px`,
+    `font-size:${fontSize}px`,
+    `font-family:${fontFamily}`,
+    `line-height:${lineHeightPx}px`,
+    'text-align:justify',
+    'text-justify:inter-word',
+    'word-break:break-word',
+    'overflow-wrap:break-word',
+    'overflow:hidden',
+    'hyphens:none',
+    'position:relative',
+    'page-break-after:always',
+    'break-after:always',
+  ].join(';');
+
+  const headerStyle = 'margin-bottom:0.5em;';
+  const numStyle = `position:absolute;bottom:${marginBottom * 0.4}px;left:50%;transform:translateX(-50%);font-size:${fontSize * 0.8}px;color:#333;`;
+
+  const bookTitle = bookData?.title || '';
+
+  let html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>${bookData?.title || 'Libro'}</title>
+  <style>
+    @page {
+      size: ${widthInches}in ${heightInches}in;
+      margin: 0;
+    }
+    @media print {
+      body { margin: 0 !important; }
+      .print-page { break-after: page; }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { 
+      font-family: ${fontFamily};
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .print-page {
+      width: ${pageWidthPx}px;
+      height: ${pageHeightPx}px;
+      background: #fff;
+      color: #000;
+      padding: ${marginTop}px ${marginRight}px ${marginBottom}px ${marginLeft}px;
+      font-size: ${fontSize}px;
+      line-height: ${lineHeightPx}px;
+      text-align: justify;
+      text-justify: inter-word;
+      word-break: break-word;
+      overflow-wrap: break-word;
+      hyphens: none;
+      position: relative;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+    .print-header { margin-bottom: 0.5em; }
+    .print-content { height: ${effectiveContentHeight ?? (pageHeightPx - marginTop - marginBottom)}px; overflow: hidden; }
+    .print-number { position: absolute; bottom: ${marginBottom * 0.4}px; left: 50%; transform: translateX(-50%); font-size: ${fontSize * 0.8}px; color: #333; }
+  </style>
+</head>
+<body>
+`;
+
+  const total = paginatedPages.length;
+  for (let i = 0; i < total; i++) {
+    const page = paginatedPages[i];
+    
+    if (i > 0) {
+      html += `<div class="print-page">\n`;
+    } else {
+      html += `<div class="print-page">\n`;
+    }
+
+    if (!page.isBlank) {
+      const headerHtml = buildHeaderHtmlPure(page, config, bookTitle, baseFontSize);
+      if (headerHtml) {
+        html += `  <div class="print-header">${headerHtml}</div>\n`;
+      }
+
+      html += `  <div class="print-content">${page.html || ''}</div>\n`;
+
+      if (page.pageNumber && config?.showPageNumbers !== false) {
+        html += `  <span class="print-number">${page.pageNumber}</span>\n`;
+      }
+    }
+
+    html += `</div>\n`;
+    onProgress?.(i + 1, total);
+  }
+
+  html += `</body>\n</html>`;
+
+  const safeTitle = (bookData?.title || 'libro').replace(/[^\w\sáéíóúñÁÉÍÓÚÑ.-]/g, '_');
+  const blob = new Blob([html], { type: 'text/html' });
+  downloadBlob(blob, `${safeTitle}_print.html`);
 };

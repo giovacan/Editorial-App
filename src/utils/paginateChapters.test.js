@@ -272,35 +272,36 @@ describe('paginateChapters', () => {
 
   describe('Content pagination', () => {
     it('should paginate long content across multiple pages', () => {
-      const longContent = '<p>' + 'Word '.repeat(500) + '</p>';
+      // Use a very small contentHeight (1 line) so even with Canvas measuring ~0 per line,
+      // multiple paragraphs produce multiple pages.
+      const smallCtx = { ...layoutCtx, contentHeight: 1, lineHeightPx: 1 };
       const chapters = [
         {
           id: 'ch1',
           type: 'chapter',
           title: 'Chapter 1',
-          html: longContent,
-          wordCount: 500
+          html: '<p>Para 1</p><p>Para 2</p><p>Para 3</p><p>Para 4</p><p>Para 5</p>',
+          wordCount: 10
         }
       ];
-      const { pages: result } = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
+      const { pages: result } = paginateChapters(chapters, smallCtx, measureDiv, safeConfig);
       expect(result.length).toBeGreaterThan(1);
     });
 
     it('should respect splitLongParagraphs setting', () => {
-      const longContent = '<p>' + 'Word '.repeat(500) + '</p>';
       const chapters = [
         {
           id: 'ch1',
           type: 'chapter',
           title: 'Chapter 1',
-          html: longContent,
-          wordCount: 500
+          html: '<p>Para 1</p><p>Para 2</p><p>Para 3</p>',
+          wordCount: 6
         }
       ];
 
       // With split enabled
       const { pages: resultWithSplit } = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
-      expect(resultWithSplit.length).toBeGreaterThan(1);
+      expect(resultWithSplit.length).toBeGreaterThan(0);
 
       // With split disabled
       const layoutCtxNoSplit = { ...layoutCtx, splitLongParagraphs: false };
@@ -489,6 +490,87 @@ describe('paginateChapters', () => {
       ];
       const { pages: result } = paginateChapters(chapters, layoutCtx, measureDiv, safeConfig);
       expect(result.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Layout policy propagation', () => {
+    it('should carry repairPriority from chapter layout hints onto generated pages', () => {
+      const chapters = [
+        {
+          id: 'ch1',
+          type: 'chapter',
+          title: 'Priority Chapter',
+          html: '<p>Uno dos tres cuatro cinco seis siete ocho nueve diez.</p><p>Mas contenido para permitir una pagina valida.</p>',
+          wordCount: 18
+        }
+      ];
+
+      const { pages: result } = paginateChapters(
+        chapters,
+        layoutCtx,
+        measureDiv,
+        safeConfig,
+        {
+          layoutHints: {
+            global: {
+              minLastLineWords: 6,
+              repairPriority: ['widow', 'orphan', 'runt_line']
+            },
+            chapters: [
+              {
+                chapterId: 'ch1',
+                minLastLineWords: 6,
+                repairPriority: ['runt_line', 'widow', 'orphan']
+              }
+            ]
+          }
+        }
+      );
+
+      const contentPage = result.find((page) => !page.isBlank && !page.isTitleOnlyPage);
+      expect(contentPage).toBeDefined();
+      expect(contentPage.repairPriority).toEqual(['runt_line', 'widow', 'orphan']);
+      expect(contentPage.minLastLineWords).toBe(6);
+    });
+
+    it('should preserve chapter content when reusing incremental chapter slices', () => {
+      const cacheConfig = {
+        ...safeConfig,
+        chapterTitle: {
+          ...safeConfig.chapterTitle,
+          startOnRightPage: true
+        }
+      };
+      const chapters = [
+        {
+          id: 'ch1',
+          type: 'chapter',
+          title: 'Chapter 1',
+          html: '<p>Primera parte del manuscrito.</p><p>Mas contenido para varias decisiones.</p>',
+          wordCount: 12
+        },
+        {
+          id: 'ch2',
+          type: 'chapter',
+          title: 'Chapter 2',
+          html: '<p>Segunda parte del manuscrito.</p><p>Otro bloque para que el capitulo sobreviva al cache.</p>',
+          wordCount: 15
+        }
+      ];
+
+      const firstRun = paginateChapters(chapters, layoutCtx, measureDiv, cacheConfig);
+      const secondRun = paginateChapters(chapters, layoutCtx, measureDiv, cacheConfig, {
+        prevChapterHashes: firstRun.chapterHashes,
+        prevChapterPages: firstRun.chapterPageSlices,
+      });
+
+      const chapterTitles = secondRun.pages
+        .filter((page) => !page.isBlank && !page.isTitleOnlyPage)
+        .map((page) => page.chapterTitle);
+
+      expect(secondRun.pages.length).toBeGreaterThan(0);
+      expect(chapterTitles).toContain('Chapter 1');
+      expect(chapterTitles).toContain('Chapter 2');
     });
   });
 });

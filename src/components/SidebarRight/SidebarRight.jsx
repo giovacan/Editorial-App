@@ -1,15 +1,11 @@
 import { useState, memo } from 'react';
 import useEditorStore from '../../store/useEditorStore';
 import Preview from '../Preview/Preview';
-import PaginationProgressBar from '../PaginationProgressBar/PaginationProgressBar';
 import './SidebarRight.css';
 
 function SidebarRight({ onExportPdf, onExportEpub, onExportHtml }) {
   const [activeTab, setActiveTab] = useState('preview');
   const chapters = useEditorStore((state) => state.bookData?.chapters);
-  const paginationProgress = useEditorStore((s) => s.paginationProgress);
-  const isPaginationRunning = paginationProgress > 0 && paginationProgress < 100;
-  
   const safeChapters = chapters || [];
 
   return (
@@ -50,11 +46,6 @@ function SidebarRight({ onExportPdf, onExportEpub, onExportHtml }) {
           </div>
         ) : (
           <>
-            <PaginationProgressBar
-              progress={paginationProgress}
-              isVisible={isPaginationRunning}
-              compact={true}
-            />
             <Preview />
           </>
         )}

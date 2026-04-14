@@ -34,131 +34,143 @@ function HeaderPanel({ safeConfig, setConfig }) {
               value={safeConfig.header?.template || 'classic'}
               onChange={(templateId) => {
                 const templateConfig = getHeaderTemplateConfig(templateId);
+                // pageNumberPos/Align are top-level config, not inside header
+                const { pageNumberPos, pageNumberAlign, ...headerOnly } = templateConfig;
+                const topLevel = {};
+                if (pageNumberPos)  topLevel.pageNumberPos  = pageNumberPos;
+                if (pageNumberAlign) topLevel.pageNumberAlign = pageNumberAlign;
                 setConfig({
                   showHeaders: true,
+                  ...topLevel,
                   header: {
                     ...safeConfig.header,
-                    ...templateConfig,
+                    ...headerOnly,
                     enabled: true
                   }
                 });
               }}
               templates={Object.values(HEADER_TEMPLATES)}
+              headerConfig={safeConfig.header}
+              onHeaderConfigChange={(updatedHeaderConfig) => setConfig({
+                header: { ...safeConfig.header, ...updatedHeaderConfig }
+              })}
             />
           </fieldset>
 
-          {/* Custom configuration when template is 'custom' */}
-          {safeConfig.header?.template === 'custom' && (
-            <>
-              <fieldset className="config-group">
-                <legend>Páginas pares (izquierda)</legend>
-                <div className="header-page-config">
-                  <div className="header-cell-config">
-                    <label>Izquierda</label>
-                    <select
-                      value={safeConfig.header?.evenPage?.leftContent || 'title'}
-                      onChange={(e) => setConfig({
-                        header: {
-                          ...safeConfig.header,
-                          evenPage: { ...safeConfig.header?.evenPage, leftContent: e.target.value }
-                        }
-                      })}
-                    >
-                      {Object.entries(HEADER_CONTENT_LABELS).map(([value, label]) => (
-                        <option key={value} value={value}>{label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="header-cell-config">
-                    <label>Centro</label>
-                    <select
-                      value={safeConfig.header?.evenPage?.centerContent || 'none'}
-                      onChange={(e) => setConfig({
-                        header: {
-                          ...safeConfig.header,
-                          evenPage: { ...safeConfig.header?.evenPage, centerContent: e.target.value }
-                        }
-                      })}
-                    >
-                      {Object.entries(HEADER_CONTENT_LABELS).map(([value, label]) => (
-                        <option key={value} value={value}>{label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="header-cell-config">
-                    <label>Derecha</label>
-                    <select
-                      value={safeConfig.header?.evenPage?.rightContent || 'none'}
-                      onChange={(e) => setConfig({
-                        header: {
-                          ...safeConfig.header,
-                          evenPage: { ...safeConfig.header?.evenPage, rightContent: e.target.value }
-                        }
-                      })}
-                    >
-                      {Object.entries(HEADER_CONTENT_LABELS).map(([value, label]) => (
-                        <option key={value} value={value}>{label}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </fieldset>
+          {/* Even/odd content editor — visible for all templates */}
+          <fieldset className="config-group">
+            <legend>Páginas pares (izquierda)</legend>
+            <div className="header-page-config">
+              <div className="header-cell-config">
+                <label>Izquierda</label>
+                <select
+                  value={safeConfig.header?.evenPage?.leftContent || 'title'}
+                  onChange={(e) => setConfig({
+                    header: {
+                      ...safeConfig.header,
+                      template: 'custom',
+                      evenPage: { ...safeConfig.header?.evenPage, leftContent: e.target.value }
+                    }
+                  })}
+                >
+                  {Object.entries(HEADER_CONTENT_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="header-cell-config">
+                <label>Centro</label>
+                <select
+                  value={safeConfig.header?.evenPage?.centerContent || 'none'}
+                  onChange={(e) => setConfig({
+                    header: {
+                      ...safeConfig.header,
+                      template: 'custom',
+                      evenPage: { ...safeConfig.header?.evenPage, centerContent: e.target.value }
+                    }
+                  })}
+                >
+                  {Object.entries(HEADER_CONTENT_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="header-cell-config">
+                <label>Derecha</label>
+                <select
+                  value={safeConfig.header?.evenPage?.rightContent || 'none'}
+                  onChange={(e) => setConfig({
+                    header: {
+                      ...safeConfig.header,
+                      template: 'custom',
+                      evenPage: { ...safeConfig.header?.evenPage, rightContent: e.target.value }
+                    }
+                  })}
+                >
+                  {Object.entries(HEADER_CONTENT_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </fieldset>
 
-              <fieldset className="config-group">
-                <legend>Páginas impares (derecha)</legend>
-                <div className="header-page-config">
-                  <div className="header-cell-config">
-                    <label>Izquierda</label>
-                    <select
-                      value={safeConfig.header?.oddPage?.leftContent || 'none'}
-                      onChange={(e) => setConfig({
-                        header: {
-                          ...safeConfig.header,
-                          oddPage: { ...safeConfig.header?.oddPage, leftContent: e.target.value }
-                        }
-                      })}
-                    >
-                      {Object.entries(HEADER_CONTENT_LABELS).map(([value, label]) => (
-                        <option key={value} value={value}>{label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="header-cell-config">
-                    <label>Centro</label>
-                    <select
-                      value={safeConfig.header?.oddPage?.centerContent || 'none'}
-                      onChange={(e) => setConfig({
-                        header: {
-                          ...safeConfig.header,
-                          oddPage: { ...safeConfig.header?.oddPage, centerContent: e.target.value }
-                        }
-                      })}
-                    >
-                      {Object.entries(HEADER_CONTENT_LABELS).map(([value, label]) => (
-                        <option key={value} value={value}>{label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="header-cell-config">
-                    <label>Derecha</label>
-                    <select
-                      value={safeConfig.header?.oddPage?.rightContent || 'chapter'}
-                      onChange={(e) => setConfig({
-                        header: {
-                          ...safeConfig.header,
-                          oddPage: { ...safeConfig.header?.oddPage, rightContent: e.target.value }
-                        }
-                      })}
-                    >
-                      {Object.entries(HEADER_CONTENT_LABELS).map(([value, label]) => (
-                        <option key={value} value={value}>{label}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </fieldset>
-            </>
-          )}
+          <fieldset className="config-group">
+            <legend>Páginas impares (derecha)</legend>
+            <div className="header-page-config">
+              <div className="header-cell-config">
+                <label>Izquierda</label>
+                <select
+                  value={safeConfig.header?.oddPage?.leftContent || 'none'}
+                  onChange={(e) => setConfig({
+                    header: {
+                      ...safeConfig.header,
+                      template: 'custom',
+                      oddPage: { ...safeConfig.header?.oddPage, leftContent: e.target.value }
+                    }
+                  })}
+                >
+                  {Object.entries(HEADER_CONTENT_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="header-cell-config">
+                <label>Centro</label>
+                <select
+                  value={safeConfig.header?.oddPage?.centerContent || 'none'}
+                  onChange={(e) => setConfig({
+                    header: {
+                      ...safeConfig.header,
+                      template: 'custom',
+                      oddPage: { ...safeConfig.header?.oddPage, centerContent: e.target.value }
+                    }
+                  })}
+                >
+                  {Object.entries(HEADER_CONTENT_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="header-cell-config">
+                <label>Derecha</label>
+                <select
+                  value={safeConfig.header?.oddPage?.rightContent || 'chapter'}
+                  onChange={(e) => setConfig({
+                    header: {
+                      ...safeConfig.header,
+                      template: 'custom',
+                      oddPage: { ...safeConfig.header?.oddPage, rightContent: e.target.value }
+                    }
+                  })}
+                >
+                  {Object.entries(HEADER_CONTENT_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </fieldset>
 
           {/* Subheader tracking configuration */}
           <fieldset className="config-group">

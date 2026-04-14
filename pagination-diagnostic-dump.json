@@ -1,0 +1,3413 @@
+{
+  "metadata": {
+    "timestamp": "2026-03-27T06:59:09.457Z",
+    "totalPages": 219,
+    "totalEvents": 5597,
+    "config": {
+      "pageFormat": "a5",
+      "fontSize": 4.719629008556115,
+      "lineHeight": 1.5,
+      "contentHeight": 260,
+      "contentWidth": 153.92519388021438,
+      "minOrphanLines": 2,
+      "lineHeightPx": 10
+    },
+    "extractDate": "2026-03-27T07:08:14.511Z",
+    "targetPages": [
+      47,
+      49,
+      64,
+      65,
+      69,
+      99,
+      105,
+      141,
+      146,
+      148,
+      160,
+      182
+    ]
+  },
+  "pageData": {
+    "47": {
+      "summary": {
+        "page": 47,
+        "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+        "fillPct": 92,
+        "score": 161,
+        "qualityGrade": "C",
+        "violations": [],
+        "elements": 2,
+        "events": 14,
+        "splits": 1,
+        "moves": 1,
+        "chapterEnd": false,
+        "unstable": true,
+        "indentAnomalies": [],
+        "lineAnalysis": [
+          {
+            "index": 0,
+            "text": "como su comandante Joab habían muerto, le dijo al faraón: 'Permíteme regresar a ",
+            "lineCount": 2,
+            "lastLineWords": 4,
+            "lastLineWidthRatio": 0.56,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          },
+          {
+            "index": 1,
+            "text": "Rezón era el enemigo externo presente. \"Rezón fue enemigo a muerte de Israel por",
+            "lineCount": 2,
+            "lastLineWords": 6,
+            "lastLineWidthRatio": 0.59,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          }
+        ],
+        "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:0;text-align-last:left;;;margin-bottom:10.0px\">como su comandante Joab habían muerto, le dijo al faraón: 'Permíteme regresar a mi país'\" (1 Reyes 11:17, 21, NTV)</em>. Hadad era un enemigo del pasado que Salomón pensaba que estaba muerto o irrelevante. Pero Dios lo preservó, lo protegió, y esperó el momento exacto para activarlo como instrumento de disciplina. Cuando te apartas de Dios, los enemigos del pasado que pensabas superados regresarán: esa tentación que creías muerta, ese pecado que pensabas enterrado, ese hábito que creías vencido. Dios permite su regreso no para destruirte, sino para despertarte.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:1.5em;text-align-last:left;\">Rezón era el enemigo externo presente. <em>\"Rezón fue enemigo a muerte de Israel por el resto del reinado de Salomón y generó conflictos como lo había hecho Hadad. Rezón odió a Israel profundamente y siguió reinando en Aram\" (1 Reyes 11:25, NTV)</em>. Rezón era un enemigo contemporáneo activo, no era del pasado sino una amenaza constante y presente durante todo el reinado de Salomón. Cuando te apartas de Dios, experimentarás conflicto constante: paz que se va, estabilidad que se desmorona, relaciones que se tensan, finanzas que se complican. No es mala suerte. Es disciplina divina.</p>"
+      },
+      "entries": [
+        {
+          "phase": "greedy",
+          "type": "no-fit",
+          "page": 47,
+          "traceId": "greedy-p47-543",
+          "data": {
+            "tag": "P",
+            "text": "Eso es lo que sucede cuando algo toca verdaderamente la pres",
+            "isBold": false,
+            "candidateH": 280,
+            "contentH": 260,
+            "remainLines": 4,
+            "splitEnabled": true
+          }
+        },
+        {
+          "phase": "greedy",
+          "type": "split",
+          "page": 47,
+          "traceId": "greedy-p47-544",
+          "data": {
+            "tag": "P",
+            "text": "Eso es lo que sucede cuando algo toca verdaderamente la pres",
+            "orphanLines": 3,
+            "widowLines": 3,
+            "chunkTail": "ente la presencia de Jesús: ya no puede volver a ser lo que era antes. No fue un",
+            "restHead": "cambio cosmético. Fue un cambio de naturaleza. El agua dejó de existir como agua",
+            "before": {
+              "score": 224
+            },
+            "after": {
+              "score": 273
+            },
+            "simSplitLines": 23,
+            "simFlushLines": 26
+          }
+        },
+        {
+          "phase": "greedy",
+          "type": "no-fit",
+          "page": 47,
+          "traceId": "greedy-p47-545",
+          "data": {
+            "tag": "P",
+            "text": "Eso es lo que sucede cuando algo toca verdaderamente la pres",
+            "reason": "underfill",
+            "remainingLines": 4,
+            "canSplit": true
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 47,
+          "traceId": "fill-p47-915",
+          "data": {
+            "remainingLines": 8
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "src-extract-debug",
+          "page": 47,
+          "traceId": "fill-p47-916",
+          "data": {
+            "srcPage": 48,
+            "srcRawCont": true,
+            "elCont": "true",
+            "elOuterStart": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wra"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "move",
+          "page": 47,
+          "traceId": "fill-p47-917",
+          "data": {
+            "tag": "P",
+            "text": "todo el reinado de Salomón. Cuando te apartas de Dios, exper",
+            "fromPage": 48,
+            "before": {
+              "score": 662
+            },
+            "after": {
+              "score": 830,
+              "fillPct": 88
+            }
+          },
+          "beforeSnapshot": {
+            "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:0;text-align-last:left;\">como su comandante Joab habían muerto, le dijo al faraón: 'Permíteme regresar a mi país'\" (1 Reyes 11:17, 21, NTV)</em>. Hadad era un enemigo del pasado que Salomón pensaba que estaba muerto o irrelevante. Pero Dios lo preservó, lo protegió, y esperó el momento exacto para activarlo como instrumento de disciplina. Cuando te apartas de Dios, los enemigos del pasado que pensabas superados regresarán: esa tentación que creías muerta, ese pecado que pensabas enterrado, ese hábito que creías vencido. Dios permite su regreso no para destruirte, sino para despertarte.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:1.5em;text-align-last:justify;\">Rezón era el enemigo externo presente. <em>\"Rezón fue enemigo a muerte de Israel por el resto del reinado de Salomón y generó conflictos como lo había hecho Hadad. Rezón odió a Israel profundamente y siguió reinando en Aram\" (1 Reyes 11:25, NTV)</em>. Rezón era un enemigo contemporáneo activo, no era del pasado sino una amenaza constante y presente durante</p>",
+            "structure": {
+              "elementCount": 2,
+              "paragraphs": 2,
+              "headings": 0,
+              "lists": 0,
+              "blockquotes": 0
+            }
+          },
+          "afterSnapshot": {
+            "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:0;text-align-last:left;\">como su comandante Joab habían muerto, le dijo al faraón: 'Permíteme regresar a mi país'\" (1 Reyes 11:17, 21, NTV)</em>. Hadad era un enemigo del pasado que Salomón pensaba que estaba muerto o irrelevante. Pero Dios lo preservó, lo protegió, y esperó el momento exacto para activarlo como instrumento de disciplina. Cuando te apartas de Dios, los enemigos del pasado que pensabas superados regresarán: esa tentación que creías muerta, ese pecado que pensabas enterrado, ese hábito que creías vencido. Dios permite su regreso no para destruirte, sino para despertarte.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:1.5em;text-align-last:justify;\">Rezón era el enemigo externo presente. <em>\"Rezón fue enemigo a muerte de Israel por el resto del reinado de Salomón y generó conflictos como lo había hecho Hadad. Rezón odió a Israel profundamente y siguió reinando en Aram\" (1 Reyes 11:25, NTV)</em>. Rezón era un enemigo contemporáneo activo, no era del pasado sino una amenaza constante y presente durante</p><p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;text-indent:0;\" data-continuation=\"true\" data-block-id=\"b143\" data-fragment-index=\"1\" data-continued-from=\"b143\">todo el reinado de Salomón. Cuando te apartas de Dios, experimentarás conflicto constante: paz que se va, estabilidad que se desmorona, relaciones que se tensan, finanzas que se complican. No es mala suerte. Es disciplina divina.</p>",
+            "structure": {
+              "elementCount": 3,
+              "paragraphs": 3,
+              "headings": 0,
+              "lists": 0,
+              "blockquotes": 0
+            }
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 47,
+          "traceId": "fill-p47-919",
+          "data": {
+            "remainingLines": 3
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 47,
+          "traceId": "fill-p47-920",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Jeroboam era el enemigo interno del futuro. \"Jeroboam era un"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 47,
+          "traceId": "fill-p47-1986",
+          "data": {
+            "remainingLines": 3
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 47,
+          "traceId": "fill-p47-1987",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Jeroboam era el enemigo interno del futuro. \"Jeroboam era un"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 47,
+          "traceId": "fill-p47-2846",
+          "data": {
+            "remainingLines": 3
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 47,
+          "traceId": "fill-p47-2847",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Jeroboam era el enemigo interno del futuro. \"Jeroboam era un"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 47,
+          "traceId": "fill-p47-4009",
+          "data": {
+            "remainingLines": 3
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 47,
+          "traceId": "fill-p47-4010",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Jeroboam era el enemigo interno del futuro. \"Jeroboam era un"
+          }
+        }
+      ],
+      "entryCount": 14
+    },
+    "49": {
+      "summary": {
+        "page": 49,
+        "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+        "fillPct": 88,
+        "score": 207,
+        "qualityGrade": "C",
+        "violations": [],
+        "elements": 1,
+        "events": 13,
+        "splits": 1,
+        "moves": 0,
+        "chapterEnd": false,
+        "unstable": true,
+        "indentAnomalies": [],
+        "lineAnalysis": [
+          {
+            "index": 0,
+            "text": "Mi disciplina.\" Hadad, Rezón y Jeroboam no estaban ahí por accidente. Estaban ah",
+            "lineCount": 2,
+            "lastLineWords": 5,
+            "lastLineWidthRatio": 0.55,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          }
+        ],
+        "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:1.5em;text-align-last:left;\">Mi disciplina.\" Hadad, Rezón y Jeroboam no estaban ahí por accidente. Estaban ahí por diseño divino. Dios los levantó —la Escritura usa esa palabra tres veces—, los preparó, los posicionó, y cuando Salomón cruzó el límite, Dios los activó. Esto es lo que muchos no entienden sobre apartarse de Dios: las consecuencias no empiezan cuando Dios decide castigarte. Las consecuencias ya están en posición, esperando ser activadas. <strong>¿Por Qué Dios No</strong> Lo Disciplinó Inmediatamente?</strong> Aquí está la misericordia escondida en esta historia: <em>\"Pero por amor a tu padre David, no lo haré mientras vivas\"</em> (1 Reyes 11:12, NTV)</em>. Dios retrasó la disciplina completa por dos razones: por amor a David, porque aunque Salomón no merecía misericordia, David sí había construido un legado de fidelidad que Dios honró. Tus padres, abuelos, mentores espirituales fieles pueden haber construido una \"cuenta bancaria espiritual\" de gracia que te protege temporalmente, pero no presumas de esa gracia. Y segundo, para darle tiempo a Salomón de arrepentirse. Dios le dijo: \"No mientras vivas\", lo que significa que Salomón todavía tenía tiempo para volver.</p>"
+      },
+      "entries": [
+        {
+          "phase": "greedy",
+          "type": "heading-detect",
+          "page": 49,
+          "traceId": "greedy-p49-549",
+          "data": {
+            "tag": "P",
+            "text": "Las Tres Áreas Que Revelan Dónde Están Tus Velos",
+            "isHeading": false,
+            "isBoldParagraph": true
+          }
+        },
+        {
+          "phase": "greedy",
+          "type": "fit",
+          "page": 49,
+          "traceId": "greedy-p49-550",
+          "data": {
+            "tag": "P",
+            "text": "Las Tres Áreas Que Revelan Dónde Están Tus Velos",
+            "isBold": true,
+            "candidateH": 190,
+            "contentH": 260,
+            "elHeight": 20,
+            "note": "has-inline-bold"
+          }
+        },
+        {
+          "phase": "greedy",
+          "type": "no-fit",
+          "page": 49,
+          "traceId": "greedy-p49-551",
+          "data": {
+            "tag": "P",
+            "text": "Tiempo: Tu agenda real, no la que dices tener. Tu inversión ",
+            "isBold": false,
+            "candidateH": 310,
+            "contentH": 260,
+            "remainLines": 4,
+            "splitEnabled": true
+          }
+        },
+        {
+          "phase": "greedy",
+          "type": "split",
+          "page": 49,
+          "traceId": "greedy-p49-552",
+          "data": {
+            "tag": "P",
+            "text": "Tiempo: Tu agenda real, no la que dices tener. Tu inversión ",
+            "orphanLines": 2,
+            "widowLines": 7,
+            "chunkTail": "nda real, no la que dices tener. Tu inversión de tiempo: ¿dónde pasan tus horas?",
+            "restHead": "Tus prioridades demostradas por lo que haces primero y lo que dejas para después",
+            "before": {
+              "score": 224
+            },
+            "after": {
+              "score": 170
+            },
+            "simSplitLines": 26,
+            "simFlushLines": 26
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "rest-cont-check",
+          "page": 49,
+          "traceId": "fill-p49-926",
+          "data": {
+            "hasCont": false,
+            "srcHasCont": false,
+            "restSnippet": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-ind"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 49,
+          "traceId": "fill-p49-928",
+          "data": {
+            "remainingLines": 3
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 49,
+          "traceId": "fill-p49-929",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Pero la tragedia es esta: no hay registro de que Salomón se "
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 49,
+          "traceId": "fill-p49-1989",
+          "data": {
+            "remainingLines": 3
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 49,
+          "traceId": "fill-p49-1990",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Pero la tragedia es esta: no hay registro de que Salomón se "
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 49,
+          "traceId": "fill-p49-2849",
+          "data": {
+            "remainingLines": 3
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 49,
+          "traceId": "fill-p49-2850",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Pero la tragedia es esta: no hay registro de que Salomón se "
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 49,
+          "traceId": "fill-p49-4012",
+          "data": {
+            "remainingLines": 3
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 49,
+          "traceId": "fill-p49-4013",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Pero la tragedia es esta: no hay registro de que Salomón se "
+          }
+        }
+      ],
+      "entryCount": 13
+    },
+    "64": {
+      "summary": {
+        "page": 64,
+        "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+        "fillPct": 96,
+        "score": 188,
+        "qualityGrade": "C",
+        "violations": [
+          "fragment"
+        ],
+        "elements": 3,
+        "events": 32,
+        "splits": 2,
+        "moves": 0,
+        "chapterEnd": false,
+        "unstable": true,
+        "indentAnomalies": [],
+        "lineAnalysis": [
+          {
+            "index": 0,
+            "text": "ninguna disciplina al presente parece ser causa de gozo, sino de tristeza; pero ",
+            "lineCount": 2,
+            "lastLineWords": 5,
+            "lastLineWidthRatio": 0.5,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          },
+          {
+            "index": 1,
+            "text": "Y experimentarás acompañamiento divino durante el proceso. Cuando caes en manos ",
+            "lineCount": 2,
+            "lastLineWords": 5,
+            "lastLineWidthRatio": 0.6,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          },
+          {
+            "index": 2,
+            "text": "Observa las afirmaciones de fe en medio de la disciplina: \"Aunque caí, me levant",
+            "lineCount": 2,
+            "lastLineWords": 5,
+            "lastLineWidthRatio": 0.64,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          }
+        ],
+        "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;text-indent:0;;;margin-bottom:10.0px\" data-continuation=\"true\" data-block-id=\"b184\" data-fragment-index=\"1\" data-continued-from=\"b184\">ninguna disciplina al presente parece ser causa de gozo, sino de tristeza; pero después da fruto apacible de justicia a los que en ella han sido ejercitados\" (Hebreos 12:11)</em>. Después de la disciplina viene \"fruto apacible de justicia\".</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;;;margin-bottom:10.0px\">Y experimentarás acompañamiento divino durante el proceso. Cuando caes en manos de Dios, Él no te abandona durante la disciplina. Miqueas lo expresa hermosamente: <em>\"Tú, enemiga mía, no te alegres de mí, porque aunque caí, me levantaré; aunque more en tinieblas, Jehová será mi luz. La ira de Jehová soportaré, porque pequé contra él, hasta que juzgue mi causa y haga mi justicia; él me sacará a luz; veré su justicia\" (Miqueas 7:8-9)</em>.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:1.5em;text-align-last:justify;\">Observa las afirmaciones de fe en medio de la disciplina: \"Aunque caí, me levantaré\" muestra confianza en restauración; \"Aunque more en tinieblas, Jehová será mi luz\" revela presencia divina incluso en el juicio; \"La ira de Jehová soportaré, porque pequé contra él\" demuestra aceptación humilde de la disciplina merecida; \"Hasta que juzgue mi causa y haga mi justicia\" expresa confianza en que Dios terminará el proceso correctamente; y \"Él me sacará</p>"
+      },
+      "entries": [
+        {
+          "phase": "greedy",
+          "type": "no-fit",
+          "page": 64,
+          "traceId": "greedy-p64-589",
+          "data": {
+            "tag": "P",
+            "text": "Pero Jesús vino y dijo: \"Yo soy.\" Y todos los que vienen a É",
+            "isBold": false,
+            "candidateH": 270,
+            "contentH": 260,
+            "remainLines": 4,
+            "splitEnabled": true
+          }
+        },
+        {
+          "phase": "greedy",
+          "type": "no-fit",
+          "page": 64,
+          "traceId": "greedy-p64-590",
+          "data": {
+            "tag": "P",
+            "text": "Pero Jesús vino y dijo: \"Yo soy.\" Y todos los que vienen a É",
+            "reason": "underfill",
+            "remainingLines": 4,
+            "canSplit": true
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 64,
+          "traceId": "fill-p64-1005",
+          "data": {
+            "remainingLines": 12
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "no-fit",
+          "page": 64,
+          "traceId": "fill-p64-1006",
+          "data": {
+            "tag": "P",
+            "text": "Observa las afirmaciones de fe en medio de la disciplina: \"A",
+            "remainingLines": 12,
+            "elHeight": 130
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 64,
+          "traceId": "fill-p64-1007",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Observa las afirmaciones de fe en medio de la disciplina: \"A"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "split",
+          "page": 64,
+          "traceId": "fill-p64-1008",
+          "data": {
+            "tag": "P",
+            "text": "Observa las afirmaciones de fe en medio de la disciplina: \"A",
+            "reason": "shallow-retry",
+            "chunkLines": 9,
+            "restLines": 4
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "split-chunk-debug",
+          "page": 64,
+          "traceId": "fill-p64-1009",
+          "data": {
+            "isContChunk": false,
+            "chunkIndent": "1.5em",
+            "chunkText": "Observa las afirmaciones de fe en medio de la disciplina: \"A",
+            "chunkHtmlStart": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:1.5em;text-align-last:justify;\">Observa las afirmaciones de fe en medio de l"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "split",
+          "page": 64,
+          "traceId": "fill-p64-1011",
+          "data": {
+            "tag": "P",
+            "text": "Observa las afirmaciones de fe en medio de la disciplina: \"A",
+            "fromPage": 65,
+            "chunkLines": 9,
+            "restLines": 4,
+            "chunkTail": "xpresa confianza en que Dios terminará el proceso correctamente; y \"Él me sacará",
+            "restHead": "a luz; veré su justicia\" declara esperanza de vindicación y restauración complet",
+            "before": {
+              "score": 883
+            },
+            "after": {
+              "score": 983
+            }
+          },
+          "beforeSnapshot": {
+            "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;text-indent:0;\" data-continuation=\"true\" data-block-id=\"b184\" data-fragment-index=\"1\" data-continued-from=\"b184\">ninguna disciplina al presente parece ser causa de gozo, sino de tristeza; pero después da fruto apacible de justicia a los que en ella han sido ejercitados\" (Hebreos 12:11)</em>. Después de la disciplina viene \"fruto apacible de justicia\".</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\">Y experimentarás acompañamiento divino durante el proceso. Cuando caes en manos de Dios, Él no te abandona durante la disciplina. Miqueas lo expresa hermosamente: <em>\"Tú, enemiga mía, no te alegres de mí, porque aunque caí, me levantaré; aunque more en tinieblas, Jehová será mi luz. La ira de Jehová soportaré, porque pequé contra él, hasta que juzgue mi causa y haga mi justicia; él me sacará a luz; veré su justicia\" (Miqueas 7:8-9)</em>.</p>",
+            "structure": {
+              "elementCount": 2,
+              "paragraphs": 2,
+              "headings": 0,
+              "lists": 0,
+              "blockquotes": 0
+            }
+          },
+          "afterSnapshot": {
+            "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;text-indent:0;\" data-continuation=\"true\" data-block-id=\"b184\" data-fragment-index=\"1\" data-continued-from=\"b184\">ninguna disciplina al presente parece ser causa de gozo, sino de tristeza; pero después da fruto apacible de justicia a los que en ella han sido ejercitados\" (Hebreos 12:11)</em>. Después de la disciplina viene \"fruto apacible de justicia\".</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\">Y experimentarás acompañamiento divino durante el proceso. Cuando caes en manos de Dios, Él no te abandona durante la disciplina. Miqueas lo expresa hermosamente: <em>\"Tú, enemiga mía, no te alegres de mí, porque aunque caí, me levantaré; aunque more en tinieblas, Jehová será mi luz. La ira de Jehová soportaré, porque pequé contra él, hasta que juzgue mi causa y haga mi justicia; él me sacará a luz; veré su justicia\" (Miqueas 7:8-9)</em>.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:1.5em;text-align-last:justify;\">Observa las afirmaciones de fe en medio de la disciplina: \"Aunque caí, me levantaré\" muestra confianza en restauración; \"Aunque more en tinieblas, Jehová será mi luz\" revela presencia divina incluso en el juicio; \"La ira de Jehová soportaré, porque pequé contra él\" demuestra aceptación humilde de la disciplina merecida; \"Hasta que juzgue mi causa y haga mi justicia\" expresa confianza en que Dios terminará el proceso correctamente; y \"Él me sacará</p>",
+            "structure": {
+              "elementCount": 3,
+              "paragraphs": 3,
+              "headings": 0,
+              "lists": 0,
+              "blockquotes": 0
+            }
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 64,
+          "traceId": "fill-p64-2059",
+          "data": {
+            "remainingLines": 3
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "src-extract-debug",
+          "page": 64,
+          "traceId": "fill-p64-2060",
+          "data": {
+            "srcPage": 65,
+            "srcRawCont": true,
+            "elCont": "true",
+            "elOuterStart": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wra"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 64,
+          "traceId": "fill-p64-2061",
+          "data": {
+            "isContChunk": true,
+            "contAttr": "true",
+            "startsLowercase": true,
+            "text": "a luz; veré su justicia\" declara esperanza de vindicación y "
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 64,
+          "traceId": "fill-p64-2062",
+          "data": {
+            "tag": "P",
+            "text": "a luz; veré su justicia\" declara esperanza de vindicación y ",
+            "reason": "badness-split",
+            "before": {
+              "score": 568
+            },
+            "after": {
+              "score": 703
+            },
+            "delta": -135
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "hop",
+          "page": 64,
+          "traceId": "fill-p64-2063",
+          "data": {
+            "hop": 1,
+            "reason": "badness-split",
+            "newSourceStart": 65
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 64,
+          "traceId": "fill-p64-2064",
+          "data": {
+            "remainingLines": 3
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "src-extract-debug",
+          "page": 64,
+          "traceId": "fill-p64-2065",
+          "data": {
+            "srcPage": 66,
+            "srcRawCont": true,
+            "elCont": "true",
+            "elOuterStart": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-ali"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 64,
+          "traceId": "fill-p64-2066",
+          "data": {
+            "isContChunk": true,
+            "contAttr": "true",
+            "startsLowercase": true,
+            "text": "te ayudan a sanar después, y el resultado es corrección dolo"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 64,
+          "traceId": "fill-p64-2919",
+          "data": {
+            "remainingLines": 3
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "src-extract-debug",
+          "page": 64,
+          "traceId": "fill-p64-2920",
+          "data": {
+            "srcPage": 65,
+            "srcRawCont": true,
+            "elCont": "true",
+            "elOuterStart": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wra"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 64,
+          "traceId": "fill-p64-2921",
+          "data": {
+            "isContChunk": true,
+            "contAttr": "true",
+            "startsLowercase": true,
+            "text": "a luz; veré su justicia\" declara esperanza de vindicación y "
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 64,
+          "traceId": "fill-p64-2922",
+          "data": {
+            "tag": "P",
+            "text": "a luz; veré su justicia\" declara esperanza de vindicación y ",
+            "reason": "badness-split",
+            "before": {
+              "score": 568
+            },
+            "after": {
+              "score": 703
+            },
+            "delta": -135
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "hop",
+          "page": 64,
+          "traceId": "fill-p64-2923",
+          "data": {
+            "hop": 1,
+            "reason": "badness-split",
+            "newSourceStart": 65
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 64,
+          "traceId": "fill-p64-2924",
+          "data": {
+            "remainingLines": 3
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "src-extract-debug",
+          "page": 64,
+          "traceId": "fill-p64-2925",
+          "data": {
+            "srcPage": 66,
+            "srcRawCont": true,
+            "elCont": "true",
+            "elOuterStart": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-ali"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 64,
+          "traceId": "fill-p64-2926",
+          "data": {
+            "isContChunk": true,
+            "contAttr": "true",
+            "startsLowercase": true,
+            "text": "te ayudan a sanar después, y el resultado es corrección dolo"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 64,
+          "traceId": "fill-p64-4082",
+          "data": {
+            "remainingLines": 3
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "src-extract-debug",
+          "page": 64,
+          "traceId": "fill-p64-4083",
+          "data": {
+            "srcPage": 65,
+            "srcRawCont": true,
+            "elCont": "true",
+            "elOuterStart": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wra"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 64,
+          "traceId": "fill-p64-4084",
+          "data": {
+            "isContChunk": true,
+            "contAttr": "true",
+            "startsLowercase": true,
+            "text": "a luz; veré su justicia\" declara esperanza de vindicación y "
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 64,
+          "traceId": "fill-p64-4085",
+          "data": {
+            "tag": "P",
+            "text": "a luz; veré su justicia\" declara esperanza de vindicación y ",
+            "reason": "badness-split",
+            "before": {
+              "score": 568
+            },
+            "after": {
+              "score": 703
+            },
+            "delta": -135
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "hop",
+          "page": 64,
+          "traceId": "fill-p64-4086",
+          "data": {
+            "hop": 1,
+            "reason": "badness-split",
+            "newSourceStart": 65
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 64,
+          "traceId": "fill-p64-4087",
+          "data": {
+            "remainingLines": 3
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "src-extract-debug",
+          "page": 64,
+          "traceId": "fill-p64-4088",
+          "data": {
+            "srcPage": 66,
+            "srcRawCont": true,
+            "elCont": "true",
+            "elOuterStart": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-ali"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 64,
+          "traceId": "fill-p64-4089",
+          "data": {
+            "isContChunk": true,
+            "contAttr": "true",
+            "startsLowercase": true,
+            "text": "te ayudan a sanar después, y el resultado es corrección dolo"
+          }
+        }
+      ],
+      "entryCount": 32
+    },
+    "65": {
+      "summary": {
+        "page": 65,
+        "chapter": "CAPÍTULO #2 - PREPÁRATE PARA LAS CONSECUENCIAS",
+        "fillPct": 96,
+        "score": 188,
+        "qualityGrade": "C",
+        "violations": [
+          "fragment"
+        ],
+        "elements": 2,
+        "events": 14,
+        "splits": 1,
+        "moves": 0,
+        "chapterEnd": false,
+        "unstable": true,
+        "indentAnomalies": [],
+        "lineAnalysis": [
+          {
+            "index": 0,
+            "text": "a luz; veré su justicia\" declara esperanza de vindicación y restauración complet",
+            "lineCount": 2,
+            "lastLineWords": 4,
+            "lastLineWidthRatio": 0.66,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          },
+          {
+            "index": 1,
+            "text": "La disciplina de Dios siempre tiene un objetivo claro: que vuelvas a Él. Dios pe",
+            "lineCount": 2,
+            "lastLineWords": 6,
+            "lastLineWidthRatio": 0.46,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          }
+        ],
+        "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;text-indent:0;;;margin-bottom:10.0px\" data-continuation=\"true\">a luz; veré su justicia\" declara esperanza de vindicación y restauración completa. Dios no te disciplina y luego te abandona. Te disciplina y camina contigo a través del proceso.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:1.5em;text-align-last:justify;\">La disciplina de Dios siempre tiene un objetivo claro: que vuelvas a Él. Dios permite dolor temporal para evitar destrucción eterna. Dios permite corrección dolorosa para prevenir alejamiento permanente. Dios permite que experimentes consecuencias para que nunca más quieras pecar así. Y a diferencia de los hombres malos que se exceden o incluso de los hombres justos que tienen limitaciones humanas, Dios sabe exactamente cuánta presión aplicar, por cuánto tiempo, y cuándo detenerse. <strong>Conclusión: ¿En Qué Manos Prefieres Caer?</strong> Cuando pecas, caerás en manos de alguien. Esa es la realidad inevitable. La pregunta no es si caerás, sino en manos de quién. Si caes en manos de hombres malos, se exceden en crueldad, buscan tu destrucción, no tienen misericordia, te dejan más roto de lo necesario, y el resultado es daño permanente sin propósito redentor. Si caes en manos de hombres justos, te confrontan con amor, te corrigen con compasión, buscan tu restauración,</p>"
+      },
+      "entries": [
+        {
+          "phase": "greedy",
+          "type": "no-fit",
+          "page": 65,
+          "traceId": "greedy-p65-591",
+          "data": {
+            "tag": "P",
+            "text": "No les aprovechó el oír la palabra, por no ir acompañada de ",
+            "isBold": false,
+            "candidateH": 270,
+            "contentH": 260,
+            "remainLines": 5,
+            "splitEnabled": true
+          }
+        },
+        {
+          "phase": "greedy",
+          "type": "no-fit",
+          "page": 65,
+          "traceId": "greedy-p65-592",
+          "data": {
+            "tag": "P",
+            "text": "No les aprovechó el oír la palabra, por no ir acompañada de ",
+            "reason": "underfill",
+            "remainingLines": 5,
+            "canSplit": true
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "rest-cont-check",
+          "page": 65,
+          "traceId": "fill-p65-1010",
+          "data": {
+            "hasCont": true,
+            "srcHasCont": true,
+            "restSnippet": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wra"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 65,
+          "traceId": "fill-p65-1012",
+          "data": {
+            "remainingLines": 12
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "no-fit",
+          "page": 65,
+          "traceId": "fill-p65-1013",
+          "data": {
+            "tag": "P",
+            "text": "detenerse. Conclusión: ¿En Qué Manos Prefieres Caer? Cuando ",
+            "remainingLines": 12,
+            "elHeight": 160
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 65,
+          "traceId": "fill-p65-1014",
+          "data": {
+            "isContChunk": true,
+            "startsLowercase": true,
+            "text": "detenerse. Conclusión: ¿En Qué Manos Prefieres Caer? Cuando "
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "split-chunk-debug",
+          "page": 65,
+          "traceId": "fill-p65-1015",
+          "data": {
+            "isContChunk": true,
+            "chunkIndent": "0",
+            "chunkText": "detenerse. Conclusión: ¿En Qué Manos Prefieres Caer? Cuando ",
+            "chunkHtmlStart": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:0;text-align-last:justify;\">detenerse. <strong>Conclusión: ¿En Qué Manos Pre"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "split",
+          "page": 65,
+          "traceId": "fill-p65-1018",
+          "data": {
+            "tag": "P",
+            "text": "detenerse. Conclusión: ¿En Qué Manos Prefieres Caer? Cuando ",
+            "fromPage": 66,
+            "chunkLines": 10,
+            "restLines": 6,
+            "chunkTail": "stos, te confrontan con amor, te corrigen con compasión, buscan tu restauración,",
+            "restHead": "te ayudan a sanar después, y el resultado es corrección dolorosa pero constructi",
+            "before": {
+              "score": 1214
+            },
+            "after": {
+              "score": 975
+            }
+          },
+          "beforeSnapshot": {
+            "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;text-indent:0;\" data-continuation=\"true\">a luz; veré su justicia\" declara esperanza de vindicación y restauración completa. Dios no te disciplina y luego te abandona. Te disciplina y camina contigo a través del proceso.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:1.5em;text-align-last:justify;\">La disciplina de Dios siempre tiene un objetivo claro: que vuelvas a Él. Dios permite dolor temporal para evitar destrucción eterna. Dios permite corrección dolorosa para prevenir alejamiento permanente. Dios permite que experimentes consecuencias para que nunca más quieras pecar así. Y a diferencia de los hombres malos que se exceden o incluso de los hombres justos que tienen limitaciones humanas, Dios sabe exactamente cuánta presión aplicar, por cuánto tiempo, y cuándo</p>",
+            "structure": {
+              "elementCount": 2,
+              "paragraphs": 2,
+              "headings": 0,
+              "lists": 0,
+              "blockquotes": 0
+            }
+          },
+          "afterSnapshot": {
+            "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;text-indent:0;\" data-continuation=\"true\">a luz; veré su justicia\" declara esperanza de vindicación y restauración completa. Dios no te disciplina y luego te abandona. Te disciplina y camina contigo a través del proceso.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:1.5em;text-align-last:justify;\">La disciplina de Dios siempre tiene un objetivo claro: que vuelvas a Él. Dios permite dolor temporal para evitar destrucción eterna. Dios permite corrección dolorosa para prevenir alejamiento permanente. Dios permite que experimentes consecuencias para que nunca más quieras pecar así. Y a diferencia de los hombres malos que se exceden o incluso de los hombres justos que tienen limitaciones humanas, Dios sabe exactamente cuánta presión aplicar, por cuánto tiempo, y cuándo</p><p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:0;text-align-last:justify;\">detenerse. <strong>Conclusión: ¿En Qué Manos Prefieres Caer?</strong> Cuando pecas, caerás en manos de alguien. Esa es la realidad inevitable. La pregunta no es si caerás, sino en manos de quién. Si caes en manos de hombres malos, se exceden en crueldad, buscan tu destrucción, no tienen misericordia, te dejan más roto de lo necesario, y el resultado es daño permanente sin propósito redentor. Si caes en manos de hombres justos, te confrontan con amor, te corrigen con compasión, buscan tu restauración,</p>",
+            "structure": {
+              "elementCount": 3,
+              "paragraphs": 3,
+              "headings": 0,
+              "lists": 0,
+              "blockquotes": 0
+            }
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "src-extract-debug",
+          "page": 65,
+          "traceId": "fill-p65-2067",
+          "data": {
+            "srcPage": 66,
+            "srcRawCont": true,
+            "elCont": "true",
+            "elOuterStart": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-ali"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 65,
+          "traceId": "fill-p65-2068",
+          "data": {
+            "isContChunk": true,
+            "contAttr": "true",
+            "startsLowercase": true,
+            "text": "te ayudan a sanar después, y el resultado es corrección dolo"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "src-extract-debug",
+          "page": 65,
+          "traceId": "fill-p65-2927",
+          "data": {
+            "srcPage": 66,
+            "srcRawCont": true,
+            "elCont": "true",
+            "elOuterStart": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-ali"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 65,
+          "traceId": "fill-p65-2928",
+          "data": {
+            "isContChunk": true,
+            "contAttr": "true",
+            "startsLowercase": true,
+            "text": "te ayudan a sanar después, y el resultado es corrección dolo"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "src-extract-debug",
+          "page": 65,
+          "traceId": "fill-p65-4090",
+          "data": {
+            "srcPage": 66,
+            "srcRawCont": true,
+            "elCont": "true",
+            "elOuterStart": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-ali"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 65,
+          "traceId": "fill-p65-4091",
+          "data": {
+            "isContChunk": true,
+            "contAttr": "true",
+            "startsLowercase": true,
+            "text": "te ayudan a sanar después, y el resultado es corrección dolo"
+          }
+        }
+      ],
+      "entryCount": 14
+    },
+    "69": {
+      "summary": {
+        "page": 69,
+        "chapter": "CAPÍTULO #3 - LA VIRTUD DEL PUDOR",
+        "fillPct": 92,
+        "score": 161,
+        "qualityGrade": "C",
+        "violations": [],
+        "elements": 5,
+        "events": 7,
+        "splits": 0,
+        "moves": 1,
+        "chapterEnd": false,
+        "unstable": false,
+        "indentAnomalies": [],
+        "lineAnalysis": [
+          {
+            "index": 0,
+            "text": "\"Entonces Sem y Jafet tomaron la ropa, y la pusieron sobre sus propios hombros, ",
+            "lineCount": 2,
+            "lastLineWords": 4,
+            "lastLineWidthRatio": 0.52,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          },
+          {
+            "index": 1,
+            "text": "Esta imagen es una de las más hermosas y poderosas de toda la Escritura sobre có",
+            "lineCount": 2,
+            "lastLineWords": 6,
+            "lastLineWidthRatio": 0.53,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          },
+          {
+            "index": 2,
+            "text": "Cam —el hijo menor— vio la desnudez de su padre, salió a contarle a sus hermanos",
+            "lineCount": 2,
+            "lastLineWords": 6,
+            "lastLineWidthRatio": 0.58,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          }
+        ],
+        "html": "<div style=\"font-size:8pt;line-height:1.3;font-weight:bold;font-style:normal;text-align:center;margin:20px 0 10px 0;\"><div style=\"font-size:6pt;line-height:1.3;color:#666666;font-weight:normal;margin-bottom:3px;\">CAPÍTULO #3</div><div style=\"font-size:8pt;line-height:1.3;\">LA VIRTUD DEL PUDOR</div></div><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\"><em>\"Entonces Sem y Jafet tomaron la ropa, y la pusieron sobre sus propios hombros, y andando hacia atrás, cubrieron la desnudez de su padre, teniendo vueltos sus rostros, y así no vieron la desnudez de su padre\" (Génesis 9:23)</em>.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\">Esta imagen es una de las más hermosas y poderosas de toda la Escritura sobre cómo responder al pecado y vergüenza de otro. Noé, el hombre justo que caminó con Dios, el constructor del arca, el predicador de justicia, se emborrachó y quedó desnudo en su tienda. Sus tres hijos tuvieron la misma información: su padre estaba caído, vulnerable, expuesto. Pero sus respuestas fueron radicalmente diferentes.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:1.5em;text-align-last:justify;\">Cam —el hijo menor— vio la desnudez de su padre, salió a contarle a sus hermanos, no hizo nada para cubrirlo y expuso la vergüenza de su padre. Sem y Jafet tomaron una ropa, la pusieron sobre sus propios hombros cargando el peso de cubrir, andando hacia atrás para no ver la desnudez, teniendo vueltos sus rostros rechazando incluso la tentación de mirar,</p>"
+      },
+      "entries": [
+        {
+          "phase": "fill",
+          "type": "rest-cont-check",
+          "page": 69,
+          "traceId": "fill-p69-1026",
+          "data": {
+            "hasCont": true,
+            "srcHasCont": true,
+            "restSnippet": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wra"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 69,
+          "traceId": "fill-p69-1028",
+          "data": {
+            "remainingLines": 8
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "move",
+          "page": 69,
+          "traceId": "fill-p69-1029",
+          "data": {
+            "tag": "P",
+            "text": "pudor también se expresa en el vestido. Por eso cubrimos las",
+            "fromPage": 70,
+            "before": {
+              "score": 860
+            },
+            "after": {
+              "score": 757,
+              "fillPct": 96
+            }
+          },
+          "beforeSnapshot": {
+            "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;text-indent:0;\" data-continuation=\"true\">y cubrieron la desnudez de su padre. La forma en que respondes al pecado y vergüenza de otro revela el carácter de tu corazón.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\"><strong>El Pudor — La Virtud Olvidada</strong></p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\">El pudor es un mecanismo de defensa, propio de la castidad, que protege instintivamente la intimidad sexual con la vergüenza. Es un muro protector de la pureza. Pero el pudor no es solo sexual. El pudor espiritual es la virtud de proteger la intimidad, la vulnerabilidad y la vergüenza tanto propia como ajena. Pudor no es miedo al cuerpo desnudo, sino respeto a él. No es casto el que trata de ignorar lo sexual, sino el que sabe mirarlo con ojos limpios. Como dice el dicho antiguo: \"El pudor distingue al hombre de los animales.\"</p><p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:1.5em;text-align-last:justify;\">Los animales no tienen pudor. Se aparean en público, sin vergüenza, sin privacidad, sin respeto. El pudor es propio de la persona humana. El</p>",
+            "structure": {
+              "elementCount": 4,
+              "paragraphs": 4,
+              "headings": 0,
+              "lists": 0,
+              "blockquotes": 0
+            }
+          },
+          "afterSnapshot": {
+            "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;text-indent:0;\" data-continuation=\"true\">y cubrieron la desnudez de su padre. La forma en que respondes al pecado y vergüenza de otro revela el carácter de tu corazón.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\"><strong>El Pudor — La Virtud Olvidada</strong></p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\">El pudor es un mecanismo de defensa, propio de la castidad, que protege instintivamente la intimidad sexual con la vergüenza. Es un muro protector de la pureza. Pero el pudor no es solo sexual. El pudor espiritual es la virtud de proteger la intimidad, la vulnerabilidad y la vergüenza tanto propia como ajena. Pudor no es miedo al cuerpo desnudo, sino respeto a él. No es casto el que trata de ignorar lo sexual, sino el que sabe mirarlo con ojos limpios. Como dice el dicho antiguo: \"El pudor distingue al hombre de los animales.\"</p><p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:1.5em;text-align-last:justify;\">Los animales no tienen pudor. Se aparean en público, sin vergüenza, sin privacidad, sin respeto. El pudor es propio de la persona humana. El</p><p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:0;text-align-last:left;\" data-block-id=\"b195\" data-fragment-index=\"1\" data-continued-from=\"b195\">pudor también se expresa en el vestido. Por eso cubrimos las partes más íntimas del cuerpo, que no se comparten con cualquiera. El pudor supone respeto a lo más personal del hombre. Protegerse de la mirada ajena no indica cobardía o debilidad, sino salvaguardar lo más íntimo del uso…[truncated]",
+            "structure": {
+              "elementCount": 5,
+              "paragraphs": 5,
+              "headings": 0,
+              "lists": 0,
+              "blockquotes": 0
+            }
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 69,
+          "traceId": "fill-p69-1032",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Considera esto: palpar algo es, en cierta medida, un acto de"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 69,
+          "traceId": "fill-p69-2073",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Considera esto: palpar algo es, en cierta medida, un acto de"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 69,
+          "traceId": "fill-p69-2933",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Considera esto: palpar algo es, en cierta medida, un acto de"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 69,
+          "traceId": "fill-p69-4096",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Considera esto: palpar algo es, en cierta medida, un acto de"
+          }
+        }
+      ],
+      "entryCount": 7
+    },
+    "99": {
+      "summary": {
+        "page": 99,
+        "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+        "fillPct": 92,
+        "score": 161,
+        "qualityGrade": "C",
+        "violations": [],
+        "elements": 2,
+        "events": 8,
+        "splits": 0,
+        "moves": 0,
+        "chapterEnd": false,
+        "unstable": false,
+        "indentAnomalies": [],
+        "lineAnalysis": [
+          {
+            "index": 0,
+            "text": "No puedes tener una conversación productiva cuando la persona está nerviosa o an",
+            "lineCount": 2,
+            "lastLineWords": 7,
+            "lastLineWidthRatio": 0.69,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          },
+          {
+            "index": 1,
+            "text": "No puedes hablar con el animal como si comprendiera en ese momento. No es como s",
+            "lineCount": 2,
+            "lastLineWords": 8,
+            "lastLineWidthRatio": 0.85,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          }
+        ],
+        "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;;;margin-bottom:10.0px\">No puedes tener una conversación productiva cuando la persona está nerviosa o ansiosa en modo de supervivencia solo pensando en su próxima dosis de pecado, cuando está insegura tan llena de vergüenza que no puede recibir corrección sin colapsar, cuando está estresada y sobrecargada emocionalmente y mentalmente, cuando está temerosa con tanto miedo de las consecuencias que no puede pensar con claridad, cuando está confundida tan desorientada espiritualmente que no puede discernir verdad, o cuando está infeliz o caótica en tal caos interno que cualquier palabra será malinterpretada.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\">No puedes hablar con el animal como si comprendiera en ese momento. No es como si te fuera a decir: \"Tienes razón. Gracias por señalármelo.\" Mientras esté en estado animal, dominado completamente por el impulso pecaminoso, tu lógica, tus argumentos bíblicos, tu amor genuino y tu preocupación sincera serán ignorados, malinterpretados, usados en tu contra y vistos como ataque. No porque la persona sea malvada en esencia, sino porque en ese estado, no puede procesar verdad racionalmente.</p>"
+      },
+      "entries": [
+        {
+          "phase": "fill",
+          "type": "src-extract-debug",
+          "page": 99,
+          "traceId": "fill-p99-1169",
+          "data": {
+            "srcPage": 100,
+            "srcRawCont": true,
+            "elCont": "true",
+            "elOuterStart": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wra"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 99,
+          "traceId": "fill-p99-1170",
+          "data": {
+            "isContChunk": true,
+            "contAttr": "true",
+            "startsLowercase": true,
+            "text": "bestia delante de ti: admisión de que estaba funcionando com"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "src-extract-debug",
+          "page": 99,
+          "traceId": "fill-p99-2142",
+          "data": {
+            "srcPage": 100,
+            "srcRawCont": true,
+            "elCont": "true",
+            "elOuterStart": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wra"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 99,
+          "traceId": "fill-p99-2143",
+          "data": {
+            "isContChunk": true,
+            "contAttr": "true",
+            "startsLowercase": true,
+            "text": "bestia delante de ti: admisión de que estaba funcionando com"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "src-extract-debug",
+          "page": 99,
+          "traceId": "fill-p99-3002",
+          "data": {
+            "srcPage": 100,
+            "srcRawCont": true,
+            "elCont": "true",
+            "elOuterStart": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wra"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 99,
+          "traceId": "fill-p99-3003",
+          "data": {
+            "isContChunk": true,
+            "contAttr": "true",
+            "startsLowercase": true,
+            "text": "bestia delante de ti: admisión de que estaba funcionando com"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "src-extract-debug",
+          "page": 99,
+          "traceId": "fill-p99-4165",
+          "data": {
+            "srcPage": 100,
+            "srcRawCont": true,
+            "elCont": "true",
+            "elOuterStart": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wra"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 99,
+          "traceId": "fill-p99-4166",
+          "data": {
+            "isContChunk": true,
+            "contAttr": "true",
+            "startsLowercase": true,
+            "text": "bestia delante de ti: admisión de que estaba funcionando com"
+          }
+        }
+      ],
+      "entryCount": 8
+    },
+    "105": {
+      "summary": {
+        "page": 105,
+        "chapter": "CAPÍTULO #5 – ENTENDIENDO LA NATURALEZA DE MI PECADO",
+        "fillPct": 85,
+        "score": 215,
+        "qualityGrade": "C",
+        "violations": [],
+        "elements": 2,
+        "events": 4,
+        "splits": 0,
+        "moves": 0,
+        "chapterEnd": false,
+        "unstable": false,
+        "indentAnomalies": [],
+        "lineAnalysis": [
+          {
+            "index": 0,
+            "text": "Pero cuando alguien finalmente entra al santuario, cuando finalmente sale del es",
+            "lineCount": 2,
+            "lastLineWords": 5,
+            "lastLineWidthRatio": 0.55,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          },
+          {
+            "index": 1,
+            "text": "Pero luego vendrá la segunda parte: \"Con todo, yo siempre estuve contigo; me tom",
+            "lineCount": 2,
+            "lastLineWords": 5,
+            "lastLineWidthRatio": 0.6,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          }
+        ],
+        "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;;;margin-bottom:10.0px\">Pero cuando alguien finalmente entra al santuario, cuando finalmente sale del estado animal y recupera su humanidad, cuando su razón es restaurada y su voluntad es liberada, cuando sus ojos son abiertos y pueden ver con claridad, ahí está la redención más hermosa. Ellos también dirán, como Asaf: \"Tan torpe era yo, que no entendía; era como una bestia delante de ti.\" Y no será una admisión fácil. Será dolorosa. Reconocer que estuviste funcionando como animal, que perdiste tu humanidad por un tiempo, que lastimaste a las personas que te amaban, que rechazaste la verdad una y otra vez, eso duele profundamente.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:1.5em;text-align-last:justify;\">Pero luego vendrá la segunda parte: \"Con todo, yo siempre estuve contigo; me tomaste de la mano derecha. Me has guiado según tu consejo, y después me recibirás en gloria.\" Y ahí está la gracia. Dios nunca los soltó. Incluso cuando estaban en estado animal, cuando estaban tan perdidos en su pecado que no podían razonar, cuando estaban mordiendo a todos los que intentaban ayudar, Dios estaba</p>"
+      },
+      "entries": [
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 105,
+          "traceId": "fill-p105-1196",
+          "data": {
+            "isContChunk": true,
+            "startsLowercase": true,
+            "text": "que estabas caminando solo. Dios te llevó al santuario donde"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 105,
+          "traceId": "fill-p105-2160",
+          "data": {
+            "isContChunk": true,
+            "startsLowercase": true,
+            "text": "que estabas caminando solo. Dios te llevó al santuario donde"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 105,
+          "traceId": "fill-p105-3020",
+          "data": {
+            "isContChunk": true,
+            "startsLowercase": true,
+            "text": "que estabas caminando solo. Dios te llevó al santuario donde"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 105,
+          "traceId": "fill-p105-4183",
+          "data": {
+            "isContChunk": true,
+            "startsLowercase": true,
+            "text": "que estabas caminando solo. Dios te llevó al santuario donde"
+          }
+        }
+      ],
+      "entryCount": 4
+    },
+    "141": {
+      "summary": {
+        "page": 141,
+        "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+        "fillPct": 92,
+        "score": 161,
+        "qualityGrade": "C",
+        "violations": [],
+        "elements": 3,
+        "events": 33,
+        "splits": 1,
+        "moves": 0,
+        "chapterEnd": false,
+        "unstable": true,
+        "indentAnomalies": [],
+        "lineAnalysis": [
+          {
+            "index": 0,
+            "text": "Dios no tiene prisa para meterte en un proceso doloroso, aun cuando se trate de ",
+            "lineCount": 2,
+            "lastLineWords": 6,
+            "lastLineWidthRatio": 0.61,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          },
+          {
+            "index": 1,
+            "text": "Esto no significa que Dios consienta tu pecado. Significa que Él está esperando ",
+            "lineCount": 2,
+            "lastLineWords": 5,
+            "lastLineWidthRatio": 0.58,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          },
+          {
+            "index": 2,
+            "text": "Nosotros, como no queremos fallarle a Dios, entramos en desesperación y queremos",
+            "lineCount": 2,
+            "lastLineWords": 5,
+            "lastLineWidthRatio": 0.74,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          }
+        ],
+        "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;;;margin-bottom:10.0px\">Dios no tiene prisa para meterte en un proceso doloroso, aun cuando se trate de quitarte un pecado que Él aborrece. ¿Por qué? Porque Dios sabe exactamente lo que sembró en tu vida —semilla buena—, pero también sabe que el enemigo sembró semilla mala. Y con tal de no lastimarte más allá de lo que puedes soportar, con tal de no afligirte hasta el punto de que ya no quieras acercarte a Él, Dios está dispuesto a ser paciente con tus pecados.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;;;margin-bottom:10.0px\">Esto no significa que Dios consienta tu pecado. Significa que Él está esperando el momento en que seas lo suficientemente maduro, fuerte y resistente para extirpar totalmente aquello que tanto te ha costado dejar. Él sabe el cómo, el cuándo y el dónde. El proceso no será suave, pero será perfecto.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\">Nosotros, como no queremos fallarle a Dios, entramos en desesperación y queremos obligarlo a que haga en nosotros lo que aún no estamos listos para soportar. Entonces: primer error, querer forzar a Dios a tratarte con mano dura a causa de tu pecado, cuando Él sabe que ahora no estás listo para ese nivel de cirugía espiritual.</p>"
+      },
+      "entries": [
+        {
+          "phase": "fill",
+          "type": "rest-cont-check",
+          "page": 141,
+          "traceId": "fill-p141-1363",
+          "data": {
+            "hasCont": false,
+            "srcHasCont": false,
+            "restSnippet": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-ind"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 141,
+          "traceId": "fill-p141-1375",
+          "data": {
+            "remainingLines": 3
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 141,
+          "traceId": "fill-p141-1376",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Algunos creen que su pecado sexual está oculto, que nadie sa"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "split-chunk-debug",
+          "page": 141,
+          "traceId": "fill-p141-1377",
+          "data": {
+            "isContChunk": false,
+            "chunkIndent": "1.5em",
+            "chunkText": "Algunos creen que su pecado sexual está oculto, que nadie sa",
+            "chunkHtmlStart": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:1.5em;text-align-last:justify;\">Algunos creen que su pecado sexual está ocul"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "split",
+          "page": 141,
+          "traceId": "fill-p141-1379",
+          "data": {
+            "tag": "P",
+            "text": "Algunos creen que su pecado sexual está oculto, que nadie sa",
+            "fromPage": 142,
+            "chunkLines": 2,
+            "restLines": 9,
+            "chunkTail": "e su pecado sexual está oculto, que nadie sabe y nadie sabrá. Sin embargo el día",
+            "restHead": "en que Dios permita que todo el mundo sepa quién eres y lo que haces en realidad",
+            "before": {
+              "score": 368
+            },
+            "after": {
+              "score": 303
+            }
+          },
+          "beforeSnapshot": {
+            "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:0;text-align-last:left;\">débil. ¿Por qué? Porque si Dios permite que se descubra que no eres confiable demasiado pronto, cuando aún no tienes la fuerza necesaria, tu reacción será mentir para salvar tu reputación. Y esa mentira no solo te hundirá más, sino que alargará el proceso. Dios quiere formar en ti un corazón que rechace el chisme, pero para lograrlo, tu ego tendrá que ser golpeado. Tu reputación será sacudida. Y sí, será doloroso.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\">Si Dios hiciera esto antes de tiempo, muy probablemente nunca volverías a congregarte. O, peor aún, te cambiarías de iglesia pensando que \"empezarás de cero\". Pero como interrumpiste el proceso, allá volverías a ser chismoso y causarías el mismo daño. No cambiaste; solo cambiaste de espacio. Por eso, cuando Dios expone tu vergüenza dentro de la iglesia, lo peor que puedes hacer es huir. Lo mejor que puedes hacer es quedarte, permanecer, dejar que Dios complete la cirugía espiritual que empezó.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\">Segundo error: creer que Dios nunca va a tratar con tu pecado, que de alguna manera saldrás ileso, sin proceso, sin dolor, sin transformación.</p>",
+            "structure": {
+              "elementCount": 3,
+              "paragraphs": 3,
+              "headings": 0,
+              "lists": 0,
+              "blockquotes": 0
+            }
+          },
+          "afterSnapshot": {
+            "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:0;text-align-last:left;\">débil. ¿Por qué? Porque si Dios permite que se descubra que no eres confiable demasiado pronto, cuando aún no tienes la fuerza necesaria, tu reacción será mentir para salvar tu reputación. Y esa mentira no solo te hundirá más, sino que alargará el proceso. Dios quiere formar en ti un corazón que rechace el chisme, pero para lograrlo, tu ego tendrá que ser golpeado. Tu reputación será sacudida. Y sí, será doloroso.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\">Si Dios hiciera esto antes de tiempo, muy probablemente nunca volverías a congregarte. O, peor aún, te cambiarías de iglesia pensando que \"empezarás de cero\". Pero como interrumpiste el proceso, allá volverías a ser chismoso y causarías el mismo daño. No cambiaste; solo cambiaste de espacio. Por eso, cuando Dios expone tu vergüenza dentro de la iglesia, lo peor que puedes hacer es huir. Lo mejor que puedes hacer es quedarte, permanecer, dejar que Dios complete la cirugía espiritual que empezó.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\">Segundo error: creer que Dios nunca va a tratar con tu pecado, que de alguna manera saldrás ileso, sin proceso, sin dolor, sin transformación.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:1.5em;text-align-last:justify;\">Algunos creen que su pecado sexual está oculto, que nadie sabe y nadie sabrá. Sin embargo el día</p>",
+            "structure": {
+              "elementCount": 4,
+              "paragraphs": 4,
+              "headings": 0,
+              "lists": 0,
+              "blockquotes": 0
+            }
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "rest-cont-check",
+          "page": 141,
+          "traceId": "fill-p141-2296",
+          "data": {
+            "hasCont": false,
+            "srcHasCont": false,
+            "restSnippet": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-ind"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 141,
+          "traceId": "fill-p141-2319",
+          "data": {
+            "remainingLines": 4
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 141,
+          "traceId": "fill-p141-2320",
+          "data": {
+            "isContChunk": true,
+            "startsLowercase": true,
+            "text": "en que Dios permita que todo el mundo sepa quién eres y lo q"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 141,
+          "traceId": "fill-p141-2321",
+          "data": {
+            "tag": "P",
+            "text": "en que Dios permita que todo el mundo sepa quién eres y lo q",
+            "reason": "badness-split",
+            "before": {
+              "score": 430
+            },
+            "after": {
+              "score": 618
+            },
+            "delta": -189
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "hop",
+          "page": 141,
+          "traceId": "fill-p141-2322",
+          "data": {
+            "hop": 1,
+            "reason": "badness-split",
+            "newSourceStart": 142
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 141,
+          "traceId": "fill-p141-2323",
+          "data": {
+            "remainingLines": 4
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 141,
+          "traceId": "fill-p141-2324",
+          "data": {
+            "tag": "P",
+            "text": "con absoluta confianza: \"Estando persuadido de esto, que el ",
+            "reason": "badness-gate",
+            "before": {
+              "score": 303
+            },
+            "after": {
+              "score": 538
+            },
+            "delta": -235
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "hop",
+          "page": 141,
+          "traceId": "fill-p141-2325",
+          "data": {
+            "hop": 2,
+            "newSourceStart": 143
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 141,
+          "traceId": "fill-p141-2326",
+          "data": {
+            "remainingLines": 4
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 141,
+          "traceId": "fill-p141-2327",
+          "data": {
+            "tag": "P",
+            "text": "la obra. Es al revés. Porque Dios está comprometido a termin",
+            "reason": "badness-gate",
+            "before": {
+              "score": 303
+            },
+            "after": {
+              "score": 538
+            },
+            "delta": -235
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 141,
+          "traceId": "fill-p141-3173",
+          "data": {
+            "remainingLines": 4
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 141,
+          "traceId": "fill-p141-3174",
+          "data": {
+            "isContChunk": true,
+            "startsLowercase": true,
+            "text": "en que Dios permita que todo el mundo sepa quién eres y lo q"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 141,
+          "traceId": "fill-p141-3175",
+          "data": {
+            "tag": "P",
+            "text": "en que Dios permita que todo el mundo sepa quién eres y lo q",
+            "reason": "badness-split",
+            "before": {
+              "score": 430
+            },
+            "after": {
+              "score": 618
+            },
+            "delta": -189
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "hop",
+          "page": 141,
+          "traceId": "fill-p141-3176",
+          "data": {
+            "hop": 1,
+            "reason": "badness-split",
+            "newSourceStart": 142
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 141,
+          "traceId": "fill-p141-3177",
+          "data": {
+            "remainingLines": 4
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 141,
+          "traceId": "fill-p141-3178",
+          "data": {
+            "tag": "P",
+            "text": "con absoluta confianza: \"Estando persuadido de esto, que el ",
+            "reason": "badness-gate",
+            "before": {
+              "score": 303
+            },
+            "after": {
+              "score": 538
+            },
+            "delta": -235
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "hop",
+          "page": 141,
+          "traceId": "fill-p141-3179",
+          "data": {
+            "hop": 2,
+            "newSourceStart": 143
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 141,
+          "traceId": "fill-p141-3180",
+          "data": {
+            "remainingLines": 4
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 141,
+          "traceId": "fill-p141-3181",
+          "data": {
+            "tag": "P",
+            "text": "la obra. Es al revés. Porque Dios está comprometido a termin",
+            "reason": "badness-gate",
+            "before": {
+              "score": 303
+            },
+            "after": {
+              "score": 538
+            },
+            "delta": -235
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 141,
+          "traceId": "fill-p141-4336",
+          "data": {
+            "remainingLines": 4
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 141,
+          "traceId": "fill-p141-4337",
+          "data": {
+            "isContChunk": true,
+            "startsLowercase": true,
+            "text": "en que Dios permita que todo el mundo sepa quién eres y lo q"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 141,
+          "traceId": "fill-p141-4338",
+          "data": {
+            "tag": "P",
+            "text": "en que Dios permita que todo el mundo sepa quién eres y lo q",
+            "reason": "badness-split",
+            "before": {
+              "score": 430
+            },
+            "after": {
+              "score": 618
+            },
+            "delta": -189
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "hop",
+          "page": 141,
+          "traceId": "fill-p141-4339",
+          "data": {
+            "hop": 1,
+            "reason": "badness-split",
+            "newSourceStart": 142
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 141,
+          "traceId": "fill-p141-4340",
+          "data": {
+            "remainingLines": 4
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 141,
+          "traceId": "fill-p141-4341",
+          "data": {
+            "tag": "P",
+            "text": "con absoluta confianza: \"Estando persuadido de esto, que el ",
+            "reason": "badness-gate",
+            "before": {
+              "score": 303
+            },
+            "after": {
+              "score": 538
+            },
+            "delta": -235
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "hop",
+          "page": 141,
+          "traceId": "fill-p141-4342",
+          "data": {
+            "hop": 2,
+            "newSourceStart": 143
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 141,
+          "traceId": "fill-p141-4343",
+          "data": {
+            "remainingLines": 4
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 141,
+          "traceId": "fill-p141-4344",
+          "data": {
+            "tag": "P",
+            "text": "la obra. Es al revés. Porque Dios está comprometido a termin",
+            "reason": "badness-gate",
+            "before": {
+              "score": 303
+            },
+            "after": {
+              "score": 538
+            },
+            "delta": -235
+          }
+        }
+      ],
+      "entryCount": 33
+    },
+    "146": {
+      "summary": {
+        "page": 146,
+        "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+        "fillPct": 85,
+        "score": 215,
+        "qualityGrade": "C",
+        "violations": [],
+        "elements": 4,
+        "events": 34,
+        "splits": 0,
+        "moves": 0,
+        "chapterEnd": false,
+        "unstable": false,
+        "indentAnomalies": [],
+        "lineAnalysis": [
+          {
+            "index": 0,
+            "text": "\"Contra ti, contra ti solo he pecado, y he hecho lo malo delante de tus ojos\" (S",
+            "lineCount": 2,
+            "lastLineWords": 6,
+            "lastLineWidthRatio": 0.52,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          },
+          {
+            "index": 1,
+            "text": "Y cuando aceptas las consecuencias, algo poderoso sucede: dejan de tener poder s",
+            "lineCount": 2,
+            "lastLineWords": 6,
+            "lastLineWidthRatio": 0.57,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          },
+          {
+            "index": 2,
+            "text": "Admite El Dolor",
+            "lineCount": 1,
+            "lastLineWords": 3,
+            "lastLineWidthRatio": 0.31,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          },
+          {
+            "index": 3,
+            "text": "No solo aceptes las consecuencias. Admite el dolor. No finjas que no duele. No t",
+            "lineCount": 2,
+            "lastLineWords": 7,
+            "lastLineWidthRatio": 0.52,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          }
+        ],
+        "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;;;margin-bottom:10.0px\"><em>\"Contra ti, contra ti solo he pecado, y he hecho lo malo delante de tus ojos\" (Salmos 51:4)</em>. Esa es la oración de alguien que acepta las consecuencias. No hay justificaciones. No hay excusas. No hay evasiones.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;;;margin-bottom:10.0px\">Y cuando aceptas las consecuencias, algo poderoso sucede: dejan de tener poder sobre ti. El temor a las consecuencias es lo que muchas veces nos mantiene atrapados en el pecado. Pensamos: \"Si confieso, perderé todo.\" Pero cuando finalmente aceptas: \"Está bien, perderé lo que tenga que perder. Acepto las consecuencias. Solo quiero estar bien con Dios,\" entonces eres libre.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;;;margin-bottom:10.0px\"><strong>Admite El Dolor</strong></p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\">No solo aceptes las consecuencias. Admite el dolor. No finjas que no duele. No te pongas una máscara de \"todo está bien\" cuando por dentro estás destrozado. No espiritualices tu quebranto diciendo \"gloria a Dios por todo\" cuando lo que realmente sientes es que te estás muriendo.</p>"
+      },
+      "entries": [
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 146,
+          "traceId": "fill-p146-1406",
+          "data": {
+            "isContChunk": true,
+            "startsLowercase": true,
+            "text": "automáticamente. No te pongas a la defensiva. No justifiques"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 146,
+          "traceId": "fill-p146-1407",
+          "data": {
+            "tag": "P",
+            "text": "automáticamente. No te pongas a la defensiva. No justifiques",
+            "reason": "badness-split",
+            "before": {
+              "score": 618
+            },
+            "after": {
+              "score": 1554
+            },
+            "delta": -935
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "hop",
+          "page": 146,
+          "traceId": "fill-p146-1408",
+          "data": {
+            "hop": 1,
+            "reason": "badness-split",
+            "newSourceStart": 147
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 146,
+          "traceId": "fill-p146-1409",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Cuando Simei lo maldijo mientras huía de Absalón, los hombre"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 146,
+          "traceId": "fill-p146-1410",
+          "data": {
+            "tag": "P",
+            "text": "Cuando Simei lo maldijo mientras huía de Absalón, los hombre",
+            "reason": "badness-split",
+            "before": {
+              "score": 249
+            },
+            "after": {
+              "score": 1223
+            },
+            "delta": -974
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "hop",
+          "page": 146,
+          "traceId": "fill-p146-1411",
+          "data": {
+            "hop": 2,
+            "reason": "badness-split",
+            "newSourceStart": 148
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 146,
+          "traceId": "fill-p146-1412",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "David porque David había cometido adulterio y asesinato. Dio"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 146,
+          "traceId": "fill-p146-1413",
+          "data": {
+            "tag": "P",
+            "text": "David porque David había cometido adulterio y asesinato. Dio",
+            "reason": "badness-split",
+            "before": {
+              "score": 249
+            },
+            "after": {
+              "score": 1177
+            },
+            "delta": -928
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 146,
+          "traceId": "fill-p146-2354",
+          "data": {
+            "isContChunk": true,
+            "startsLowercase": true,
+            "text": "automáticamente. No te pongas a la defensiva. No justifiques"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 146,
+          "traceId": "fill-p146-2355",
+          "data": {
+            "tag": "P",
+            "text": "automáticamente. No te pongas a la defensiva. No justifiques",
+            "reason": "badness-split",
+            "before": {
+              "score": 618
+            },
+            "after": {
+              "score": 1554
+            },
+            "delta": -935
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "hop",
+          "page": 146,
+          "traceId": "fill-p146-2356",
+          "data": {
+            "hop": 1,
+            "reason": "badness-split",
+            "newSourceStart": 147
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 146,
+          "traceId": "fill-p146-2357",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Cuando Simei lo maldijo mientras huía de Absalón, los hombre"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 146,
+          "traceId": "fill-p146-2358",
+          "data": {
+            "tag": "P",
+            "text": "Cuando Simei lo maldijo mientras huía de Absalón, los hombre",
+            "reason": "badness-split",
+            "before": {
+              "score": 249
+            },
+            "after": {
+              "score": 1223
+            },
+            "delta": -974
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "hop",
+          "page": 146,
+          "traceId": "fill-p146-2359",
+          "data": {
+            "hop": 2,
+            "reason": "badness-split",
+            "newSourceStart": 148
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 146,
+          "traceId": "fill-p146-2360",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "David porque David había cometido adulterio y asesinato. Dio"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 146,
+          "traceId": "fill-p146-2361",
+          "data": {
+            "tag": "P",
+            "text": "David porque David había cometido adulterio y asesinato. Dio",
+            "reason": "badness-split",
+            "before": {
+              "score": 249
+            },
+            "after": {
+              "score": 1177
+            },
+            "delta": -928
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 146,
+          "traceId": "fill-p146-3208",
+          "data": {
+            "isContChunk": true,
+            "startsLowercase": true,
+            "text": "automáticamente. No te pongas a la defensiva. No justifiques"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 146,
+          "traceId": "fill-p146-3209",
+          "data": {
+            "tag": "P",
+            "text": "automáticamente. No te pongas a la defensiva. No justifiques",
+            "reason": "badness-split",
+            "before": {
+              "score": 618
+            },
+            "after": {
+              "score": 1554
+            },
+            "delta": -935
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "hop",
+          "page": 146,
+          "traceId": "fill-p146-3210",
+          "data": {
+            "hop": 1,
+            "reason": "badness-split",
+            "newSourceStart": 147
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 146,
+          "traceId": "fill-p146-3211",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Cuando Simei lo maldijo mientras huía de Absalón, los hombre"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 146,
+          "traceId": "fill-p146-3212",
+          "data": {
+            "tag": "P",
+            "text": "Cuando Simei lo maldijo mientras huía de Absalón, los hombre",
+            "reason": "badness-split",
+            "before": {
+              "score": 249
+            },
+            "after": {
+              "score": 1223
+            },
+            "delta": -974
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "hop",
+          "page": 146,
+          "traceId": "fill-p146-3213",
+          "data": {
+            "hop": 2,
+            "reason": "badness-split",
+            "newSourceStart": 148
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 146,
+          "traceId": "fill-p146-3214",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "David porque David había cometido adulterio y asesinato. Dio"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 146,
+          "traceId": "fill-p146-3215",
+          "data": {
+            "tag": "P",
+            "text": "David porque David había cometido adulterio y asesinato. Dio",
+            "reason": "badness-split",
+            "before": {
+              "score": 249
+            },
+            "after": {
+              "score": 1177
+            },
+            "delta": -928
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 146,
+          "traceId": "fill-p146-4371",
+          "data": {
+            "isContChunk": true,
+            "startsLowercase": true,
+            "text": "automáticamente. No te pongas a la defensiva. No justifiques"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 146,
+          "traceId": "fill-p146-4372",
+          "data": {
+            "tag": "P",
+            "text": "automáticamente. No te pongas a la defensiva. No justifiques",
+            "reason": "badness-split",
+            "before": {
+              "score": 618
+            },
+            "after": {
+              "score": 1554
+            },
+            "delta": -935
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "hop",
+          "page": 146,
+          "traceId": "fill-p146-4373",
+          "data": {
+            "hop": 1,
+            "reason": "badness-split",
+            "newSourceStart": 147
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 146,
+          "traceId": "fill-p146-4374",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Cuando Simei lo maldijo mientras huía de Absalón, los hombre"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 146,
+          "traceId": "fill-p146-4375",
+          "data": {
+            "tag": "P",
+            "text": "Cuando Simei lo maldijo mientras huía de Absalón, los hombre",
+            "reason": "badness-split",
+            "before": {
+              "score": 249
+            },
+            "after": {
+              "score": 1223
+            },
+            "delta": -974
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "hop",
+          "page": 146,
+          "traceId": "fill-p146-4376",
+          "data": {
+            "hop": 2,
+            "reason": "badness-split",
+            "newSourceStart": 148
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 146,
+          "traceId": "fill-p146-4377",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "David porque David había cometido adulterio y asesinato. Dio"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 146,
+          "traceId": "fill-p146-4378",
+          "data": {
+            "tag": "P",
+            "text": "David porque David había cometido adulterio y asesinato. Dio",
+            "reason": "badness-split",
+            "before": {
+              "score": 249
+            },
+            "after": {
+              "score": 1177
+            },
+            "delta": -928
+          }
+        },
+        {
+          "phase": "merge",
+          "type": "pass2-skip",
+          "page": 146,
+          "traceId": "merge-p146-4766",
+          "data": {
+            "reason": "indent-check",
+            "text": "Admite El Dolor"
+          }
+        },
+        {
+          "phase": "merge",
+          "type": "pass2-skip",
+          "page": 146,
+          "traceId": "merge-p146-5538",
+          "data": {
+            "reason": "indent-check",
+            "text": "Admite El Dolor"
+          }
+        }
+      ],
+      "entryCount": 34
+    },
+    "148": {
+      "summary": {
+        "page": 148,
+        "chapter": "CAPÍTULO #6 – EL SUFRIMIENTO ME PREPARA PARA LA SANTIDAD",
+        "fillPct": 88,
+        "score": 207,
+        "qualityGrade": "C",
+        "violations": [],
+        "elements": 4,
+        "events": 6,
+        "splits": 0,
+        "moves": 0,
+        "chapterEnd": false,
+        "unstable": false,
+        "indentAnomalies": [],
+        "lineAnalysis": [
+          {
+            "index": 0,
+            "text": "automáticamente. No te pongas a la defensiva. No justifiques. Escucha. Puede ser",
+            "lineCount": 2,
+            "lastLineWords": 4,
+            "lastLineWidthRatio": 0.58,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          },
+          {
+            "index": 1,
+            "text": "Reconoce La Disciplina Cuando Venga",
+            "lineCount": 1,
+            "lastLineWords": 5,
+            "lastLineWidthRatio": 0.72,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          },
+          {
+            "index": 2,
+            "text": "Y habrá momentos, como le ocurrió a David, en que cosas sucederán en tu casa, en",
+            "lineCount": 2,
+            "lastLineWords": 6,
+            "lastLineWidthRatio": 0.57,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          },
+          {
+            "index": 3,
+            "text": "A David le sucedieron cosas horribles después de su pecado con Betsabé. El hijo ",
+            "lineCount": 2,
+            "lastLineWords": 5,
+            "lastLineWidthRatio": 0.51,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          }
+        ],
+        "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:0;text-align-last:left;;;margin-bottom:10.0px\" data-block-id=\"b458\" data-fragment-index=\"1\" data-continued-from=\"b458\">automáticamente. No te pongas a la defensiva. No justifiques. Escucha. Puede ser que Dios lo envió. Y si lo rechazas, estás rechazando el instrumento que Dios quiere usar para tu restauración. Natán vino a David. David pudo haberlo echado. Pudo haber ordenado su ejecución. Era el rey. Tenía el poder. Pero David escuchó. Y esa apertura a la corrección fue parte de lo que lo mantuvo siendo \"un hombre conforme al corazón de Dios.\"</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;;;margin-bottom:10.0px\"><strong>Reconoce La Disciplina Cuando Venga</strong></p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;;;margin-bottom:10.0px\">Y habrá momentos, como le ocurrió a David, en que cosas sucederán en tu casa, en tu familia o en tu economía, y tú sabrás que son la consecuencia de tu pecado y la corrección de Dios.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\">A David le sucedieron cosas horribles después de su pecado con Betsabé. El hijo murió. Amnón violó a Tamar. Absalón mató a Amnón. Absalón se rebeló contra David. Diez de sus concubinas fueron violadas públicamente. Su reino casi colapsa. Y David sabía exactamente por qué estaba pasando todo eso.</p>"
+      },
+      "entries": [
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 148,
+          "traceId": "fill-p148-1416",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "David porque David había cometido adulterio y asesinato. Dio"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 148,
+          "traceId": "fill-p148-2364",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "David porque David había cometido adulterio y asesinato. Dio"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 148,
+          "traceId": "fill-p148-3218",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "David porque David había cometido adulterio y asesinato. Dio"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 148,
+          "traceId": "fill-p148-4381",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "David porque David había cometido adulterio y asesinato. Dio"
+          }
+        },
+        {
+          "phase": "merge",
+          "type": "pass2-skip",
+          "page": 148,
+          "traceId": "merge-p148-4768",
+          "data": {
+            "reason": "indent-check",
+            "text": "Reconoce La Disciplina Cuando Venga"
+          }
+        },
+        {
+          "phase": "merge",
+          "type": "pass2-skip",
+          "page": 148,
+          "traceId": "merge-p148-5540",
+          "data": {
+            "reason": "indent-check",
+            "text": "Reconoce La Disciplina Cuando Venga"
+          }
+        }
+      ],
+      "entryCount": 6
+    },
+    "160": {
+      "summary": {
+        "page": 160,
+        "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+        "fillPct": 92,
+        "score": 161,
+        "qualityGrade": "C",
+        "violations": [],
+        "elements": 3,
+        "events": 8,
+        "splits": 0,
+        "moves": 3,
+        "chapterEnd": false,
+        "unstable": true,
+        "indentAnomalies": [],
+        "lineAnalysis": [
+          {
+            "index": 0,
+            "text": "No pueden concebir que alguien responda al pecado con paciencia en lugar de con ",
+            "lineCount": 2,
+            "lastLineWords": 6,
+            "lastLineWidthRatio": 0.55,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          },
+          {
+            "index": 1,
+            "text": "Pero Dios dice: \"Porque mis pensamientos no son vuestros pensamientos, ni vuestr",
+            "lineCount": 2,
+            "lastLineWords": 4,
+            "lastLineWidthRatio": 0.62,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          },
+          {
+            "index": 2,
+            "text": "No estoy diciendo que Dios no juzga el pecado. Estoy diciendo que Dios no está a",
+            "lineCount": 2,
+            "lastLineWords": 6,
+            "lastLineWidthRatio": 0.51,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          }
+        ],
+        "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:0;text-align-last:left;;;margin-bottom:10.0px\">No pueden concebir que alguien responda al pecado con paciencia en lugar de con ira porque ellos nunca lo hacen. Cuando alguien les miente, explotan. Cuando alguien los decepciona, los cortan. Cuando alguien falla, los desechan. Y entonces asumen que Dios funciona de la misma manera.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;;;margin-bottom:10.0px\">Pero Dios dice: <em>\"Porque mis pensamientos no son vuestros pensamientos, ni vuestros caminos mis caminos... Como son más altos los cielos que la tierra, así son mis caminos más altos que vuestros caminos, y mis pensamientos más que vuestros pensamientos\" (Isaías 55:8-9)</em>. Los caminos de Dios son más altos. Su paciencia es mayor. Su gracia es más profunda. Su amor es más duradero. Su misericordia es más extensa de lo que jamás podremos comprender completamente. <strong>¿Significa Esto Que Dios No Juzga El Pecado?</strong> Ahora, alguien podría decir: \"Espera, ¿estás diciendo que Dios no juzga el pecado? ¿Qué hay de todos los ejemplos que mencionaste: Ananías y Safira, Uza, Nadab y Abiú?\"</p><p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:1.5em;text-align-last:justify;\">No estoy diciendo que Dios no juzga el pecado. Estoy diciendo que Dios no está ansioso por juzgar.</p>"
+      },
+      "entries": [
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 160,
+          "traceId": "fill-p160-1460",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Cuando Dios sí ejecuta juicio, como en los casos mencionados"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 160,
+          "traceId": "fill-p160-2406",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Cuando Dios sí ejecuta juicio, como en los casos mencionados"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "rest-cont-check",
+          "page": 160,
+          "traceId": "fill-p160-3289",
+          "data": {
+            "hasCont": false,
+            "srcHasCont": false,
+            "restSnippet": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-ind"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 160,
+          "traceId": "fill-p160-3291",
+          "data": {
+            "remainingLines": 17
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "move",
+          "page": 160,
+          "traceId": "fill-p160-3292",
+          "data": {
+            "tag": "P",
+            "text": "Cuando Dios sí ejecuta juicio, como en los casos mencionados",
+            "fromPage": 161,
+            "before": {
+              "score": 631
+            },
+            "after": {
+              "score": 1099,
+              "fillPct": 69
+            }
+          },
+          "beforeSnapshot": {
+            "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:1.5em;text-align-last:left;\">No está esperando la primera oportunidad para castigar. Su corazón predeterminado es misericordia, no juicio.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\">Pedro lo dice claramente: <em>\"El Señor no retarda su promesa, según algunos la tienen por tardanza, sino que es paciente para con nosotros, no queriendo que ninguno perezca, sino que todos procedan al arrepentimiento\" (2 Pedro 3:9)</em>. No queriendo que ninguno perezca. Ese es el corazón de Dios.</p>",
+            "structure": {
+              "elementCount": 2,
+              "paragraphs": 2,
+              "headings": 0,
+              "lists": 0,
+              "blockquotes": 0
+            }
+          },
+          "afterSnapshot": {
+            "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:1.5em;text-align-last:left;\">No está esperando la primera oportunidad para castigar. Su corazón predeterminado es misericordia, no juicio.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\">Pedro lo dice claramente: <em>\"El Señor no retarda su promesa, según algunos la tienen por tardanza, sino que es paciente para con nosotros, no queriendo que ninguno perezca, sino que todos procedan al arrepentimiento\" (2 Pedro 3:9)</em>. No queriendo que ninguno perezca. Ese es el corazón de Dios.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\">Cuando Dios sí ejecuta juicio, como en los casos mencionados, es después de múltiples advertencias, después de paciencia extendida, después de oportunidades repetidas de arrepentimiento que fueron rechazadas. Y muchas veces, el juicio inmediato es para proteger a otros, no solo para castigar al ofensor. Pero el patrón general que vemos en la Escritura es paciencia, longanimidad y benignidad que guía al arrepentimiento.</p>",
+            "structure": {
+              "elementCount": 3,
+              "paragraphs": 3,
+              "headings": 0,
+              "lists": 0,
+              "blockquotes": 0
+            }
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 160,
+          "traceId": "fill-p160-3293",
+          "data": {
+            "remainingLines": 8
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "heading-group",
+          "page": 160,
+          "traceId": "fill-p160-3294",
+          "data": {
+            "tag": "P",
+            "text": "La Aplicación Para Nosotros",
+            "isHeader": false,
+            "isBoldPara": true,
+            "remainingLines": 8
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "heading-group",
+          "page": 160,
+          "traceId": "fill-p160-3295",
+          "data": {
+            "tag": "P",
+            "text": "La Aplicación Para Nosotros",
+            "groupCount": 2,
+            "fromPage": 161,
+            "before": {
+              "score": 1099
+            },
+            "after": {
+              "score": 631
+            }
+          }
+        }
+      ],
+      "entryCount": 8
+    },
+    "182": {
+      "summary": {
+        "page": 182,
+        "chapter": "CAPÍTULO #7 – ENDURECIMIENTO DEL CORAZÓN",
+        "fillPct": 100,
+        "score": 316,
+        "qualityGrade": "C",
+        "violations": [
+          "split_shallow",
+          "fragment"
+        ],
+        "elements": 6,
+        "events": 35,
+        "splits": 1,
+        "moves": 0,
+        "chapterEnd": false,
+        "unstable": true,
+        "indentAnomalies": [],
+        "lineAnalysis": [
+          {
+            "index": 0,
+            "text": "de comunicación. No son por diferencias irreconciliables. Son por falta de miser",
+            "lineCount": 2,
+            "lastLineWords": 6,
+            "lastLineWidthRatio": 0.72,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          },
+          {
+            "index": 1,
+            "text": "Uno de ustedes, o ambos, están llevando un registro de ofensas. Están midiendo q",
+            "lineCount": 2,
+            "lastLineWords": 5,
+            "lastLineWidthRatio": 0.55,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          },
+          {
+            "index": 2,
+            "text": "Y entonces el matrimonio se convierte en un campo de batalla donde ambos pelean ",
+            "lineCount": 2,
+            "lastLineWords": 5,
+            "lastLineWidthRatio": 0.58,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          },
+          {
+            "index": 3,
+            "text": "La Escalera Que No Puedes Saltar",
+            "lineCount": 1,
+            "lastLineWords": 6,
+            "lastLineWidthRatio": 0.63,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          },
+          {
+            "index": 4,
+            "text": "Lo normal es que comencemos a ser misericordiosos con las personas más cercanas ",
+            "lineCount": 2,
+            "lastLineWords": 5,
+            "lastLineWidthRatio": 0.57,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          },
+          {
+            "index": 5,
+            "text": "El perdón es lo opuesto a la venganza; perdonar implica renunciar al derecho de ",
+            "lineCount": 2,
+            "lastLineWords": 5,
+            "lastLineWidthRatio": 0.59,
+            "isRunt": false,
+            "isWidow": false,
+            "isOrphan": false
+          }
+        ],
+        "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;text-indent:0;;margin-bottom:2.0px\" data-continuation=\"true\">de comunicación. No son por diferencias irreconciliables. Son por falta de misericordia.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;;margin-bottom:2.0px\">Uno de ustedes, o ambos, están llevando un registro de ofensas. Están midiendo quién debe qué. Están condicionando su amor al desempeño del otro. Están operando con la lógica de \"ojo por ojo\" cuando Jesús los llamó a la lógica de \"ofrece la otra mejilla.\"</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;;margin-bottom:2.0px\">Y entonces el matrimonio se convierte en un campo de batalla donde ambos pelean por sus derechos, donde ambos demandan \"justicia\", donde ambos esperan que el otro cambie primero. Y mientras tanto, Jesús está diciendo: \"Sed perfectos como vuestro Padre es perfecto,\" y esa perfección es misericordia sin límites, no justicia perfectamente calculada.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;;margin-bottom:2.0px\"><strong>La Escalera Que No Puedes Saltar</strong></p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;;margin-bottom:2.0px\">Lo normal es que comencemos a ser misericordiosos con las personas más cercanas a nosotros. Amar a nuestros padres, a nuestra pareja debería ser lo más sencillo o lo más fácil sin embargo es en donde más conocemos nuestra cruda realidad: no sabemos amar ni si quiera a la gente que es más fácil de amar.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:1.5em;text-align-last:justify;\">El perdón es lo opuesto a la venganza; perdonar implica renunciar al derecho de desquitarse.</p>"
+      },
+      "entries": [
+        {
+          "phase": "fill",
+          "type": "rest-cont-check",
+          "page": 182,
+          "traceId": "fill-p182-1559",
+          "data": {
+            "hasCont": true,
+            "srcHasCont": true,
+            "restSnippet": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wra"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 182,
+          "traceId": "fill-p182-1561",
+          "data": {
+            "remainingLines": 3
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 182,
+          "traceId": "fill-p182-1562",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Una persona entre menos la conoces más difícil es amarla ver"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 182,
+          "traceId": "fill-p182-1563",
+          "data": {
+            "tag": "P",
+            "text": "Una persona entre menos la conoces más difícil es amarla ver",
+            "reason": "badness-split",
+            "before": {
+              "score": 714
+            },
+            "after": {
+              "score": 1211
+            },
+            "delta": -497
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "hop",
+          "page": 182,
+          "traceId": "fill-p182-1564",
+          "data": {
+            "hop": 1,
+            "reason": "badness-split",
+            "newSourceStart": 183
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "diag",
+          "page": 182,
+          "traceId": "fill-p182-1565",
+          "data": {
+            "remainingLines": 3
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 182,
+          "traceId": "fill-p182-1566",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "El perdón es lo opuesto a la venganza; perdonar implica renu"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "split-chunk-debug",
+          "page": 182,
+          "traceId": "fill-p182-1567",
+          "data": {
+            "isContChunk": false,
+            "chunkIndent": "1.5em",
+            "chunkText": "El perdón es lo opuesto a la venganza; perdonar implica renu",
+            "chunkHtmlStart": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:1.5em;text-align-last:justify;\">El perdón es lo opuesto a la venganza; perdo"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "split",
+          "page": 182,
+          "traceId": "fill-p182-1570",
+          "data": {
+            "tag": "P",
+            "text": "El perdón es lo opuesto a la venganza; perdonar implica renu",
+            "fromPage": 184,
+            "chunkLines": 2,
+            "restLines": 12,
+            "chunkTail": " lo opuesto a la venganza; perdonar implica renunciar al derecho de desquitarse.",
+            "restHead": "Muchos creen que, porque no pagan con la \"misma moneda\", no se están vengando; p",
+            "before": {
+              "score": 523
+            },
+            "after": {
+              "score": 549
+            }
+          },
+          "beforeSnapshot": {
+            "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;text-indent:0;\" data-continuation=\"true\">de comunicación. No son por diferencias irreconciliables. Son por falta de misericordia.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\">Uno de ustedes, o ambos, están llevando un registro de ofensas. Están midiendo quién debe qué. Están condicionando su amor al desempeño del otro. Están operando con la lógica de \"ojo por ojo\" cuando Jesús los llamó a la lógica de \"ofrece la otra mejilla.\"</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\">Y entonces el matrimonio se convierte en un campo de batalla donde ambos pelean por sus derechos, donde ambos demandan \"justicia\", donde ambos esperan que el otro cambie primero. Y mientras tanto, Jesús está diciendo: \"Sed perfectos como vuestro Padre es perfecto,\" y esa perfección es misericordia sin límites, no justicia perfectamente calculada.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\"><strong>La Escalera Que No Puedes Saltar</strong></p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\">Lo normal es que comencemos a ser misericordiosos con las personas más cercanas a nosotros. Amar a nuestros padres, a nuestra pareja debería ser lo más sencillo o lo más fácil sin embargo es en donde más conocemos nuestra cruda realidad: no sabemos amar ni si quiera a la gente que es más fácil de amar.</p>",
+            "structure": {
+              "elementCount": 5,
+              "paragraphs": 5,
+              "headings": 0,
+              "lists": 0,
+              "blockquotes": 0
+            }
+          },
+          "afterSnapshot": {
+            "html": "<p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;text-indent:0;\" data-continuation=\"true\">de comunicación. No son por diferencias irreconciliables. Son por falta de misericordia.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\">Uno de ustedes, o ambos, están llevando un registro de ofensas. Están midiendo quién debe qué. Están condicionando su amor al desempeño del otro. Están operando con la lógica de \"ojo por ojo\" cuando Jesús los llamó a la lógica de \"ofrece la otra mejilla.\"</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\">Y entonces el matrimonio se convierte en un campo de batalla donde ambos pelean por sus derechos, donde ambos demandan \"justicia\", donde ambos esperan que el otro cambie primero. Y mientras tanto, Jesús está diciendo: \"Sed perfectos como vuestro Padre es perfecto,\" y esa perfección es misericordia sin límites, no justicia perfectamente calculada.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\"><strong>La Escalera Que No Puedes Saltar</strong></p><p style=\"margin:0 0;padding:0;text-align:justify;text-indent:1.5em;text-justify:inter-word;hyphens:auto;text-align-last:left;overflow-wrap:break-word;\">Lo normal es que comencemos a ser misericordiosos con las personas más cercanas a nosotros. Amar a nuestros padres, a nuestra pareja debería ser lo más sencillo o lo más fácil sin embargo es en donde más conocemos nuestra cruda realidad: no sabemos amar ni si quiera a la gente que es más fácil de amar.</p><p style=\"margin:0 0;padding:0;text-align:justify;text-justify:inter-word;hyphens:auto;overflow-wrap:break-word;text-indent:1.5em;text-align-last:justi…[truncated]",
+            "structure": {
+              "elementCount": 6,
+              "paragraphs": 6,
+              "headings": 0,
+              "lists": 0,
+              "blockquotes": 0
+            }
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 182,
+          "traceId": "fill-p182-2485",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Una persona entre menos la conoces más difícil es amarla ver"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 182,
+          "traceId": "fill-p182-2486",
+          "data": {
+            "tag": "P",
+            "text": "Una persona entre menos la conoces más difícil es amarla ver",
+            "reason": "badness-split",
+            "before": {
+              "score": 477
+            },
+            "after": {
+              "score": 1477
+            },
+            "delta": -1000
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "hop",
+          "page": 182,
+          "traceId": "fill-p182-2487",
+          "data": {
+            "hop": 1,
+            "reason": "badness-split",
+            "newSourceStart": 183
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 182,
+          "traceId": "fill-p182-2488",
+          "data": {
+            "isContChunk": true,
+            "startsLowercase": true,
+            "text": "piensan: \"Si no respondo a una infidelidad con otra infideli"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 182,
+          "traceId": "fill-p182-2489",
+          "data": {
+            "tag": "P",
+            "text": "piensan: \"Si no respondo a una infidelidad con otra infideli",
+            "reason": "badness-split",
+            "before": {
+              "score": 477
+            },
+            "after": {
+              "score": 1477
+            },
+            "delta": -1000
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "hop",
+          "page": 182,
+          "traceId": "fill-p182-2490",
+          "data": {
+            "hop": 2,
+            "reason": "badness-split",
+            "newSourceStart": 184
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 182,
+          "traceId": "fill-p182-2491",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Y cuando aprendas a amar ahí, cuando tu casa se convierta en"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 182,
+          "traceId": "fill-p182-2492",
+          "data": {
+            "tag": "P",
+            "text": "Y cuando aprendas a amar ahí, cuando tu casa se convierta en",
+            "reason": "badness-split",
+            "before": {
+              "score": 549
+            },
+            "after": {
+              "score": 1523
+            },
+            "delta": -974
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 182,
+          "traceId": "fill-p182-3478",
+          "data": {
+            "isContChunk": true,
+            "startsLowercase": true,
+            "text": "piensan: \"Si no respondo a una infidelidad con otra infideli"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 182,
+          "traceId": "fill-p182-3479",
+          "data": {
+            "tag": "P",
+            "text": "piensan: \"Si no respondo a una infidelidad con otra infideli",
+            "reason": "badness-split",
+            "before": {
+              "score": 177
+            },
+            "after": {
+              "score": 1177
+            },
+            "delta": -1000
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "hop",
+          "page": 182,
+          "traceId": "fill-p182-3480",
+          "data": {
+            "hop": 1,
+            "reason": "badness-split",
+            "newSourceStart": 183
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 182,
+          "traceId": "fill-p182-3481",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Y cuando aprendas a amar ahí, cuando tu casa se convierta en"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 182,
+          "traceId": "fill-p182-3482",
+          "data": {
+            "tag": "P",
+            "text": "Y cuando aprendas a amar ahí, cuando tu casa se convierta en",
+            "reason": "badness-split",
+            "before": {
+              "score": 249
+            },
+            "after": {
+              "score": 1223
+            },
+            "delta": -974
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "hop",
+          "page": 182,
+          "traceId": "fill-p182-3483",
+          "data": {
+            "hop": 2,
+            "reason": "badness-split",
+            "newSourceStart": 184
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 182,
+          "traceId": "fill-p182-3484",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Aprendió que es posible tener celo por Dios pero ser más dur"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 182,
+          "traceId": "fill-p182-3485",
+          "data": {
+            "tag": "P",
+            "text": "Aprendió que es posible tener celo por Dios pero ser más dur",
+            "reason": "badness-split",
+            "before": {
+              "score": 104
+            },
+            "after": {
+              "score": 1104
+            },
+            "delta": -1000
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 182,
+          "traceId": "fill-p182-4523",
+          "data": {
+            "isContChunk": true,
+            "startsLowercase": true,
+            "text": "piensan: \"Si no respondo a una infidelidad con otra infideli"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 182,
+          "traceId": "fill-p182-4524",
+          "data": {
+            "tag": "P",
+            "text": "piensan: \"Si no respondo a una infidelidad con otra infideli",
+            "reason": "badness-split",
+            "before": {
+              "score": 177
+            },
+            "after": {
+              "score": 1177
+            },
+            "delta": -1000
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "hop",
+          "page": 182,
+          "traceId": "fill-p182-4525",
+          "data": {
+            "hop": 1,
+            "reason": "badness-split",
+            "newSourceStart": 183
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 182,
+          "traceId": "fill-p182-4526",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Y cuando aprendas a amar ahí, cuando tu casa se convierta en"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 182,
+          "traceId": "fill-p182-4527",
+          "data": {
+            "tag": "P",
+            "text": "Y cuando aprendas a amar ahí, cuando tu casa se convierta en",
+            "reason": "badness-split",
+            "before": {
+              "score": 249
+            },
+            "after": {
+              "score": 1223
+            },
+            "delta": -974
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "hop",
+          "page": 182,
+          "traceId": "fill-p182-4528",
+          "data": {
+            "hop": 2,
+            "reason": "badness-split",
+            "newSourceStart": 184
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "cont-check",
+          "page": 182,
+          "traceId": "fill-p182-4529",
+          "data": {
+            "isContChunk": false,
+            "startsLowercase": false,
+            "text": "Aprendió que es posible tener celo por Dios pero ser más dur"
+          }
+        },
+        {
+          "phase": "fill",
+          "type": "reject",
+          "page": 182,
+          "traceId": "fill-p182-4530",
+          "data": {
+            "tag": "P",
+            "text": "Aprendió que es posible tener celo por Dios pero ser más dur",
+            "reason": "badness-split",
+            "before": {
+              "score": 104
+            },
+            "after": {
+              "score": 1104
+            },
+            "delta": -1000
+          }
+        },
+        {
+          "phase": "merge",
+          "type": "pass2-skip",
+          "page": 182,
+          "traceId": "merge-p182-4799",
+          "data": {
+            "reason": "indent-check",
+            "text": "La Escalera Que No Puedes Saltar"
+          }
+        },
+        {
+          "phase": "merge",
+          "type": "pass2-skip",
+          "page": 182,
+          "traceId": "merge-p182-5571",
+          "data": {
+            "reason": "indent-check",
+            "text": "La Escalera Que No Puedes Saltar"
+          }
+        }
+      ],
+      "entryCount": 35
+    }
+  }
+}

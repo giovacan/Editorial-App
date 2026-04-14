@@ -58,7 +58,7 @@ export const createCheckoutSession = functions.https.onCall(
         throw new functions.https.HttpsError('internal', 'System config not found');
       }
 
-      const config = configSnap.data();
+      const config = configSnap.data() || {};
       const domain = process.env.DOMAIN || 'http://localhost:5173';
 
       // Create customer if needed

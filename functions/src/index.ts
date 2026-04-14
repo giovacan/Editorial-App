@@ -13,3 +13,5 @@ admin.initializeApp();
 export { createCheckoutSession } from './createCheckoutSession';
 export { createCustomerPortalSession } from './createCustomerPortalSession';
 export { stripeWebhook } from './stripeWebhook';
+export { generatePdf } from './generatePdf';
+export { planLayout } from './planLayout';

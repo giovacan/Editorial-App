@@ -4,32 +4,26 @@ import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import useEditorStore from '../../store/useEditorStore';
 import { usePagination, usePageNavigation } from '../../hooks/usePagination';
 import { useMagnifier } from '../../hooks/useMagnifier';
-import { useHeaderFooter, buildHeaderHtml } from '../../hooks/useHeaderFooter';
-import { calculateContentDimensions } from '../../utils/textMeasurer';
+import { usePageRenderLayoutFromStore, computeFolioFromEdge } from '../../hooks/usePageRenderLayout';
 import { DEFAULT_CONFIG } from './utils/previewConfig';
-import { applyKpRendering } from '../../utils/textLayoutEngine';
-import { JUSTIFY_SLACK_RATIO } from '../../utils/paginateChapters';
+// import { insertPageLineBreaks, createLayoutContext } from '../../utils/textLayoutEngine';
 import { addDebugTags } from './utils/debugTags';
 import PreviewControls from './PreviewControls';
 import MagnifierPanel from './MagnifierPanel';
 import PreviewDebugPanel from './PreviewDebugPanel';
+import LayoutGuidesOverlay from './LayoutGuidesOverlay';
 import TOCPanel from './TOCPanel';
 import ValidationErrorDialog from '../ValidationErrorDialog/ValidationErrorDialog';
 import PaginationProgressBar from '../PaginationProgressBar/PaginationProgressBar';
+import { useLayoutVerification, formatLayoutAuditText } from '../../hooks/useLayoutVerification';
 import './Preview.css';
 
-const AVAILABLE_SIDEBAR_WIDTH = 220;
 const PX_PER_MM = 3.7795;
-const PX_PER_INCH = 96;
-
-function getGutterInInches(value, unit) {
-  if (unit === 'mm') return value / 25.4;
-  if (unit === 'cm') return value / 2.54;
-  return value;
-}
+const SIDEBAR_CONTENT_WIDTH = 220;
 
 function Preview() {
   const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [showLayoutGuides, setShowLayoutGuides] = useState(false);
   const showTOCPanel = useEditorStore(s => s.showTOCPanel);
 
   const bookData = useEditorStore(useShallow((s) => s.bookData));
@@ -104,8 +98,10 @@ function Preview() {
     pageFormat = KDP_STANDARDS.getPageFormat(safeConfig.pageFormat || bookConfig.recommendedFormat);
   }
 
-  const { pages = [], layoutDims, validationState, showErrorDialog, currentError, handleErrorAction, closeErrorDialog } =
-    usePagination(bookData, config, measureRef);
+  const previewScale = Math.min(0.42, SIDEBAR_CONTENT_WIDTH / (pageFormat.width * PX_PER_MM));
+
+  const { pages = [], validationState, showErrorDialog, currentError, handleErrorAction, closeErrorDialog } =
+    usePagination(bookData, config, measureRef, previewScale);
 
   const frontMatterPages = useEditorStore((s) => s.frontMatterPages) || [];
   const tocConfig = useEditorStore((s) => s.tocConfig);
@@ -130,17 +126,81 @@ function Preview() {
     if (allPages[0]?.html) console.log('[PREVIEW] Primera página HTML:', allPages[0].html.slice(0, 150));
   }, [allPages, config?.chapterTitle?.layout]);
 
+  // P6: Layout verification — DOM vs Canvas audit (dev mode only)
+  const layoutDims = useEditorStore((s) => s.layoutDims);
+  const layoutAuditReport = useLayoutVerification(pages, layoutDims);
+
+  // When DOM audit completes, append it to the pagination log
+  useEffect(() => {
+    if (!layoutAuditReport || process.env.NODE_ENV !== 'development') return;
+    const auditText = formatLayoutAuditText(layoutAuditReport);
+    if (!auditText) return;
+    // Update the stored pagination log with audit data
+    const currentLog = useEditorStore.getState().paginationLog;
+    if (currentLog && !currentLog.layoutAudit) {
+      useEditorStore.getState().setPaginationLog({
+        ...currentLog,
+        layoutAudit: auditText,
+      });
+      // Also re-post the log with audit appended
+      fetch('/api/pagination-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          log: { ...currentLog, layoutAudit: auditText },
+          summaryText: (currentLog.summaryText || '') + '\n\n' + auditText,
+        })
+      }).catch(() => {});
+    }
+  }, [layoutAuditReport]);
+
   const paginationProgressObj = useEditorStore((s) => s.paginationProgress);
   const isPaginationRunning = paginationProgressObj?.isActive ?? false;
   const paginationPercent = paginationProgressObj?.percent ?? 0;
-  const totalPageCount = allPages.length;
-
-  const gutterValue = safeConfig.gutterStrategy === 'custom'
-    ? getGutterInInches(safeConfig.gutterManual, safeConfig.gutterUnit || 'in')
-    : KDP_STANDARDS.getDynamicGutter(safeConfig.pageFormat, safeBookData.bookType, totalPageCount);
-
+  const layoutPlannerState = useEditorStore((s) => s.layoutPlanner);
   const { currentPage, goToPage, goToNextPage, goToPrevPage, goToFirstPage, goToLastPage, totalPages } =
     usePageNavigation(allPages.length);
+
+  const plannerBadge = useMemo(() => {
+    const provider = layoutPlannerState?.provider || 'local';
+    const phase = layoutPlannerState?.phase || 'idle';
+    const progress = Math.max(0, Math.min(100, Number(layoutPlannerState?.progress) || 0));
+    const modelLabel = layoutPlannerState?.modelLabel || '';
+
+    if (provider === 'webllm' && phase === 'loading') {
+      return {
+        tone: 'loading',
+        text: progress > 0
+          ? `Preparando IA local (${progress}%)`
+          : 'Preparando IA local',
+        detail: modelLabel,
+      };
+    }
+
+    if (provider === 'webllm' && phase === 'ready') {
+      return {
+        tone: 'ready',
+        text: 'IA local lista',
+        detail: modelLabel,
+      };
+    }
+
+    if (provider === 'remote' && phase === 'ready') {
+      return {
+        tone: 'remote',
+        text: 'Planner remoto activo',
+        detail: modelLabel,
+      };
+    }
+
+    return {
+      tone: phase === 'fallback' ? 'fallback' : 'local',
+      text: 'Usando planner local',
+      detail: layoutPlannerState?.reason === 'webgpu_unavailable'
+        ? 'WebGPU no disponible'
+        : '',
+    };
+  }, [layoutPlannerState]);
 
   const currentPageData = (allPages?.length > 0 && allPages[currentPage])
     ? allPages[currentPage]
@@ -157,101 +217,60 @@ function Preview() {
 
   // Run only when page content changes — NOT on every mouse-move render.
   // Skip word-spacing adjustment on frontmatter pages (flex layout breaks with it).
+  // Skip when KP rendering is active (textAlign=justify): KP already sets precise per-line
+  // word-spacing via <span> elements; applying a uniform offset on the outer <p> creates
+  // inconsistency between KP-adjusted lines (explicit span word-spacing) and non-adjusted
+  // lines (inherit the outer negative offset), making paragraphs look "crooked".
   useEffect(() => {
     if (isFrontMatterPage) return;
+    if ((safeConfig.paragraph?.align || 'justify') === 'justify') return;
     adjustWordSpacing(previewContentRef.current);
     adjustWordSpacing(magnifierContentRef.current);
-  }, [currentPage, debugHtml, isFrontMatterPage]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentPage, debugHtml, isFrontMatterPage, safeConfig.paragraph?.align]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const isCurrentPageEven = currentPageData.pageNumber % 2 === 0;
-  const isTitleOnlyPage = currentPageData.isTitleOnlyPage === true;
-  const effectiveGutter = layoutDims?.gutterValue ?? gutterValue;
-  const gutterForPage = isTitleOnlyPage ? 0 : effectiveGutter;
+  const {
+    pageWidthPx, pageHeightPx,
+    marginTop, marginBottom, marginLeft, marginRight,
+    effectiveContentHeight, engineContentHeight,
+    fontSize, fontFamily, lineHeightPx, textAlign, baseFontSize,
+    showPageNumber, displayNum, pageNumStyle,
+    showHeaders, hasHeaderContent, skipHeader, headerHtml,
+  } = usePageRenderLayoutFromStore({
+    pageData:    currentPageData,
+    config:      safeConfig,
+    bookConfig,
+    pageFormat,
+    previewScale,
+    totalPages,
+    bookTitle:   safeBookData.title,
+  });
 
-  const previewScale = Math.min(0.42, AVAILABLE_SIDEBAR_WIDTH / (pageFormat.width * PX_PER_MM));
-  const applyDynamicMargins = (safeConfig.marginStrategy || 'auto') === 'auto';
+  // Visual gap between last text line and page number / header in preview.
+  // 1 line of breathing room — does NOT affect engine contentHeight.
+  const pageNumGapPx = lineHeightPx;
 
-  const { pageWidthPx, pageHeightPx, marginTop, marginBottom, marginLeft, marginRight, contentHeight } =
-    calculateContentDimensions(pageFormat, bookConfig, previewScale, gutterForPage, isCurrentPageEven, totalPages, applyDynamicMargins);
-
-  const effectiveContentHeight = layoutDims?.contentHeight ?? contentHeight;
-  const fontSize = (safeConfig.fontSize || bookConfig.fontSize) * (PX_PER_INCH / 72) * previewScale;
-  const fontFamily = safeConfig.fontFamily || bookConfig.fontFamily;
-  const lineHeightRatio = safeConfig.lineHeight || bookConfig.lineHeight;
-  const lineHeightPx = layoutDims?.lineHeightPx ?? Math.ceil(fontSize * lineHeightRatio);
-  const textAlign = safeConfig.paragraph?.align || 'justify';
-  const showNums = safeConfig.showPageNumbers !== false;
-
-  // ── KP Rendering ─────────────────────────────────────────────────────────────
-  // Frontmatter pages (title, TOC) skip KP rendering — their HTML uses flex
-  // layout that would be corrupted by the word-spacing pass.
-  const renderedHtml = useMemo(() => {
-    if (!debugHtml || currentPageData?.isBlank || isFrontMatterPage || textAlign !== 'justify') return debugHtml;
-    const cw = pageWidthPx - marginLeft - marginRight;
-    return applyKpRendering(debugHtml, {
-      baseFontSizePx: fontSize,
-      fontFamily,
-      contentWidth: cw,
-      widthSlack: cw * JUSTIFY_SLACK_RATIO,
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debugHtml, currentPageData?.isBlank, isFrontMatterPage, textAlign, pageWidthPx, marginLeft, marginRight, fontSize, fontFamily]);
+  // Use page HTML directly — <br> injection disabled (CSS last-line semantics
+  // prevent justify on lines before <br>, making pages taller not shorter).
+  const renderedHtml = debugHtml;
 
   const { showMagnifier, setShowMagnifier, magnifierZoom, setMagnifierZoom, magnifierPanelRef,
     magnifierPos, updateMagnifierPosition, handleMouseEnterPreview, handleMouseLeavePreview,
     handleMouseEnterMagnifier, handleMouseLeaveMagnifier } = useMagnifier(previewPageRef);
 
-  const { showHeaders, headerLeft, headerCenter, headerRight, headerConfig } =
-    useHeaderFooter(safeConfig, currentPageData, totalPages, safeBookData.title);
-
-  const baseFontSize = (safeConfig.fontSize || bookConfig.fontSize) * previewScale;
-  const headerHtml = buildHeaderHtml(headerLeft, headerCenter, headerRight, headerConfig, baseFontSize);
-  const skipHeader = headerConfig.skipFirstChapterPage && currentPageData.isFirstChapterPage;
-  const hasHeaderContent = headerLeft || headerCenter || headerRight;
-
-  // FM pages show their roman numeral if displayPageNumber is set (non-empty); cover has ''
-  const showFolio = tocConfig?.showFolio !== false; // default true
-  const hasFmNumber = isFrontMatterPage && !!currentPageData.displayPageNumber && showFolio;
-  const showPageNumber = showNums && !currentPageData.isBlank && (
-    hasFmNumber ||
-    (!isFrontMatterPage) ||
-    (currentPageData.isExtraEndPage && currentPageData.shouldShowPageNumber)
-  );
-
-  const pageNumberPos = safeConfig.pageNumberPos || 'bottom';
-  const pageNumberAlign = safeConfig.pageNumberAlign || 'center';
-  const pageNumY = safeConfig.pageNumberMargin ?? 12;
-
-  let pageNumHorizontalStyle = {};
-  switch (pageNumberAlign) {
-    case 'paragraph-edge':
-      pageNumHorizontalStyle = isCurrentPageEven ? { left: `${marginLeft}px` } : { right: `${marginRight}px` };
-      break;
-    case 'paragraph':
-      pageNumHorizontalStyle = isCurrentPageEven ? { left: `${marginLeft + 12}px` } : { right: `${marginRight + 12}px` };
-      break;
-    case 'outer':
-      pageNumHorizontalStyle = isCurrentPageEven ? { left: '12px' } : { right: '12px' };
-      break;
-    default:
-      pageNumHorizontalStyle = { left: '50%', transform: 'translateX(-50%)' };
-  }
-
-  const pageNumStyle = {
-    position: 'absolute',
-    ...(pageNumberPos === 'top' ? { top: `${pageNumY}px` } : { bottom: `${pageNumY}px` }),
-    ...pageNumHorizontalStyle,
-    fontSize: `${fontSize * 0.8}px`
-  };
-
-  const displayNum = currentPageData.displayPageNumber ?? currentPageData.pageNumber;
-  const pageNumHtml = showPageNumber ? (
+  const folioPos   = config?.pageNumberPos   || 'bottom';
+  const folioAlign = config?.pageNumberAlign || 'center';
+  const folioOnOuter = folioAlign === 'outer' || folioAlign === 'paragraph-edge' || folioAlign === 'paragraph';
+  const folioEmbeddedInHeader = folioPos === 'top' && folioOnOuter
+    && showHeaders && !currentPageData?.isBlank && !skipHeader && hasHeaderContent
+    && !isFrontMatterPage;
+  const pageNumHtml = showPageNumber && !folioEmbeddedInHeader ? (
     <span className="page-number" style={pageNumStyle}>{displayNum}</span>
   ) : null;
 
   const sharedPageProps = {
     pageWidthPx, pageHeightPx, marginTop, marginRight, marginBottom, marginLeft,
     fontSize, fontFamily, lineHeightPx, textAlign, effectiveContentHeight,
+    engineContentHeight, previewScale, showLayoutGuides,
     debugHtml: renderedHtml, pageNumHtml, showHeaders, currentPageData, skipHeader,
     hasHeaderContent, headerHtml, isFrontMatterPage
   };
@@ -270,7 +289,16 @@ function Preview() {
         setMagnifierZoom={setMagnifierZoom}
         showDebugPanel={showDebugPanel}
         setShowDebugPanel={setShowDebugPanel}
+        showLayoutGuides={showLayoutGuides}
+        setShowLayoutGuides={setShowLayoutGuides}
       />
+
+      <div className={`planner-status planner-status-${plannerBadge.tone}`}>
+        <span className="planner-status-text">{plannerBadge.text}</span>
+        {plannerBadge.detail && (
+          <span className="planner-status-detail">{plannerBadge.detail}</span>
+        )}
+      </div>
 
       {showDebugPanel && (
         <PreviewDebugPanel config={config} onChange={setConfig} onClose={() => setShowDebugPanel(false)} />
@@ -280,12 +308,13 @@ function Preview() {
         <TOCPanel />
       )}
 
-      <PaginationProgressBar progress={paginationPercent} isVisible={isPaginationRunning} compact={false} />
+      <div className="preview-stage">
+        <PaginationProgressBar progress={paginationPercent} isVisible={isPaginationRunning} />
 
-      <div className="preview-scroll" ref={previewScrollRef}>
-        <div
+        <div className="preview-scroll" ref={previewScrollRef}>
+          <div
           ref={previewPageRef}
-          className="preview-page"
+          className={`preview-page${isFrontMatterPage ? ' is-front-matter' : ''}`}
           lang="es"
           style={{
             width: `${pageWidthPx}px`, height: `${pageHeightPx}px`,
@@ -294,7 +323,10 @@ function Preview() {
             // Frontmatter pages (title, TOC) use left-aligned layout — no justify, no hyphens
             textAlign: isFrontMatterPage ? 'left' : textAlign,
             textJustify: isFrontMatterPage ? undefined : 'inter-word',
-            hyphens: isFrontMatterPage ? 'none' : 'auto',
+            // hyphens: 'none' — engine handles hyphenation via Liang patterns in KP.
+            // Browser hyphens: auto would break at different points than Canvas measured,
+            // causing DOM height to diverge from engine prediction.
+            hyphens: 'none',
             wordBreak: 'break-word', overflowWrap: 'break-word'
           }}
           onMouseMove={updateMagnifierPosition}
@@ -302,7 +334,7 @@ function Preview() {
           onMouseLeave={handleMouseLeavePreview}
         >
           {!isFrontMatterPage && showHeaders && !currentPageData.isBlank && !skipHeader && hasHeaderContent && (
-            <div className="preview-header" dangerouslySetInnerHTML={{ __html: headerHtml }} style={{ marginBottom: '0.5em' }} />
+            <div className="preview-header" dangerouslySetInnerHTML={{ __html: headerHtml }} style={{ marginBottom: `${pageNumGapPx}px` }} />
           )}
           <div
             ref={(el) => {
@@ -313,10 +345,19 @@ function Preview() {
                   const pageType = currentPageData?.isTOCPage ? 'TOC'
                     : currentPageData?.isTitlePage ? 'TITLE'
                     : currentPageData?.isFrontMatter ? 'FM' : 'CONTENT';
-                  if (overflow > 2) {
-                    console.warn(`[OVERFLOW][${pageType}] Page ${currentPage + 1}: scrollH=${el.scrollHeight}px clientH=${el.clientHeight}px overflow=${overflow.toFixed(1)}px (${(overflow / lineHeightPx).toFixed(1)} lines)`);
-                  } else if (pageType === 'TOC') {
-                    console.log(`[TOC-RENDER] Page ${currentPage + 1}: scrollH=${el.scrollHeight}px clientH=${el.clientHeight}px ok (remain=${(el.clientHeight - el.scrollHeight).toFixed(1)}px)`);
+                  const isChStart = !!(currentPageData?.isFirstChapterPage || (currentPageData?.html && currentPageData.html.includes('data-chapter-start')));
+                  if (isChStart) {
+                    console.log(`[CH-START-RENDER] Page ${currentPage + 1}: scrollH=${el.scrollHeight}px clientH=${el.clientHeight}px effectiveCH=${effectiveContentHeight}px engineCH=${engineContentHeight}px remain=${(el.clientHeight - el.scrollHeight).toFixed(1)}px blocks=${el.children.length}`);
+                  }
+                  if (overflow > 6) {
+                    console.warn(`[OVERFLOW][${pageType}] Page ${currentPage + 1}: scrollH=${el.scrollHeight}px clientH=${el.clientHeight}px overflow=${overflow.toFixed(1)}px (${(overflow / lineHeightPx).toFixed(1)} lines)${isChStart ? ' [CHAPTER-START]' : ''}`);
+                    // P6: Visual overflow indicator — red outline on clipped pages
+                    el.style.outline = '2px solid red';
+                    el.title = `OVERFLOW: ${overflow.toFixed(1)}px (${(overflow / lineHeightPx).toFixed(1)} lines)`;
+                  } else {
+                    console.log(`[RENDER] Page ${currentPage + 1} [${pageType}]: scrollH=${el.scrollHeight}px clientH=${el.clientHeight}px remain=${(el.clientHeight - el.scrollHeight).toFixed(1)}px${isChStart ? ' [CHAPTER-START]' : ''}`);
+                    el.style.outline = '';
+                    el.title = '';
                   }
                 });
               }
@@ -325,7 +366,20 @@ function Preview() {
             style={{ height: `${effectiveContentHeight}px` }}
             dangerouslySetInnerHTML={{ __html: renderedHtml || '' }}
           />
+          {showLayoutGuides && !currentPageData.isBlank && !isFrontMatterPage && (
+            <LayoutGuidesOverlay
+              contentRef={previewContentRef}
+              engineContentHeight={engineContentHeight}
+              effectiveContentHeight={effectiveContentHeight}
+              folioFromEdge={computeFolioFromEdge(previewScale)}
+              marginBottom={marginBottom}
+              marginLeft={marginLeft}
+              contentWidth={pageWidthPx - marginLeft - marginRight}
+              pageKey={currentPage}
+            />
+          )}
           {pageNumHtml}
+          </div>
         </div>
       </div>
 
