@@ -14,7 +14,7 @@
  * Used by: usePageRenderLayout (hook wrapper), PageFrame (direct call for folio math)
  */
 
-import { PX_PER_MM, FOLIO_FROM_BOTTOM_MM } from '../config/layout';
+import { PX_PER_MM, PX_PER_INCH, FOLIO_FROM_BOTTOM_MM } from '../config/layout';
 import { calculateContentDimensions } from './textMeasurer';
 import { buildHeaderHtmlPure } from '../hooks/useHeaderFooter';
 

@@ -4,6 +4,7 @@ import { KDP_STANDARDS } from '../utils/kdpStandards';
 import useEditorStore from '../store/useEditorStore';
 import { ENABLE_TOC } from '../utils/extractTOC';
 import { computeFrontMatter } from '../utils/computeFrontMatter';
+import { generateFrontMatter } from '../utils/generateFrontMatter';
 import {
   buildParagraphHtml,
   buildChapterTitleHtml,
@@ -17,6 +18,16 @@ import { calculateLineHeightPx, ensureFontsReady } from '../utils/textLayoutEngi
 import { useParagraphValidation } from './useParagraphValidation';
 
 import { DEFAULT_CONFIG, PX_PER_MM, PX_PER_INCH, AVAILABLE_SIDEBAR_WIDTH, FOLIO_FROM_BOTTOM_MM } from '../config/layout';
+
+function toRoman(n) {
+  const vals = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1];
+  const syms = ['m', 'cm', 'd', 'cd', 'c', 'xc', 'l', 'xl', 'x', 'ix', 'v', 'iv', 'i'];
+  let result = '';
+  for (let i = 0; i < vals.length; i++) {
+    while (n >= vals[i]) { result += syms[i]; n -= vals[i]; }
+  }
+  return result;
+}
 
 const validatePages = (pages) => {
   const validPages = [];
