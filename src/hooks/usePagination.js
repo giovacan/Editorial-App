@@ -10,7 +10,7 @@ import {
   getQuoteStyle,
   shouldStartOnRightPage
 } from '../utils/paginationEngine';
-import { paginateChapters } from '../utils/paginateChapters';
+import { paginateChapters } from '../utils/pagination/paginateChapters';
 import { getLayoutHints } from '../services/layoutPlanner';
 import { calculateContentDimensions, calculateDynamicMargins } from '../utils/textMeasurer';
 import { calculateLineHeightPx, ensureFontsReady } from '../utils/textLayoutEngine';
