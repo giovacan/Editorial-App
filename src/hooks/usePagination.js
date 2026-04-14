@@ -2,89 +2,32 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import murmurhash from 'imurmurhash';
 import { KDP_STANDARDS } from '../utils/kdpStandards';
 import useEditorStore from '../store/useEditorStore';
-import { extractTOC, ENABLE_TOC, generateRecommendedTOCConfig } from '../utils/extractTOC';
-import { mapTOCToPages } from '../utils/mapTOCToPages';
-import { generateFrontMatter, combineFrontMatterWithContent } from '../utils/generateFrontMatter';
+import { ENABLE_TOC } from '../utils/extractTOC';
+import { computeFrontMatter } from '../utils/computeFrontMatter';
+import { generateFrontMatter } from '../utils/generateFrontMatter';
 import {
   buildParagraphHtml,
   buildChapterTitleHtml,
   getQuoteStyle,
   shouldStartOnRightPage
 } from '../utils/paginationEngine';
-import { paginateChapters } from '../utils/paginateChapters';
+import { paginateChapters } from '../utils/pagination/paginateChapters';
 import { getLayoutHints } from '../services/layoutPlanner';
 import { calculateContentDimensions, calculateDynamicMargins } from '../utils/textMeasurer';
-import { FOLIO_FROM_BOTTOM_MM } from '../utils/pageLayout';
 import { calculateLineHeightPx, ensureFontsReady } from '../utils/textLayoutEngine';
 import { useParagraphValidation } from './useParagraphValidation';
 
+import { DEFAULT_CONFIG, PX_PER_MM, PX_PER_INCH, AVAILABLE_SIDEBAR_WIDTH, FOLIO_FROM_BOTTOM_MM } from '../config/layout';
+
 function toRoman(n) {
-  const vals = [1000,900,500,400,100,90,50,40,10,9,5,4,1];
-  const syms = ['m','cm','d','cd','c','xc','l','xl','x','ix','v','iv','i'];
+  const vals = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1];
+  const syms = ['m', 'cm', 'd', 'cd', 'c', 'xc', 'l', 'xl', 'x', 'ix', 'v', 'iv', 'i'];
   let result = '';
   for (let i = 0; i < vals.length; i++) {
     while (n >= vals[i]) { result += syms[i]; n -= vals[i]; }
   }
   return result;
 }
-
-const DEFAULT_CONFIG = {
-  pageFormat: 'a5',
-  customPageFormat: { width: 6, height: 9, unit: 'in' },
-  gutterStrategy: 'auto',
-  gutterManual: 0.25,
-  gutterUnit: 'in',
-  extraEndPages: 0,
-  extraEndPagesNumbered: false,
-  fontSize: 12,
-  lineHeight: 1.6,
-  chapterTitle: { 
-    align: 'center', 
-    bold: true, 
-    sizeMultiplier: 1.8, 
-    marginTop: 2, 
-    marginBottom: 1, 
-    startOnRightPage: true, 
-    showLines: false, 
-    lineWidth: 0.5, 
-    lineStyle: 'solid', 
-    lineColor: '#333333', 
-    lineWidthTitle: false 
-  },
-  subheaders: {
-    h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBottom: 0.5, minLinesAfter: 1 },
-    h2: { align: 'center', bold: true, sizeMultiplier: 1.35, marginTop: 1.25, marginBottom: 0.5, minLinesAfter: 1 },
-    h3: { align: 'center', bold: true, sizeMultiplier: 1.25, marginTop: 1, marginBottom: 0.5, minLinesAfter: 1 },
-    h4: { align: 'left', bold: true, sizeMultiplier: 1.15, marginTop: 1, marginBottom: 0.5, minLinesAfter: 1 },
-    h5: { align: 'left', bold: true, sizeMultiplier: 1.1, marginTop: 0.75, marginBottom: 0.25, minLinesAfter: 1 },
-    h6: { align: 'left', bold: false, sizeMultiplier: 1.0, marginTop: 0.5, marginBottom: 0.25, minLinesAfter: 1 }
-  },
-  paragraph: { firstLineIndent: 1.5, align: 'justify', spacingBetween: 0 },
-  quote: { enabled: true, indentLeft: 2, indentRight: 2, showLine: true, italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1, template: 'classic', autoDetect: true },
-  pagination: { minOrphanLines: 2, minWidowLines: 2, splitLongParagraphs: true, targetFillPct: 0.92 },
-  header: {
-    enabled: false,
-    template: 'classic',
-    displayMode: 'alternate',
-    evenPage: { leftContent: 'title', centerContent: 'none', rightContent: 'none' },
-    oddPage: { leftContent: 'none', centerContent: 'none', rightContent: 'chapter' },
-    trackSubheaders: false,
-    trackPseudoHeaders: false,
-    subheaderLevels: ['h1', 'h2'],
-    subheaderFormat: 'full',
-    fontFamily: 'same',
-    fontSize: 70,
-    showLine: true,
-    lineStyle: 'solid',
-    lineWidth: 0.5,
-    lineColor: 'black',
-    skipFirstChapterPage: true
-  }
-};
-
-const AVAILABLE_SIDEBAR_WIDTH = 220;
-const PX_PER_MM = 3.7795;
-const PX_PER_INCH = 96;
 
 const validatePages = (pages) => {
   const validPages = [];
@@ -585,164 +528,17 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
         useEditorStore.getState().setPaginatedPages(validatedPages);
         
         if (ENABLE_TOC) {
-          const tocEntries = extractTOC(safeBookData.chapters);
-          const tocResolved = mapTOCToPages(tocEntries, validatedPages);
-          useEditorStore.getState().setTOCData(tocResolved);
-          
-          const { tocAuto, frontMatterConfig } = useEditorStore.getState();
-          let { tocConfig } = useEditorStore.getState();
-          if (tocAuto && !tocConfig) {
-            tocConfig = generateRecommendedTOCConfig(tocEntries);
-            useEditorStore.getState().setTOCConfig(tocConfig);
-            if (process.env.NODE_ENV === 'development') {
-              console.log('[TOC] Auto-generated config:', tocConfig);
-            }
-          }
-
-          if (tocConfig) {
-            // Pass 1: dry run to know how many FM pages will be prepended
-            const { pages: fmDry } = generateFrontMatter(
-              safeBookData.title || 'Título del Libro',
-              safeBookData.author || '',
-              tocResolved,
-              tocConfig,
-              frontMatterConfig,
-              contentHeight,
-              lineHeightPx,
-              contentWidth,
-              baseFontSizePx,
-              targetFontFamily
-            );
-            // Pass 2: offset TOC entry page numbers by FM count so they reflect
-            // the sequential position in the full document (FM + content).
-            const fmOffset = fmDry.length;
-            const tocResolvedOffset = tocResolved.map(e => ({ ...e, page: (e.page || 1) + fmOffset }));
-            const { pages: fmPages, h3AutoFontSize, tocLog, tocSummaryText } = generateFrontMatter(
-              safeBookData.title || 'Título del Libro',
-              safeBookData.author || '',
-              tocResolvedOffset,
-              tocConfig,
-              frontMatterConfig,
-              contentHeight,
-              lineHeightPx,
-              contentWidth,
-              baseFontSizePx,
-              targetFontFamily
-            );
-            // Assign displayPageNumber to FM pages (roman numerals, cover has none)
-            const fmNumbering = useEditorStore.getState().config?.frontMatterNumbering ?? 'roman';
-            const fmFolioCase = useEditorStore.getState().tocConfig?.folioCase ?? 'lower';
-            let romanCounter = 0;
-            const fmPagesNumbered = fmPages.map(p => {
-              if (p.isTitlePage || p.isBlank) return { ...p, displayPageNumber: '' };
-              romanCounter++;
-              const roman = fmFolioCase === 'upper' ? toRoman(romanCounter).toUpperCase() : toRoman(romanCounter);
-              const display = fmNumbering === 'roman' ? roman
-                : fmNumbering === 'arabic' ? String(romanCounter)
-                : '';
-              return { ...p, displayPageNumber: display };
-            });
-            useEditorStore.getState().setFrontMatterPages(fmPagesNumbered);
-            useEditorStore.getState().setTocBuildLog(tocLog);
-
-            // ── DOM verification: measure actual rendered height of TOC pages ──
-            if (process.env.NODE_ENV === 'development' && tocSummaryText) {
-              let domVerification = '';
-              try {
-                const tocPages = fmPages.filter(p => p.isTOCPage);
-                if (tocPages.length > 0 && typeof document !== 'undefined') {
-                  const verifyDiv = document.createElement('div');
-                  verifyDiv.style.cssText = [
-                    'position:fixed', 'left:-99999px', 'top:0',
-                    'visibility:hidden', 'pointer-events:none',
-                    `width:${contentWidth}px`,
-                    `font-size:${baseFontSizePx}px`,
-                    `font-family:${targetFontFamily}`,
-                    `line-height:${lineHeightPx}px`,
-                    'text-align:left', 'hyphens:none',
-                    'word-break:break-word', 'overflow-wrap:break-word',
-                  ].join(';');
-                  document.body.appendChild(verifyDiv);
-
-                  const verifyLines = [`\nDOM VERIFICATION (actual scrollHeight vs contentHeight=${contentHeight}px):`];
-                  for (let pi = 0; pi < tocPages.length; pi++) {
-                    // Strip debug overlay (position:absolute divs) before measuring
-                    // — they inflate scrollHeight without adding real content.
-                    const cleanHtml = (tocPages[pi].html || '').replace(
-                      /<div style="position:absolute;[^"]*?">[^]*?<\/div>/g, ''
-                    );
-                    verifyDiv.innerHTML = cleanHtml;
-                    const scrollH = verifyDiv.scrollHeight;
-                    const delta = scrollH - contentHeight;
-                    const status = delta > 2 ? `!! OVERFLOW by ${delta.toFixed(1)}px (${(delta / lineHeightPx).toFixed(1)} lines)` :
-                                   delta > 0 ? `~ marginal +${delta.toFixed(1)}px` : 'OK';
-                    verifyLines.push(`  TOC page ${pi + 1}: scrollH=${scrollH}px contentH=${contentHeight}px delta=${delta.toFixed(1)}px ${status}`);
-
-                    // ── Per-entry measurement (first 2 pages only) ──
-                    if (pi < 2) {
-                      const wrapper = verifyDiv.firstElementChild;
-                      if (wrapper) {
-                        const kids = wrapper.children;
-                        verifyLines.push(`    wrapper children: ${kids.length}`);
-                        for (let ci = 0; ci < kids.length; ci++) {
-                          const el = kids[ci];
-                          const cs = getComputedStyle(el);
-                          const oh = el.offsetHeight;
-                          const mt = cs.marginTop;
-                          const mb = cs.marginBottom;
-                          const lh = cs.lineHeight;
-                          const fs = cs.fontSize;
-                          const disp = cs.display;
-                          const text = (el.textContent || '').substring(0, 30).replace(/\s+/g, ' ');
-                          verifyLines.push(`    [${ci}] oh=${oh} mt=${mt} mb=${mb} lh=${lh} fs=${fs} d=${disp} "${text}"`);
-                        }
-                      }
-                    }
-                  }
-                  document.body.removeChild(verifyDiv);
-                  domVerification = verifyLines.join('\n');
-                }
-              } catch { /* no-op */ }
-
-              const fmDebug = '\n\nFM PAGES displayPageNumber:\n' + fmPagesNumbered.map((p, i) =>
-                `  [${i}] isTitlePage=${!!p.isTitlePage} isTOCPage=${!!p.isTOCPage} displayPageNumber="${p.displayPageNumber}"`
-              ).join('\n');
-              fetch('/api/toc-log', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  summaryText: tocSummaryText + domVerification + fmDebug,
-                  timestamp: new Date().toISOString()
-                })
-              }).catch(() => {});
-            }
-            // Update tocData with book-sequential page numbers (offset by FM count)
-            useEditorStore.getState().setTOCData(tocResolvedOffset);
-            // Patch pagination log page numbers so debug panel matches preview page numbers
-            if (fmOffset > 0) {
-              const rawLog = useEditorStore.getState().paginationLog;
-              if (rawLog) {
-                useEditorStore.getState().setPaginationLog({
-                  ...rawLog,
-                  config: { ...(rawLog.config || {}), fmOffset },
-                  entries: rawLog.entries.map(e => ({ ...e, page: e.page + fmOffset })),
-                  summary: rawLog.summary.map(s => ({ ...s, page: s.page + fmOffset }))
-                });
-              }
-            }
-            // Sync auto-computed H3 font size back to editor (separate from user levelOverrides)
-            const autoH3Value = h3AutoFontSize || undefined;
-            if (tocConfig.autoH3FontSize !== autoH3Value) {
-              useEditorStore.getState().setTOCConfig({ ...tocConfig, autoH3FontSize: autoH3Value });
-            }
-            if (process.env.NODE_ENV === 'development') {
-              console.log('[FrontMatter] Generated:', fmPages.length, 'pages');
-            }
-          }
-          
-          if (process.env.NODE_ENV === 'development') {
-            console.log('[TOC] Extracted:', tocResolved.length, 'entries');
-          }
+          computeFrontMatter({
+            chapters: safeBookData.chapters,
+            pages: validatedPages,
+            title: safeBookData.title,
+            author: safeBookData.author,
+            contentHeight,
+            lineHeightPx,
+            contentWidth,
+            baseFontSizePx,
+            fontFamily: targetFontFamily,
+          });
         }
         
         useEditorStore.getState().setLayoutDims({
