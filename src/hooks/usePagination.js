@@ -14,9 +14,10 @@ import {
 import { paginateChapters } from '../utils/paginateChapters';
 import { getLayoutHints } from '../services/layoutPlanner';
 import { calculateContentDimensions, calculateDynamicMargins } from '../utils/textMeasurer';
-import { FOLIO_FROM_BOTTOM_MM } from '../utils/pageLayout';
 import { calculateLineHeightPx, ensureFontsReady } from '../utils/textLayoutEngine';
 import { useParagraphValidation } from './useParagraphValidation';
+
+import { DEFAULT_CONFIG, PX_PER_MM, PX_PER_INCH, AVAILABLE_SIDEBAR_WIDTH, FOLIO_FROM_BOTTOM_MM } from '../config/layout';
 
 function toRoman(n) {
   const vals = [1000,900,500,400,100,90,50,40,10,9,5,4,1];
@@ -27,64 +28,6 @@ function toRoman(n) {
   }
   return result;
 }
-
-const DEFAULT_CONFIG = {
-  pageFormat: 'a5',
-  customPageFormat: { width: 6, height: 9, unit: 'in' },
-  gutterStrategy: 'auto',
-  gutterManual: 0.25,
-  gutterUnit: 'in',
-  extraEndPages: 0,
-  extraEndPagesNumbered: false,
-  fontSize: 12,
-  lineHeight: 1.6,
-  chapterTitle: { 
-    align: 'center', 
-    bold: true, 
-    sizeMultiplier: 1.8, 
-    marginTop: 2, 
-    marginBottom: 1, 
-    startOnRightPage: true, 
-    showLines: false, 
-    lineWidth: 0.5, 
-    lineStyle: 'solid', 
-    lineColor: '#333333', 
-    lineWidthTitle: false 
-  },
-  subheaders: {
-    h1: { align: 'center', bold: true, sizeMultiplier: 1.5, marginTop: 1.5, marginBottom: 0.5, minLinesAfter: 1 },
-    h2: { align: 'center', bold: true, sizeMultiplier: 1.35, marginTop: 1.25, marginBottom: 0.5, minLinesAfter: 1 },
-    h3: { align: 'center', bold: true, sizeMultiplier: 1.25, marginTop: 1, marginBottom: 0.5, minLinesAfter: 1 },
-    h4: { align: 'left', bold: true, sizeMultiplier: 1.15, marginTop: 1, marginBottom: 0.5, minLinesAfter: 1 },
-    h5: { align: 'left', bold: true, sizeMultiplier: 1.1, marginTop: 0.75, marginBottom: 0.25, minLinesAfter: 1 },
-    h6: { align: 'left', bold: false, sizeMultiplier: 1.0, marginTop: 0.5, marginBottom: 0.25, minLinesAfter: 1 }
-  },
-  paragraph: { firstLineIndent: 1.5, align: 'justify', spacingBetween: 0 },
-  quote: { enabled: true, indentLeft: 2, indentRight: 2, showLine: true, italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1, template: 'classic', autoDetect: true },
-  pagination: { minOrphanLines: 2, minWidowLines: 2, splitLongParagraphs: true, targetFillPct: 0.92 },
-  header: {
-    enabled: false,
-    template: 'classic',
-    displayMode: 'alternate',
-    evenPage: { leftContent: 'title', centerContent: 'none', rightContent: 'none' },
-    oddPage: { leftContent: 'none', centerContent: 'none', rightContent: 'chapter' },
-    trackSubheaders: false,
-    trackPseudoHeaders: false,
-    subheaderLevels: ['h1', 'h2'],
-    subheaderFormat: 'full',
-    fontFamily: 'same',
-    fontSize: 70,
-    showLine: true,
-    lineStyle: 'solid',
-    lineWidth: 0.5,
-    lineColor: 'black',
-    skipFirstChapterPage: true
-  }
-};
-
-const AVAILABLE_SIDEBAR_WIDTH = 220;
-const PX_PER_MM = 3.7795;
-const PX_PER_INCH = 96;
 
 const validatePages = (pages) => {
   const validPages = [];

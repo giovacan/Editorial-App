@@ -14,14 +14,9 @@
  * Used by: usePageRenderLayout (hook wrapper), PageFrame (direct call for folio math)
  */
 
-import { calculateContentDimensions, PX_PER_MM } from './textMeasurer';
+import { PX_PER_MM, FOLIO_FROM_BOTTOM_MM } from '../config/layout';
+import { calculateContentDimensions } from './textMeasurer';
 import { buildHeaderHtmlPure } from '../hooks/useHeaderFooter';
-
-const PX_PER_INCH = 96;
-
-// Distance from physical page bottom edge to folio baseline, in mm.
-// Content height is reduced so this gap is always respected.
-export const FOLIO_FROM_BOTTOM_MM = 15;
 
 // ─── Pure helpers ────────────────────────────────────────────────────────────
 
