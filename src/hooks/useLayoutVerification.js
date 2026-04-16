@@ -249,21 +249,6 @@ export function useLayoutVerification(pages, layoutDims) {
           );
         }
 
-        // Post to API for persistent logging
-        try {
-          fetch('/api/layout-audit', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              summary,
-              // Only send clipped + worst pages to keep payload small
-              worstPages: results
-                .filter(r => r.clipped || Math.abs(r.delta) > domSlackBudget * 0.8)
-                .slice(0, 20),
-              timestamp: new Date().toISOString(),
-            })
-          }).catch(() => {});
-        } catch { /* no-op */ }
       });
     });
 
