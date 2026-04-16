@@ -444,9 +444,6 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
         }
       }
     }
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`[KP-WS] Applied word-spacing to ${kpApplied} pages, reverted ${kpReverted}`);
-    }
   }
 
   // E6 final pass: distribute vertical whitespace AFTER KP word-spacing
@@ -520,7 +517,6 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
       const headerExtra = layoutCtx.headerSpaceEstimate || 0;
       const chBudget = contentHeight + headerExtra;
       const blockHeights = blocks.map(b => Math.round(measureHtmlHeight(b.outerHtml, canvasCtx))).join(',');
-      console.log(`[CH-START] p${page.pageNumber} ch="${page.chapterTitle?.substring(0,30)}" canvasH=${h.toFixed(0)} titleH=${titleH.toFixed(0)} contentH=${(h-titleH).toFixed(0)} budget=${(contentHeight - getDomSlack()).toFixed(0)} chBudget=${(chBudget - getDomSlack()).toFixed(0)} headerExtra=${headerExtra} fill=${(h/chBudget*100).toFixed(0)}% blocks=${blocks.length} blockH=[${blockHeights}]`);
       log.record('ch-start', 'diag', page.pageNumber, { ch: page.chapterTitle?.substring(0,30), canvasH: Math.round(h), titleH: Math.round(titleH), budget: Math.round(contentHeight - getDomSlack()), chBudget: Math.round(chBudget - getDomSlack()), blocks: blocks.length, blockH: blocks.map(b => Math.round(measureHtmlHeight(b.outerHtml, canvasCtx))), blockStyles: blocks.map(b => { const m = (b.style||'').match(/text-align-last:[^;\"]+/); return m ? m[0] : 'none'; }) });
     }
   }
@@ -540,9 +536,6 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
       let pageH = measureHtmlHeight(page.html, canvasCtx);
       if (pageH > budget) {
         clampOverBudget++;
-        if (process.env.NODE_ENV === 'development' && clampOverBudget <= 10) {
-          console.warn(`[CLAMP-DETECT] p${page.pageNumber || i + 1}: canvasH=${pageH.toFixed(1)} budget=${budget.toFixed(1)} overflow=${(pageH - budget).toFixed(1)} blocks=${getPageBlocks(page).length} htmlLen=${page.html.length}`);
-        }
       }
       if (pageH <= budget) continue;
 
@@ -639,10 +632,6 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
       }
     }
 
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`[SAFETY-CLAMP] checked=${clampChecked} overBudget=${clampOverBudget} trimmed=${clampCount} baseBudget=${(contentHeight - getDomSlack()).toFixed(1)} chStartBudget=${(contentHeight - getDomSlack() + chStartExtra).toFixed(1)} contentH=${contentHeight.toFixed(1)} DOM_SLACK=${getDomSlack()}`);
-    }
-
     if (clampCount > 0) {
       let pn = 1;
       for (const p of allPages) {
@@ -654,13 +643,6 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
 
   // Generate structured summary via logger
   log.generateSummary(allPages, evaluatePageQualityCanvas, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx);
-
-  // Log scoring cache stats (dev only)
-  if (process.env.NODE_ENV === 'development') {
-    const total = getEvalCacheHits() + getEvalCacheMisses();
-    const hitRate = total > 0 ? ((getEvalCacheHits() / total) * 100).toFixed(1) : '0.0';
-    console.log(`[EVAL-CACHE] ${getEvalCacheHits()} hits / ${getEvalCacheMisses()} misses (${hitRate}% hit rate, ${getEvalCache().size} entries)`);
-  }
 
   const resultChStartExtra = Math.max(0, (layoutCtx.headerSpaceEstimate || 0) - (layoutCtx.chapterStartBottomClearance || 0))
     + (layoutCtx.chapterStartExtraLines || 0) * lineHeightPx;

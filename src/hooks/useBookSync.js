@@ -24,7 +24,6 @@ export function useBookSync(bookId) {
 
   useEffect(() => {
     if (!bookId) {
-      console.warn('useBookSync: bookId not provided');
       return;
     }
 

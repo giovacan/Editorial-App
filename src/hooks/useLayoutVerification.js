@@ -168,49 +168,6 @@ export function useLayoutVerification(pages, layoutDims) {
         );
         const worstFillPages = [...normalPagesForAudit].sort((a, b) => a.textBottom - b.textBottom).slice(0, 5);
 
-        // Per-element diagnostic for worst pages (clipped + worst fill)
-        if (process.env.NODE_ENV === 'development') {
-          const worstPages = [
-            ...results.filter(r => r.clipped).sort((a, b) => b.delta - a.delta).slice(0, 2),
-            ...worstFillPages.slice(0, 2),
-          ].filter((r, i, arr) => arr.findIndex(x => x.pageNumber === r.pageNumber) === i);
-
-          for (const wp of worstPages) {
-            const page = pages[wp.pageIndex];
-            contentWrapper.innerHTML = page.html;
-            const children = contentWrapper.children;
-            const elDetails = [];
-            let domSum = 0;
-            for (let ci = 0; ci < children.length; ci++) {
-              const child = children[ci];
-              const domH = child.offsetHeight;
-              const cs = window.getComputedStyle(child);
-              const mt = parseFloat(cs.marginTop) || 0;
-              const mb = parseFloat(cs.marginBottom) || 0;
-              const tag = child.tagName;
-              const textSnippet = (child.textContent || '').substring(0, 40);
-              const outerHtml = child.outerHTML;
-              const canvasH = measureHtmlHeight(outerHtml, canvasCtx);
-              const elLh = parseFloat(cs.lineHeight) || lineHeightPx;
-              const domLines = Math.round(domH / elLh);
-              const canvasLines = Math.round(canvasH / elLh);
-              domSum += domH + mt + mb;
-              elDetails.push(
-                `  ${tag} domH=${domH} canvasH=${canvasH} Δ=${domH-canvasH} lines=${domLines}/${canvasLines} lh=${elLh.toFixed(1)} mt=${mt.toFixed(1)} mb=${mb.toFixed(1)} "${textSnippet}"`
-              );
-            }
-            console.warn(
-              `[ELEMENT-AUDIT] p${wp.pageNumber} (pageDelta=${wp.delta}px dom=${wp.domHeight} canvas=${wp.canvasHeight}):\n` +
-              `  scrollH=${contentWrapper.scrollHeight} domChildSum=${domSum.toFixed(1)} children=${children.length}\n` +
-              `  pageFlags: titleOnly=${page.isTitleOnlyPage} firstCh=${page.isFirstChapterPage} blank=${page.isBlank} ch="${page.chapterTitle}"\n` +
-              `  canvasCtx: bf=${canvasCtx.baseFontSizePx.toFixed(2)} lh=${canvasCtx.baseLineHeight} w=${canvasCtx.contentWidth.toFixed(1)} ws=${canvasCtx.widthSlack?.toFixed(1)} noHyph=${canvasCtx.noHyphenation}\n` +
-              elDetails.join('\n')
-            );
-            // Log raw HTML for all audited pages
-            console.warn(`[ELEMENT-AUDIT-HTML] p${wp.pageNumber} html (first 2000 chars):\n${page.html.substring(0, 2000)}`);
-          }
-        }
-
         // Clear innerHTML to release memory
         measureDiv.innerHTML = '';
 
@@ -289,28 +246,6 @@ export function useLayoutVerification(pages, layoutDims) {
           console.error(
             `[LAYOUT-AUDIT] ${clippedPages.length} CLIPPED pages:`,
             clippedPages.map(r => `p${r.pageNumber}(+${r.overflow.toFixed(1)}px/${r.overflowLines.toFixed(1)}ln)`).join(', ')
-          );
-        }
-        console.log(
-          `[LAYOUT-AUDIT] ${results.length} pages measured. ` +
-          `Max DOM-Canvas delta: ${maxDelta.toFixed(1)}px (${(maxDelta / lineHeightPx).toFixed(2)} lines). ` +
-          `Avg delta: ${avgDelta.toFixed(1)}px. ` +
-          `DOM_SLACK budget: ${domSlackBudget.toFixed(1)}px — ${maxDelta <= domSlackBudget ? 'SUFFICIENT' : 'EXCEEDED'}. ` +
-          `Clipped: ${clippedPages.length}`
-        );
-        console.log(
-          `[LAYOUT-AUDIT] Fill uniformity (${normalPages.length} pages ≥75%): ` +
-          `avg=${avgTextBottom.toFixed(1)}px dev=±${maxTextBottomDev.toFixed(1)}px (${maxTextBottomDevLines.toFixed(2)} lines) ` +
-          `budget=${contentHeight}px`
-        );
-        console.log(
-          `[LAYOUT-AUDIT] Fill histogram (${results.length} total): ` +
-          Object.entries(buckets).map(([k, v]) => `${k}:${v}`).join(' | ')
-        );
-        if (worstFillPages.length > 0) {
-          console.log(
-            `[LAYOUT-AUDIT] Worst fill (normal pages): ` +
-            worstFillPages.map(r => `p${r.pageNumber}=${r.textFill}%(${r.textBottom.toFixed(0)}px)`).join(', ')
           );
         }
 

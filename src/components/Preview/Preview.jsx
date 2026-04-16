@@ -121,10 +121,6 @@ function Preview() {
     return pages;
   }, [frontMatterPages, pages]);
 
-  useEffect(() => {
-    console.log('[PREVIEW] Pages actualizadas:', allPages.length, '| Layout config:', config?.chapterTitle?.layout);
-    if (allPages[0]?.html) console.log('[PREVIEW] Primera página HTML:', allPages[0].html.slice(0, 150));
-  }, [allPages, config?.chapterTitle?.layout]);
 
   // P6: Layout verification — DOM vs Canvas audit (dev mode only)
   const layoutDims = useEditorStore((s) => s.layoutDims);
@@ -207,9 +203,6 @@ function Preview() {
     : { html: '', pageNumber: 1, isBlank: false, chapterTitle: '', currentSubheader: '' };
 
   const isFrontMatterPage = !!(currentPageData.isTOCPage || currentPageData.isTitlePage || currentPageData.isFrontMatter);
-  if (process.env.NODE_ENV === 'development' && isFrontMatterPage) {
-    console.log('[FM-PAGE]', { isTOCPage: currentPageData.isTOCPage, isTitlePage: currentPageData.isTitlePage, displayPageNumber: currentPageData.displayPageNumber, showFolio: tocConfig?.showFolio });
-  }
 
   const debugHtml = (!isFrontMatterPage && debugConfig.enabled)
     ? addDebugTags(currentPageData.html, debugConfig, safeConfig.paragraph)
@@ -342,20 +335,11 @@ function Preview() {
               if (el && process.env.NODE_ENV === 'development') {
                 requestAnimationFrame(() => {
                   const overflow = el.scrollHeight - el.clientHeight;
-                  const pageType = currentPageData?.isTOCPage ? 'TOC'
-                    : currentPageData?.isTitlePage ? 'TITLE'
-                    : currentPageData?.isFrontMatter ? 'FM' : 'CONTENT';
-                  const isChStart = !!(currentPageData?.isFirstChapterPage || (currentPageData?.html && currentPageData.html.includes('data-chapter-start')));
-                  if (isChStart) {
-                    console.log(`[CH-START-RENDER] Page ${currentPage + 1}: scrollH=${el.scrollHeight}px clientH=${el.clientHeight}px effectiveCH=${effectiveContentHeight}px engineCH=${engineContentHeight}px remain=${(el.clientHeight - el.scrollHeight).toFixed(1)}px blocks=${el.children.length}`);
-                  }
                   if (overflow > 6) {
-                    console.warn(`[OVERFLOW][${pageType}] Page ${currentPage + 1}: scrollH=${el.scrollHeight}px clientH=${el.clientHeight}px overflow=${overflow.toFixed(1)}px (${(overflow / lineHeightPx).toFixed(1)} lines)${isChStart ? ' [CHAPTER-START]' : ''}`);
                     // P6: Visual overflow indicator — red outline on clipped pages
                     el.style.outline = '2px solid red';
                     el.title = `OVERFLOW: ${overflow.toFixed(1)}px (${(overflow / lineHeightPx).toFixed(1)} lines)`;
                   } else {
-                    console.log(`[RENDER] Page ${currentPage + 1} [${pageType}]: scrollH=${el.scrollHeight}px clientH=${el.clientHeight}px remain=${(el.clientHeight - el.scrollHeight).toFixed(1)}px${isChStart ? ' [CHAPTER-START]' : ''}`);
                     el.style.outline = '';
                     el.title = '';
                   }

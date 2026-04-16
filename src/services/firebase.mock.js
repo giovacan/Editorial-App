@@ -201,8 +201,6 @@ export const db = {
 export const functions = {
   httpsCallable: (functionName) => {
     return async (data) => {
-      console.log(`Mock function called: ${functionName}`, data);
-
       switch (functionName) {
         case 'createCheckoutSession':
           return {
@@ -253,7 +251,6 @@ export const functions = {
 
 export const mockAuthFunctions = {
   signInWithEmail: async (email, password) => {
-    console.log('Mock: Sign in with email', email);
     mockAuthUser = new MockUser(
       'mock_user_' + Date.now(),
       email,
@@ -265,7 +262,6 @@ export const mockAuthFunctions = {
   },
 
   signUpWithEmail: async (email, password) => {
-    console.log('Mock: Sign up with email', email);
     mockAuthUser = new MockUser(
       'mock_user_' + Date.now(),
       email,
@@ -297,7 +293,6 @@ export const mockAuthFunctions = {
   },
 
   signInWithGoogle: async () => {
-    console.log('Mock: Sign in with Google');
     mockAuthUser = new MockUser(
       'mock_google_user_' + Date.now(),
       'developer@mock.local',
@@ -309,7 +304,6 @@ export const mockAuthFunctions = {
   },
 
   logOut: async () => {
-    console.log('Mock: Log out');
     mockAuthUser = null;
     auth.currentUser = null;
     authStateCallbacks.forEach(cb => cb(null));
@@ -382,9 +376,6 @@ export function initializeMockDevelopmentMode() {
     },
   };
 
-  console.log('✅ Mock Firebase initialized for development mode');
-  console.log('   User:', devUser.email);
-  console.log('   Plan: Premium (with mock data)');
 }
 
 export default {

@@ -49,10 +49,6 @@ const validatePages = (pages) => {
     }
   }
   
-  if (corruptedCount > 0) {
-    console.warn(`⚠️ ${corruptedCount} páginas corregidas durante la paginación`);
-  }
-  
   return validPages;
 };
 
@@ -155,11 +151,9 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
   }, [pages, safeConfig.gutterStrategy, calculateGutter]);
   
   useEffect(() => {
-    console.log('[PAGINATION-EFFECT] Inicio - chapters:', safeBookData?.chapters?.length, '| layout:', safeConfig.chapterTitle?.layout);
     // Only run pagination if there's actual content
     const hasContent = safeBookData?.chapters?.some(ch => ch.html && ch.html.trim().length > 0);
     if (!hasContent || !measureRef.current) {
-      console.log('[PAGINATION-EFFECT] Sin contenido o sin measureRef');
       if (!hasContent) {
         setPages([]);
       }
@@ -233,9 +227,7 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
     const contentHash = JSON.stringify(safeBookData.chapters.map(ch =>
       ch.id + murmurhash(ch.html || '').result()
     )) + '||' + layoutKey;
-    console.log('📄 Hash de paginación:', contentHash.slice(-50), '| Layout:', safeConfig.chapterTitle?.layout);
     if (measureRef.current._lastContentHash === contentHash) {
-      console.log('⏭️ Saltando paginación - hash igual');
       return;
     }
     let cancelled = false;
@@ -249,9 +241,7 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
       // if the font isn't loaded yet. This ensures deterministic results
       // from the very first render.
       const targetFontFamily = safeConfig.fontFamily || bookConfig.fontFamily;
-      console.log('[PAGINATION] Esperando fuentes:', targetFontFamily);
       await ensureFontsReady(targetFontFamily, safeConfig.fontSize || 12);
-      console.log('[PAGINATION] Fuentes listas, cancelled=', cancelled);
 
       if (cancelled) return;
 
@@ -279,7 +269,7 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
         measureDiv.style.wordWrap = 'break-word';
         measureDiv.style.boxSizing = 'border-box';
       } catch (e) {
-        console.warn('Error resetting measureDiv:', e);
+        // ignore
       }
 
       const totalContentLength = safeBookData.chapters.reduce((sum, ch) => sum + (ch.html?.length || 0), 0);
@@ -363,11 +353,6 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
       const rawContentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight) - headerSpaceEstimate - folioReserve;
       const contentHeight = Math.floor(rawContentHeight / lineHeightPx) * lineHeightPx;
 
-      if (process.env.NODE_ENV === 'development') {
-        const floorDrop = rawContentHeight - contentHeight;
-        console.log(`[PAGINATION-SETUP] marginBottom=${dimsOdd.marginBottom.toFixed(1)}px, headerSpace=${headerSpaceEstimate}px, folioReserve=${folioReserve.toFixed(1)}px, floorDrop=${floorDrop.toFixed(1)}px`);
-        console.log(`[PAGINATION-SETUP] previewScale=${previewScale.toFixed(3)}, baseFontSize=${baseFontSize.toFixed(1)}pt, lineHeightPx=${lineHeightPx}px, contentWidth=${contentWidth.toFixed(1)}px, pageHeight=${pageHeightPx.toFixed(1)}px, contentHeight=${contentHeight.toFixed(1)}px, gutter=${gutterValueRef.current}`);
-      }
       const minWidowLines = safeConfig.pagination?.minWidowLines ?? 2;
       const splitLongParagraphs = safeConfig.pagination?.splitLongParagraphs !== false;
 
@@ -481,10 +466,6 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
         return;
       }
 
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`[PAGINATE] Resultado: ${generatedPages?.length} páginas generadas`, generatedPages?.[0]?.html?.slice(0, 100));
-      }
-
       useEditorStore.getState().setPaginationProgress(95);
 
       for (let i = 0; i < extraEndPages; i++) {
@@ -521,7 +502,6 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
           chapterStartExtraLines,
           chStartExtra: chStartExtraFromEngine,
         };
-        console.log(`[PAGINATION] Guardando layoutDims: contentHeight=${contentHeight}px renderContentHeight=${renderContentHeight}px engineGutter=${engineGutter}`);
         setLayoutDims(dimsSnapshot);
         useEditorStore.getState().setLayoutDims(dimsSnapshot);
         setPages(validatedPages);
@@ -625,10 +605,6 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
     if (pages.length > 0 && safeBookData.chapters) {
       const validation = validateAll(safeBookData.chapters, pages, safeConfig, confirmedChapterTitles);
 
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[ParagraphValidation] Result:', validation);
-        console.log('[PAGES] Total páginas:', pages.length, '| Primera página HTML:', pages[0]?.html?.slice(0, 100));
-      }
     }
   }, [pages, safeBookData.chapters, safeConfig, confirmedChapterTitles]);
 

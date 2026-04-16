@@ -567,9 +567,6 @@ export const insertPageLineBreaks = (pageHtml, layoutCtx) => {
       const breakWordIndices = lineStarts.slice(1);
       let elModified = false;
 
-      if (_dbg && _dbgProcessed <= 3) {
-        console.log(`[BR-INJECT] el#${_dbgProcessed} tag=${tag} wordMap=${wordMap.length} lineStarts=[${lineStarts.join(',')}] hasStyled=${hasStyled} avW=${availableWidth.toFixed(0)} text="${text.substring(0,50)}..."`);
-      }
 
       for (let b = breakWordIndices.length - 1; b >= 0; b--) {
         const wordIdx = breakWordIndices[b];
@@ -598,10 +595,6 @@ export const insertPageLineBreaks = (pageHtml, layoutCtx) => {
       }
 
       if (elModified) { modified = true; _dbgBrInserted++; }
-    }
-
-    if (_dbg) {
-      console.log(`[BR-INJECT] DONE children=${container.children.length} processed=${_dbgProcessed} brInserted=${_dbgBrInserted} skipTag=${_dbgSkippedTag} skipEmpty=${_dbgSkippedEmpty} skipBold=${_dbgSkippedBold} skipSingle=${_dbgSkippedSingle} modified=${modified}`);
     }
 
     return modified ? container.innerHTML : pageHtml;

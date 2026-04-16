@@ -53,9 +53,6 @@ const cleanupNearlyEmptyPages = (pages, config) => {
           page.isBlank = true;
           cleanedCount++;
           
-          if (process.env.NODE_ENV === 'development') {
-            console.log(`[FILL-CLEANUP] Merged nearly-empty page ${i + 1} into page ${i}`);
-          }
         } else if (!prevPage || prevPage.isBlank) {
           // Previous is blank or doesn't exist - mark current as blank
           page.isBlank = true;
@@ -73,10 +70,6 @@ const cleanupNearlyEmptyPages = (pages, config) => {
       page.pageNumber = idx + 1;
     }
   });
-
-  if (cleanedCount > 0 && process.env.NODE_ENV === 'development') {
-    console.log(`[FILL-CLEANUP] Cleaned ${cleanedCount} nearly-empty pages`);
-  }
 
   return result;
 };
@@ -111,7 +104,6 @@ export const applyFillPass = (pages, config) => {
   } = config;
 
   if (!measureDiv) {
-    console.warn('fillPassEngine: No measureDiv provided, returning pages unchanged');
     return pages;
   }
 

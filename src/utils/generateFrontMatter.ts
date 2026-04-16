@@ -467,19 +467,6 @@ export const generateTOCPages = (
     const _cplH2 = contentWidth
       ? Math.max(8, Math.floor(Math.max(30, (contentWidth - 24 - 8) * 0.58) / (_bfH2 * 0.68)))
       : '?';
-    console.log(
-      `[TOC] Layout: bfPx=${bfPx.toFixed(2)} lhPx=${lineHeightPx.toFixed(2)} ` +
-      `contentW=${contentWidth ?? '?'} contentH=${contentHeight}`
-    );
-    console.log(
-      `[TOC] Limits: titleH=${titleHeightPx.toFixed(2)} ` +
-      `firstUsable=${firstPageUsable.toFixed(2)} bodyUsable=${bodyPageUsable.toFixed(2)}`
-    );
-    console.log(
-      `[TOC] Char widths: avgW=fontPx×0.68 colRatio=58% ` +
-      `charsPerLine: H1≈${_cplH1} H2≈${_cplH2} (template=${template})`
-    );
-    console.log(`[TOC] h1SinglePx=${h1SinglePx.toFixed(2)} h2SinglePx=${h2SinglePx.toFixed(2)}`);
   }
 
   // ── DEV visual overlays ───────────────────────────────────────────────────
@@ -728,12 +715,6 @@ export const generateTOCPages = (
       const orphanReleased = rawFollowPx > 0 && !pairFitsOnFreshPage;
       if (hardBreak || softBreak) { pageBreakBefore[i] = true; curPage++; pageUsed = 0; }
       p3[i] = { followPx, orphanReleased, breakReason: hardBreak ? 'hard' : softBreak ? 'soft' : 'none' };
-      if (IS_DEV && orphanReleased) {
-        console.warn(
-          `[TOC] ⚠ ORPHAN RELEASED #${i} H${c.entry.level} "${c.displayTitle.substring(0,30)}" ` +
-          `pair=${c.entryPx}+${rawFollowPx}=${c.entryPx+rawFollowPx}px > hardLimit=${hardLimit.toFixed(0)}px`
-        );
-      }
       pageUsed += c.entryPx;
     }
   }
@@ -877,48 +858,6 @@ export const generateTOCPages = (
   }
 
   // ── Print DEV log ─────────────────────────────────────────────────────────
-  if (IS_DEV && tocLog.length > 0) {
-    // Group by page and print compact table
-    const pageNums = [...new Set(tocLog.map(e => e.page))];
-    for (const pg of pageNums) {
-      const rows = tocLog.filter(e => e.page === pg);
-      const usable = rows[0]?.pageUsable ?? 0;
-      const finalUsed = rows[rows.length - 1]?.usedAfter ?? 0;
-      const fillPct = Math.round(finalUsed / usable * 100);
-      console.log(`\n[TOC] ── PAGE ${pg} ── usable=${usable.toFixed(1)}px  used=${finalUsed.toFixed(1)}px (${fillPct}%)`);
-      console.log(`[TOC]  ${'#'.padEnd(3)} ${'Lv'.padEnd(2)} ${'Lines'.padEnd(5)} ${'Px'.padEnd(5)} ${'UsedBefore'.padEnd(10)} ${'UsedAfter'.padEnd(9)} ${'Remain'.padEnd(7)} Title`);
-      for (const r of rows) {
-        const remain = (r.pageUsable - r.usedAfter).toFixed(1);
-        const follow = r.followPx > 0 ? ` +follow=${r.followPx}` : '';
-        const released = r.orphanReleased ? ' !orphan' : '';
-        const brk    = r.pageBreak ? ` ← ${r.breakReason.toUpperCase()}` : '';
-        console.log(
-          `[TOC]  ${String(r.idx).padEnd(3)} H${r.level} ` +
-          `${String(r.rawLines).padEnd(5)} ` +
-          `${String(r.entryPx).padEnd(5)} ` +
-          `${r.usedBefore.toFixed(1).padEnd(10)} ` +
-          `${r.usedAfter.toFixed(1).padEnd(9)} ` +
-          `${remain.padEnd(7)} ` +
-          `"${r.title}"${follow}${released}${brk}`
-        );
-      }
-    }
-    // Summary — show effFirst/effBody clearance so it's easy to compare with [TOC-RENDER] scrollHeight
-    const totalPages = [...new Set(tocLog.map(e => e.page))].length;
-    console.log(`\n[TOC] SUMMARY: ${totalPages} page(s), ${tocLog.length} entries`);
-    console.log(`[TOC] Planned limits: effFirst=${effFirst.toFixed(1)}px effBody=${effBody.toFixed(1)}px contentH=${contentHeight}px (${lineHeightPx}px/line)`);
-    // Flag entries where usedAfter > pageUsable — indicates a measurement error or
-    // an oversized-single-entry that exceeds the hard limit even alone on a fresh page.
-    const risky = tocLog.filter(r => r.usedAfter > r.pageUsable);
-    if (risky.length > 0) {
-      console.warn(`[TOC] ⚠ PLAN OVERFLOW: ${risky.length} entries exceed effective limit:`);
-      for (const r of risky) {
-        const over = (r.usedAfter - r.pageUsable).toFixed(2);
-        const cause = r.orphanReleased ? 'oversized-pair' : 'measurement-error';
-        console.warn(`[TOC]   p${r.page} #${r.idx} H${r.level} +${over}px [${cause}] "${r.title}"`);
-      }
-    }
-  }
 
   currentHtml += buildDebugOverlay(currentPage === 1, currentPage === 1 ? softTarget1 : softTargetN) + '</div>';
 

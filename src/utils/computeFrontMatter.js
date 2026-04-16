@@ -34,9 +34,6 @@ export function computeFrontMatter({
   if (tocAuto && !tocConfig) {
     tocConfig = generateRecommendedTOCConfig(tocEntries);
     useEditorStore.getState().setTOCConfig(tocConfig);
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[TOC] Auto-generated config:', tocConfig);
-    }
   }
 
   if (!tocConfig) {
@@ -172,11 +169,6 @@ export function computeFrontMatter({
   const autoH3Value = h3AutoFontSize || undefined;
   if (tocConfig.autoH3FontSize !== autoH3Value) {
     useEditorStore.getState().setTOCConfig({ ...tocConfig, autoH3FontSize: autoH3Value });
-  }
-
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[FrontMatter] Generated:', fmPages.length, 'pages');
-    console.log('[TOC] Extracted:', tocResolved.length, 'entries');
   }
 
   return { tocResolved: tocResolvedOffset, tocConfig, fmOffset };
