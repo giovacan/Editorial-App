@@ -449,16 +449,6 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
         }
         if (paginationLog) {
           useEditorStore.getState().setPaginationLog(paginationLog);
-          if (process.env.NODE_ENV === 'development') {
-            fetch('/api/pagination-log', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                log: paginationLog,
-                summaryText: paginationSummaryText
-              })
-            }).catch(() => {})
-          }
         }
       } catch (e) {
         console.error('[PAGINATE] ERROR en paginateChapters:', e, e?.stack);
@@ -664,52 +654,6 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
       useEditorStore.getState().setTOCConfig({ ...(tocConfig || {}), autoH3FontSize: autoH3Value });
     }
 
-    // ── DOM verification for TOC config change path ──
-    if (process.env.NODE_ENV === 'development' && tocSummary2) {
-      let domV = '';
-      try {
-        const tocPgs = fmPages.filter(p => p.isTOCPage);
-        if (tocPgs.length > 0 && typeof document !== 'undefined') {
-          const vd = document.createElement('div');
-          vd.style.cssText = `position:fixed;left:-99999px;top:0;visibility:hidden;pointer-events:none;width:${layoutDims.contentWidth}px;font-size:${layoutDims.baseFontSizePx}px;font-family:${fmFontFamily};line-height:${layoutDims.lineHeightPx}px;text-align:left;hyphens:none;word-break:break-word;overflow-wrap:break-word;`;
-          document.body.appendChild(vd);
-          const vLines = [`\nDOM VERIFICATION (actual scrollHeight vs contentHeight=${layoutDims.contentHeight}px):`];
-          for (let pi = 0; pi < tocPgs.length; pi++) {
-            const cleanH = (tocPgs[pi].html || '').replace(/<div style="position:absolute;[^"]*?">[^]*?<\/div>/g, '');
-            vd.innerHTML = cleanH;
-            const sH = vd.scrollHeight;
-            const d = sH - layoutDims.contentHeight;
-            const st = d > 2 ? `!! OVERFLOW by ${d.toFixed(1)}px (${(d / layoutDims.lineHeightPx).toFixed(1)} lines)` : d > 0 ? `~ marginal +${d.toFixed(1)}px` : 'OK';
-            vLines.push(`  TOC page ${pi + 1}: scrollH=${sH}px contentH=${layoutDims.contentHeight}px delta=${d.toFixed(1)}px ${st}`);
-
-            // ── Per-entry measurement (first 2 pages only) ──
-            if (pi < 2) {
-              const wrapEl = vd.firstElementChild;
-              if (wrapEl) {
-                const ch = wrapEl.children;
-                vLines.push(`    wrapper children: ${ch.length}`);
-                for (let ci = 0; ci < Math.min(ch.length, 30); ci++) {
-                  const kid = ch[ci];
-                  const ks = getComputedStyle(kid);
-                  const txt = (kid.textContent || '').substring(0, 25).replace(/\s+/g, ' ');
-                  vLines.push(`    [${ci}] oh=${kid.offsetHeight} mt=${ks.marginTop} mb=${ks.marginBottom} lh=${ks.lineHeight} fs=${ks.fontSize} "${txt}"`);
-                }
-              }
-            }
-          }
-          document.body.removeChild(vd);
-          domV = vLines.join('\n');
-        }
-      } catch { /* no-op */ }
-      const fmDebug2 = '\n\nFM PAGES displayPageNumber:\n' + fmPagesNumbered2.map((p, i) =>
-        `  [${i}] isTitlePage=${!!p.isTitlePage} isTOCPage=${!!p.isTOCPage} displayPageNumber="${p.displayPageNumber}"`
-      ).join('\n');
-      fetch('/api/toc-log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ summaryText: tocSummary2 + domV + fmDebug2, timestamp: new Date().toISOString() })
-      }).catch(() => {});
-    }
   }, [tocConfig, frontMatterConfig, layoutDims, safeBookData.title, safeBookData.author]);
 
   return {

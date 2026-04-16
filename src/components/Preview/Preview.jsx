@@ -127,28 +127,6 @@ function Preview() {
   const layoutAuditReport = useLayoutVerification(pages, layoutDims);
 
   // When DOM audit completes, append it to the pagination log
-  useEffect(() => {
-    if (!layoutAuditReport || process.env.NODE_ENV !== 'development') return;
-    const auditText = formatLayoutAuditText(layoutAuditReport);
-    if (!auditText) return;
-    // Update the stored pagination log with audit data
-    const currentLog = useEditorStore.getState().paginationLog;
-    if (currentLog && !currentLog.layoutAudit) {
-      useEditorStore.getState().setPaginationLog({
-        ...currentLog,
-        layoutAudit: auditText,
-      });
-      // Also re-post the log with audit appended
-      fetch('/api/pagination-log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          log: { ...currentLog, layoutAudit: auditText },
-          summaryText: (currentLog.summaryText || '') + '\n\n' + auditText,
-        })
-      }).catch(() => {});
-    }
-  }, [layoutAuditReport]);
 
   const paginationProgressObj = useEditorStore((s) => s.paginationProgress);
   const isPaginationRunning = paginationProgressObj?.isActive ?? false;
