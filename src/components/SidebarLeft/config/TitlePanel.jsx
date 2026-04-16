@@ -66,10 +66,8 @@ function TitlePanel({ safeConfig, config, chapters, setConfig, setBookData }) {
   }, [setConfig, config?.chapterTitle]);
 
   const updateChapterLayout = useCallback((layout) => {
-    console.log('🔘 Botón layout clickeado:', layout);
     const currentChapterTitle = config?.chapterTitle || { align: 'center', bold: true, sizeMultiplier: 1.8, marginTop: 2, marginBottom: 1, startOnRightPage: true, layout: 'continuous', showLines: false, lineWidth: 0.5, lineStyle: 'solid', lineColor: '#333333', lineWidthTitle: false };
     setConfig({ chapterTitle: { ...currentChapterTitle, layout } });
-    console.log('🔘 Config actualizada, nuevo layout:', layout);
   }, [setConfig, config?.chapterTitle]);
 
   const applyHierarchyTemplate = useCallback((templateId) => {

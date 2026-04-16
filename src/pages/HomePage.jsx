@@ -176,7 +176,7 @@ export function HomePage() {
       />
 
       <MoodCategories 
-        onSelectMood={(mood) => console.log('Selected mood:', mood)}
+        onSelectMood={(mood) => {}}
       />
 
       <TrustSignals />

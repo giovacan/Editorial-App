@@ -27,15 +27,12 @@ if (hasFirebaseCredentials) {
   db = getFirestore(app);
   functions = getFunctions(app);
 
-  console.log('🔥 Firebase initialized (production mode)');
 } else {
   // Development: Use mock Firebase
   auth = mockFirebase.auth;
   db = mockFirebase.db;
   functions = mockFirebase.functions;
   app = null;
-
-  console.log('🎭 Mock Firebase initialized (development mode)');
   // Don't auto-login - allows viewing landing page
   // Uncomment to auto-login for testing protected routes:
   // mockFirebase.initializeMockDevelopmentMode();

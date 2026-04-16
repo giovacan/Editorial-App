@@ -160,9 +160,6 @@ function Layout() {
   };
 
   const handleContentLoaded = (loadedChapters) => {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('📥 Content loaded:', loadedChapters);
-    }
     loadContent(loadedChapters);
   };
 

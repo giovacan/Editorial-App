@@ -421,15 +421,6 @@ export const findBestPageBreak = (
     return current.penalty < best.penalty ? current : best;
   });
 
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[SMART-BREAK] Found best break:', {
-      type: bestCandidate.breakType,
-      penalty: bestCandidate.penalty,
-      height: bestCandidate.height,
-      violations: bestCandidate.violations
-    });
-  }
-
   return bestCandidate;
 };
 
@@ -518,14 +509,6 @@ export const tryParagraphCompression = (elementHtml, layoutCtx, measureDiv) => {
     }
 
     if (bestResult) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[COMPRESSION] Paragraph compressed successfully:', {
-          originalHeight: bestResult.originalHeight,
-          newHeight: bestResult.newHeight,
-          reduction: bestResult.percentReduction + '%',
-          ratio: bestResult.appliedRatio
-        });
-      }
       return bestResult;
     }
 

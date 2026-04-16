@@ -31,9 +31,6 @@ const PageBreakMarkers = memo(function PageBreakMarkers({
                p.chapterTitle.includes(chapterTitle);
       });
       
-      console.log('[PageBreakMarkers] chapterTitle:', chapterTitle, 'matched pages:', chapterPages.length);
-      console.log('[PageBreakMarkers] First few pages:', JSON.stringify(chapterPages.slice(0, 5).map(p => ({ title: p.chapterTitle, pageNum: p.pageNumber, firstEl: p.firstElementIndex }))));
-      
       if (chapterPages.length <= 1) {
         setMarkerPositions([]);
         return;
@@ -106,14 +103,12 @@ const PageBreakMarkers = memo(function PageBreakMarkers({
       for (const pos of positions) {
         // Skip if too close to previous marker (within 100px)
         if (pos.y - prevY < 100) {
-          console.log('[PageBreakMarkers] Skipping marker at y=' + pos.y.toFixed(0) + ' (too close to previous)');
           continue;
         }
         uniquePositions.push(pos);
         prevY = pos.y;
       }
       
-      console.log('[PageBreakMarkers] Final markers:', uniquePositions.map(p => ({ page: p.pageNumber, y: p.y.toFixed(0) })));
       setMarkerPositions(uniquePositions);
     };
 
