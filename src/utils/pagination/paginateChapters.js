@@ -103,7 +103,6 @@ import {
   fixHeadingsAtBottom,
   cleanupNearlyEmptyPages,
   enforceChapterStartParity,
-  distributeVerticalSpace,
 } from './repairs.js';
 
 import {
@@ -355,9 +354,6 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
       }
     }
   }
-
-  // E6 final pass: distribute vertical whitespace AFTER KP word-spacing
-  distributeVerticalSpace(allPages, layoutCtx, canvasCtx);
 
   // Re-number again after fill-pass may have emptied some pages.
   let pageNum = 1;
