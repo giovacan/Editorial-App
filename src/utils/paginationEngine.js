@@ -1,12 +1,52 @@
-import { measureHtmlHeight, insertHtmlLineBreaks } from './textLayoutEngine';
+import { measureHtmlHeight, buildFontString } from './textLayoutEngine';
+import { collapseWhitespace } from './textPreprocess.js';
 import {
   extractInlineStyle,
   getInnerHtml as getIrInnerHtml,
   getFirstBlock,
   htmlToText,
-  truncateHtmlByCharsPreservingTags as irTruncateHtmlByCharsPreservingTags,
   splitHtmlByCharsPreservingTags as irSplitHtmlByCharsPreservingTags
 } from './layoutIr.js';
+
+/**
+ * Find the character position (in collapsed plain text) where the last complete
+ * line within maxLines ends. Always returns a position at a space boundary —
+ * never mid-word. Returns -1 if all content fits within maxLines.
+ */
+const findSplitPos = (collapsed, maxLines, availableWidth, fontStr, indentPx, wordSpacingPx, ctx2d) => {
+  if (!ctx2d || !collapsed || maxLines <= 0 || availableWidth <= 0) return 0;
+
+  ctx2d.font = fontStr;
+  const spaceWidth = ctx2d.measureText(' ').width + wordSpacingPx;
+  const words = collapsed.split(' ').filter(w => w.length > 0);
+  if (words.length === 0) return -1;
+
+  let lineCount = 1;
+  let lineWidth = indentPx;
+  let charPos = 0;
+  let splitPos = 0;
+
+  for (let i = 0; i < words.length; i++) {
+    const ww = ctx2d.measureText(words[i]).width;
+    const needed = i === 0 ? lineWidth + ww : lineWidth + spaceWidth + ww;
+
+    if (i > 0 && needed > availableWidth) {
+      lineCount++;
+      if (lineCount > maxLines) {
+        // Word i starts the line beyond capacity — split before it
+        return splitPos;
+      }
+      lineWidth = ww;
+    } else {
+      lineWidth = needed;
+    }
+
+    charPos += (i === 0 ? 0 : 1) + words[i].length;
+    splitPos = charPos;
+  }
+
+  return -1; // all lines fit
+};
 
 export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, textAlign, hasIndent = false, indentValue = 1.5, preserveFirstIndent = false, canvasCtx = null) => {
 
@@ -76,53 +116,63 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
       break;
     }
 
-    let low = 0;
-    let high = text.length;
-    let fitLength = 0;
-
     const innerHtmlStr = getIrInnerHtml(remainingHtml);
+    const indent = computeIndent(isFirstChunk);
 
-    while (low < high) {
-      const mid = Math.floor((low + high + 1) / 2);
-      const trialHtml = irTruncateHtmlByCharsPreservingTags(innerHtmlStr, mid);
-      const wrapper = isBlockquote
-        ? `<blockquote style="${testStyle}">${trialHtml}</blockquote>`
-        : `<p style="${testStyle}">${trialHtml}</p>`;
+    // Line-based word-boundary split.
+    // Compute how many lines fit in maxHeight, then cut at the end of the
+    // last complete line — always at a space, never mid-word.
+    const lineHeightPx = canvasCtx?.lineHeightPx || Math.ceil(effectiveBaseFontSizePt * PX_PER_PT * effectiveBaseLineHeight);
+    const maxLines = Math.max(1, Math.floor(maxHeight / lineHeightPx));
 
-      // DETERMINISTIC: Canvas measurement
-      measuredHeight = measure(wrapper);
-
-      if (measuredHeight <= maxHeight) {
-        fitLength = mid;
-        low = mid;
-      } else {
-        high = mid - 1;
-      }
+    // Resolve the paragraph's font from its inline style
+    const fontSizeM = (originalStyles || '').match(/font-size:\s*([\d.]+)(pt|px|em)/i);
+    let splitFontSizePx = canvasCtx?.baseFontSizePx || (effectiveBaseFontSizePt * PX_PER_PT);
+    if (fontSizeM) {
+      const [, val, unit] = fontSizeM;
+      splitFontSizePx = unit === 'pt' ? parseFloat(val) * PX_PER_PT :
+                        unit === 'em' ? parseFloat(val) * splitFontSizePx :
+                        parseFloat(val);
     }
+    const splitIsBold = /font-weight:\s*(bold|[7-9]\d\d)/.test(originalStyles || '');
+    const splitIsItalic = /font-style:\s*italic/.test(originalStyles || '');
+    const splitFontStr = buildFontString(splitFontSizePx, canvasCtx?.fontFamily || 'Georgia, serif', splitIsBold, splitIsItalic);
 
-    if (fitLength === 0) {
+    const textIndentM = (originalStyles || '').match(/text-indent:\s*([\d.]+)em/i);
+    const splitIndentPx = (isFirstChunk && textIndentM) ? parseFloat(textIndentM[1]) * splitFontSizePx : 0;
+    const splitAvailW = (canvasCtx?.contentWidth || 0) - (canvasCtx?.widthSlack || 0);
+    const wsM = (originalStyles || '').match(/word-spacing:\s*([\d.]+)px/i);
+    const splitWordSpacingPx = wsM ? parseFloat(wsM[1]) : 0;
+
+    const collapsed = collapseWhitespace(text);
+    const splitPos = findSplitPos(
+      collapsed, maxLines, splitAvailW, splitFontStr,
+      splitIndentPx, splitWordSpacingPx, canvasCtx?.ctx2d
+    );
+
+    if (splitPos <= 0) {
+      // Nothing fits or ctx2d unavailable — push as-is to avoid infinite loop
       lines.push(remainingHtml);
       break;
     }
 
-    const lastSpace = text.substring(0, fitLength).lastIndexOf(' ');
-    let breakPoint = lastSpace > fitLength * 0.5 ? lastSpace : fitLength;
-
-    const indent = computeIndent(isFirstChunk);
-
-    // ============ Worker-safe split that preserves inline HTML ============
-    // Split innerHtmlStr at breakPoint (text chars), preserving all HTML tags
+    // ============ Split HTML at splitPos (always at a word boundary) ============
     let chunkHtml;
     let newRemainingHtml = '';
 
     {
-      const previewChunk = irTruncateHtmlByCharsPreservingTags(innerHtmlStr, breakPoint);
-      const chunkText = htmlToText(previewChunk);
-      const lastSpaceInChunk = chunkText.lastIndexOf(' ');
-      const finalBreakInText = lastSpaceInChunk > breakPoint * 0.5 ? lastSpaceInChunk : breakPoint;
-      const splitResult = irSplitHtmlByCharsPreservingTags(innerHtmlStr, finalBreakInText, { trimLeadingSpace: true });
+      const splitResult = irSplitHtmlByCharsPreservingTags(innerHtmlStr, splitPos, { trimLeadingSpace: true });
       chunkHtml = splitResult.headHtml;
       newRemainingHtml = splitResult.tailHtml.trim();
+
+      // Safety: if split produced an empty head, include at least 1 word
+      if (!chunkHtml.trim() && newRemainingHtml) {
+        const firstSpace = collapsed.indexOf(' ');
+        const fallbackPos = firstSpace > 0 ? firstSpace : collapsed.length;
+        const fallback = irSplitHtmlByCharsPreservingTags(innerHtmlStr, fallbackPos, { trimLeadingSpace: true });
+        chunkHtml = fallback.headHtml;
+        newRemainingHtml = fallback.tailHtml.trim();
+      }
     }
 
     // Wrap chunk with the same style used in the binary search measurement (testStyle = getChunkStyle).

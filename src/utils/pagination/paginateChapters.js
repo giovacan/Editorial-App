@@ -100,12 +100,9 @@ import {
 import {
   repairMissingIndents,
   mergeSplitFragments,
-  distributeVerticalSpace,
   fixHeadingsAtBottom,
   cleanupNearlyEmptyPages,
   enforceChapterStartParity,
-  smoothPageBalance,
-  repairPageDefects,
 } from './repairs.js';
 
 import {
@@ -298,114 +295,26 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
   // Re-number all pages sequentially
   allPages.forEach((p, i) => { p.pageNumber = i + 1; });
 
-  // Fill-pass with multi-pass convergence
-  applyFillPass(allPages, layoutCtx, canvasCtx, measureDiv, safeConfig, log);
-
-  // E5: Fix orphaned headings left at bottom of pages after fill-pass
+  // Fix headings at bottom BEFORE fill-pass so fill-pass accounts for moved headings
   fixHeadingsAtBottom(allPages, canvasCtx, layoutCtx, log);
 
-  // Second fill-pass — fixHeadingsAtBottom may have left pages underfilled
+  // Single forward fill-pass
   applyFillPass(allPages, layoutCtx, canvasCtx, measureDiv, safeConfig, log);
 
-  // E4: Cleanup nearly-empty pages after heading fixes (before distributing space)
+  // Cleanup nearly-empty pages
   cleanupNearlyEmptyPages(allPages, layoutCtx, canvasCtx);
 
-  // Parity pass 1 — before smoothing so smoothing has correct page positions
+  // Enforce chapter start parity (chapters on right/odd pages)
   enforceChapterStartParity(allPages, safeConfig);
 
-  // E7: Smooth fill imbalance between adjacent pages.
-  smoothPageBalance(allPages, layoutCtx, canvasCtx, log);
-
-  // Parity pass 2 — restore invariant if smoothing shifted page count
-  enforceChapterStartParity(allPages, safeConfig);
-
-  // E8: Merge split paragraph fragments that ended up adjacent on the same page.
-  mergeSplitFragments(allPages, log);
-  repairPageDefects(allPages, layoutCtx, canvasCtx, log);
-  // Third heading fix pass: defect repair may have freed space on pages
-  fixHeadingsAtBottom(allPages, canvasCtx, layoutCtx, log);
-
-  // Indent repair pass
-  repairMissingIndents(allPages, safeConfig, null);
-  // Re-run fragment merge: repairMissingIndents may have re-added data-continuation
+  // Merge split paragraph fragments on the same page
   mergeSplitFragments(allPages, log);
 
-  // Tag last page of each chapter — suppresses fill-penalties in scoring
+  // Repair missing first-line indents
+  repairMissingIndents(allPages, safeConfig, log);
+
+  // Tag last page of each chapter
   tagChapterLastPages(allPages);
-
-  // ╔══════════════════════════════════════════════════════════════════╗
-  // ║  FASE 6 — GLOBAL REOPTIMIZATION PASS                           ║
-  // ╚══════════════════════════════════════════════════════════════════╝
-  const REOPT_SCORE_THRESHOLD = 500;
-
-  {
-    const badChapters = new Set();
-    for (const page of allPages) {
-      if (page.isBlank || page.isTitleOnlyPage || page.isFirstChapterPage || !page.html) continue;
-      if (page.isChapterLastPage) continue;
-      const q = evaluatePageQualityCanvas(page.html, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx);
-      if (q.score >= REOPT_SCORE_THRESHOLD) {
-        badChapters.add(page.chapterTitle);
-      }
-    }
-
-    if (badChapters.size > 0) {
-      const relaxedLayoutCtx = { ...layoutCtx, minOrphanLines: 1, minWidowLines: 1 };
-
-      for (const chapterTitle of badChapters) {
-        const chapter = chapters.find(c => c.title === chapterTitle);
-        if (!chapter) continue;
-
-        const currentChapterPages = allPages.filter(p => p.chapterTitle === chapterTitle && !p.isBlank);
-        const currentScore = currentChapterPages.reduce((sum, p) => {
-          if (!p.html) return sum;
-          return sum + evaluatePageQualityCanvas(p.html, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx, false, { isChapterLastPage: p.isChapterLastPage === true }).score;
-        }, 0);
-
-        const relaxedElements = flattenChapterElements(chapter, relaxedLayoutCtx, canvasCtx, measureDiv, safeConfig);
-        const relaxedPages = greedyPaginate(relaxedElements, relaxedLayoutCtx, canvasCtx, measureDiv, safeConfig, chapter, log);
-
-        applyFillPass(relaxedPages, relaxedLayoutCtx, canvasCtx, measureDiv, safeConfig, log);
-        fixHeadingsAtBottom(relaxedPages, canvasCtx, relaxedLayoutCtx, log);
-        applyFillPass(relaxedPages, relaxedLayoutCtx, canvasCtx, measureDiv, safeConfig, log);
-        cleanupNearlyEmptyPages(relaxedPages, relaxedLayoutCtx, canvasCtx);
-        smoothPageBalance(relaxedPages, relaxedLayoutCtx, canvasCtx, log);
-        mergeSplitFragments(relaxedPages, log);
-        repairPageDefects(relaxedPages, relaxedLayoutCtx, canvasCtx, log);
-        repairMissingIndents(relaxedPages, safeConfig, log);
-        tagChapterLastPages(relaxedPages);
-
-        const relaxedScore = relaxedPages.filter(p => !p.isBlank && p.html).reduce((sum, p) => {
-          return sum + evaluatePageQualityCanvas(p.html, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx, false, { isChapterLastPage: p.isChapterLastPage === true }).score;
-        }, 0);
-
-        if (relaxedScore < currentScore - 50) {
-          const firstIdx = allPages.findIndex(p => p.chapterTitle === chapterTitle);
-          const lastIdx = allPages.reduce((last, p, i) => p.chapterTitle === chapterTitle ? i : last, -1);
-          if (firstIdx >= 0 && lastIdx >= firstIdx) {
-            allPages.splice(firstIdx, lastIdx - firstIdx + 1, ...relaxedPages);
-            log.record('reopt', 'accepted', firstIdx + 1, {
-              chapter: chapterTitle.substring(0, 40),
-              before: { score: +currentScore.toFixed(0), pages: currentChapterPages.length },
-              after: { score: +relaxedScore.toFixed(0), pages: relaxedPages.length }
-            });
-          }
-        }
-      }
-
-      if (badChapters.size > 0) {
-        enforceChapterStartParity(allPages, safeConfig);
-        smoothPageBalance(allPages, layoutCtx, canvasCtx, log);
-        enforceChapterStartParity(allPages, safeConfig);
-        mergeSplitFragments(allPages, log);
-        repairPageDefects(allPages, layoutCtx, canvasCtx, log);
-        repairMissingIndents(allPages, safeConfig, log);
-        mergeSplitFragments(allPages, log);
-        tagChapterLastPages(allPages);
-        distributeVerticalSpace(allPages, layoutCtx, canvasCtx);
-      }
-    }
-  }
 
   // ── KP word-spacing pass (before distributeVerticalSpace) ───────────────
   {
@@ -445,9 +354,6 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
       }
     }
   }
-
-  // E6 final pass: distribute vertical whitespace AFTER KP word-spacing
-  distributeVerticalSpace(allPages, layoutCtx, canvasCtx);
 
   // Re-number again after fill-pass may have emptied some pages.
   let pageNum = 1;
