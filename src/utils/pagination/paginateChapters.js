@@ -175,7 +175,6 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
 
   const { contentHeight, lineHeightPx, baseFontSize: baseFontSizeTop, baseLineHeight: baseLineHeightTop, minOrphanLines: minOrphanLinesTop } = layoutCtx;
 
-  // Set DOM_SLACK proportional to lineHeightPx so it scales with font size.
   setDomSlack(Math.round(lineHeightPx * 1.0));
 
   const pageFormat = safeConfig?.pageFormat || layoutCtx.pageFormat || 'unknown';

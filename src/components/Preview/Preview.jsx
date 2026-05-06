@@ -325,7 +325,7 @@ function Preview() {
               }
             }}
             className="preview-content"
-            style={{ height: `${effectiveContentHeight}px` }}
+            style={{ height: `${effectiveContentHeight + Math.round(lineHeightPx * 0.25)}px` }}
             dangerouslySetInnerHTML={{ __html: renderedHtml || '' }}
           />
           {showLayoutGuides && !currentPageData.isBlank && !isFrontMatterPage && (

@@ -183,13 +183,13 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
         ? getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSizePt, effectiveBaseLineHeight, effectiveTextAlign)
         : `margin:0;padding:0;text-align:${effectiveTextAlign};text-indent:${indent};text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;`);
 
-    // When this chunk continues on the next page (split-head), apply text-align-last:justify
-    // so the last visible line is fully stretched. Canvas height is unaffected — it only
-    // counts line count based on width, not how the last line is rendered.
+    // Split-head last line: left-aligned, not stretched.
+    // With text-align-last:justify, 1-2 word last lines stretch across the full column
+    // width — visually terrible. Left-aligned short last lines are standard typography.
     if (newRemainingHtml) {
       finalStyle = finalStyle
         .replace(/text-align-last:[^;]+;?/gi, '')
-        .replace(/;?\s*$/, ';') + 'text-align-last:justify;';
+        .replace(/;?\s*$/, ';') + 'text-align-last:left;';
     }
 
     if (isBlockquote) {
