@@ -437,9 +437,10 @@ export const splitInTwo = (
       }
     }
 
-    // Try delta=-2: unconditionally override when winner still ends with 1-2 words (runt).
+    // Try delta=-2: only for severe 1-word runts. 2-word lines are acceptable
+    // with text-align-last:left and avoiding excessive blank space is preferable.
     const bestLastLineWords = getChunkLastLineWords(bestFirst, canvasCtx);
-    if (bestLastLineWords <= 2) {
+    if (bestLastLineWords <= 1) {
       const adjMax2 = safeRemainingSpace - 2 * lineHeightPx;
       if (adjMax2 >= lineHeightPx) {
         const cand2 = splitParagraphByLines(
@@ -493,9 +494,9 @@ export const splitInTwo = (
     }
   }
 
-  // Try delta=-2: unconditionally override when winner still ends with 1-2 words (runt).
+  // Try delta=-2: only for severe 1-word runts.
   const bestLastLineWords = getChunkLastLineWords(bestFirst, canvasCtx);
-  if (bestLastLineWords <= 2) {
+  if (bestLastLineWords <= 1) {
     const adjMax2 = splitBudget - 2 * lineHeightPx;
     if (adjMax2 >= lineHeightPx) {
       const cand2 = splitParagraphByLines(

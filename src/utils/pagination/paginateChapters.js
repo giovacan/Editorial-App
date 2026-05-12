@@ -175,7 +175,6 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
 
   const { contentHeight, lineHeightPx, baseFontSize: baseFontSizeTop, baseLineHeight: baseLineHeightTop, minOrphanLines: minOrphanLinesTop } = layoutCtx;
 
-  // Set DOM_SLACK proportional to lineHeightPx so it scales with font size.
   setDomSlack(Math.round(lineHeightPx * 1.0));
 
   const pageFormat = safeConfig?.pageFormat || layoutCtx.pageFormat || 'unknown';
@@ -875,7 +874,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
         }
         if (currentFill >= FILL_PASS_RUNT_MIN_CURRENT_FILL
             && qMovedCurrent.fillPct >= FILL_PASS_RUNT_MIN_RESULT_FILL
-            && qMovedCurrent.violations.includes('runt_line')) {
+            && getChunkLastLineWords(currentHtml + firstElHtml, canvasCtx) <= 1) {
           log.record('fill', 'reject', i + 1, {
             tag,
             text: firstEl.textContent.substring(0, 60),
@@ -1095,7 +1094,7 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
       if (qSplitSource.violations.includes('heading_at_bottom')) break;
       if (currentFill >= FILL_PASS_RUNT_MIN_CURRENT_FILL
           && qSplitCurrent.fillPct >= FILL_PASS_RUNT_MIN_RESULT_FILL
-          && qSplitCurrent.violations.includes('runt_line')) {
+          && getChunkLastLineWords(currentHtml + chunk, canvasCtx) <= 1) {
         log.record('fill', 'reject', i + 1, {
           tag,
           text: firstEl.textContent.substring(0, 60),

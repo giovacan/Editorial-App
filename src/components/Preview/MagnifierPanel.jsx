@@ -119,7 +119,7 @@ function MagnifierPanel({
               magContentRef.current = el;
             }}
             className="preview-content"
-            style={{ height: `${effectiveContentHeight}px` }}
+            style={{ height: `${effectiveContentHeight + Math.round(lineHeightPx * 0.25)}px` }}
             dangerouslySetInnerHTML={{ __html: debugHtml || '' }}
           />
           {showLayoutGuides && !currentPageData.isBlank && !isFrontMatterPage && (
