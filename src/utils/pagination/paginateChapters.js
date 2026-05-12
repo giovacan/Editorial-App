@@ -32,7 +32,9 @@ import {
   serializeBlocks,
   getPageBlocks,
   setPageBlocks,
-  setPageHtml
+  setPageHtml,
+  getInnerHtml,
+  splitHtmlByCharsPreservingTags,
 } from '../layoutIr.js';
 
 import {
@@ -299,6 +301,9 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
 
   // Single forward fill-pass
   applyFillPass(allPages, layoutCtx, canvasCtx, measureDiv, safeConfig, log);
+
+  // Snap split-head pages to sentence boundaries (covers cuts from both greedyPaginate and fill-pass)
+  snapSplitPagesToSentenceBoundaries(allPages, canvasCtx, lineHeightPx, 2);
 
   // Cleanup nearly-empty pages
   cleanupNearlyEmptyPages(allPages, layoutCtx, canvasCtx);
@@ -636,6 +641,111 @@ const flattenChapterElements = (chapter, layoutCtx, canvasCtx, measureDiv, safeC
   }
 
   return elements;
+};
+
+
+const snapChunkToSentenceBoundary = (chunk, rest, canvasCtx, lineHeightPx, maxTailLines = 2) => {
+  if (!chunk || !rest) return { chunk, rest };
+
+  const innerHtml = getInnerHtml(chunk);
+  if (!innerHtml) return { chunk, rest };
+
+  // Walk the inner HTML counting visible chars; record the last .?! position.
+  let lastBoundaryPos = -1;
+  let visibleCount = 0;
+  let i = 0;
+  while (i < innerHtml.length) {
+    if (innerHtml[i] === '<') {
+      const end = innerHtml.indexOf('>', i);
+      i = end === -1 ? i + 1 : end + 1;
+    } else if (innerHtml[i] === '&') {
+      const end = innerHtml.indexOf(';', i);
+      if (end !== -1 && end - i <= 10) { i = end + 1; } else { i++; }
+      visibleCount++;
+    } else {
+      const ch = innerHtml[i++];
+      visibleCount++;
+      if (ch === '.' || ch === '?' || ch === '!') lastBoundaryPos = visibleCount;
+    }
+  }
+
+  // No boundary found, or the boundary is already the very last visible char.
+  if (lastBoundaryPos < 0 || lastBoundaryPos >= visibleCount) return { chunk, rest };
+
+  // Measure the tail (text after the boundary) in lines.
+  const { tailHtml: innerTailHtml } = splitHtmlByCharsPreservingTags(innerHtml, lastBoundaryPos, { trimLeadingSpace: true });
+  const tailText = htmlToText(innerTailHtml).trim();
+  if (!tailText) return { chunk, rest };
+
+  const effectiveWidth = (canvasCtx.contentWidth || 0) - (canvasCtx.widthSlack || 0);
+  const fontStr = buildFontString(canvasCtx.baseFontSizePx, canvasCtx.fontFamily);
+  const kpResult = getLineBreakPositionsKP(tailText, effectiveWidth, fontStr);
+  const lineStarts = kpResult ? kpResult.lineStarts : getLineBreakPositions(tailText, effectiveWidth, fontStr);
+  if (lineStarts.length > maxTailLines) return { chunk, rest };
+
+  // Safe to snap — split the inner HTML at the sentence boundary.
+  const { headHtml: newInnerHead, tailHtml: newInnerTail } =
+    splitHtmlByCharsPreservingTags(innerHtml, lastBoundaryPos, { trimLeadingSpace: false });
+
+  // Rebuild chunk preserving the outer tag (style, data-split-head, etc.).
+  const openTagMatch  = chunk.match(/^(<[^>]+>)/);
+  const closeTagMatch = chunk.match(/<\/([a-zA-Z]+)>\s*$/);
+  if (!openTagMatch || !closeTagMatch) return { chunk, rest };
+  const newChunk = openTagMatch[1] + newInnerHead + `</${closeTagMatch[1]}>`;
+
+  // Rebuild rest: prepend the moved tail into the rest's existing content.
+  const restOpenTagMatch  = rest.match(/^(<[^>]+>)/);
+  const restCloseTagMatch = rest.match(/<\/([a-zA-Z]+)>\s*$/);
+  if (!restOpenTagMatch || !restCloseTagMatch) return { chunk, rest };
+  const restInner = getInnerHtml(rest);
+  const trimmedTail = newInnerTail.trim();
+  const newRestInner = trimmedTail ? `${trimmedTail} ${restInner}` : restInner;
+  const newRest = restOpenTagMatch[1] + newRestInner + `</${restCloseTagMatch[1]}>`;
+
+  return { chunk: newChunk, rest: newRest };
+};
+
+/**
+ * Post-processing pass: for every page whose last block is a split-head that
+ * ends mid-sentence, snap backward to the last .?! within maxTailLines so the
+ * page ends at a natural sentence boundary instead of looking chopped.
+ * Runs after fill-pass so it covers cuts from both greedyPaginate and fill-pass.
+ */
+const snapSplitPagesToSentenceBoundaries = (pages, canvasCtx, lineHeightPx, maxTailLines = 2) => {
+  for (let i = 0; i < pages.length - 1; i++) {
+    const page = pages[i];
+    if (!page.html || page.isBlank) continue;
+
+    const blocks = getPageBlocks(page);
+    if (blocks.length === 0) continue;
+
+    const lastBlock = blocks[blocks.length - 1];
+    if (!lastBlock.outerHtml?.includes('data-split-head')) continue;
+
+    // Find the next non-blank page in the same chapter
+    let nextIdx = i + 1;
+    while (nextIdx < pages.length && pages[nextIdx]?.isBlank) nextIdx++;
+    if (nextIdx >= pages.length) continue;
+
+    const nextPage = pages[nextIdx];
+    if (!nextPage?.html || page.chapterTitle !== nextPage.chapterTitle) continue;
+
+    const nextBlocks = getPageBlocks(nextPage);
+    if (nextBlocks.length === 0) continue;
+
+    const nextFirstBlock = nextBlocks[0];
+    if (!nextFirstBlock.outerHtml?.includes('data-continuation')) continue;
+
+    const { chunk: newChunk, rest: newRest } = snapChunkToSentenceBoundary(
+      lastBlock.outerHtml, nextFirstBlock.outerHtml, canvasCtx, lineHeightPx, maxTailLines
+    );
+    if (newChunk === lastBlock.outerHtml) continue;
+
+    const newCurrentHtml = blocks.slice(0, -1).map(b => b.outerHtml).join('') + newChunk;
+    const newNextHtml = newRest + nextBlocks.slice(1).map(b => b.outerHtml).join('');
+    pages[i] = setPageHtml(page, newCurrentHtml);
+    pages[nextIdx] = setPageHtml(nextPage, newNextHtml);
+  }
 };
 
 /**
@@ -977,6 +1087,18 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
         log.record('fill', 'reject', i + 1, { tag, text: firstEl.textContent.substring(0, 60), reason: 'split-overfit', chunkFitHeight: +chunkFitHeight.toFixed(0), contentH: +contentHeight.toFixed(0) });
         break;
       }
+
+      // Snap to sentence boundary: if the chunk ends mid-sentence and the last
+      // .?! is within 2 lines of the cut, shorten the chunk to end at that point.
+      {
+        const snapped = snapChunkToSentenceBoundary(chunk, rest, canvasCtx, lineHeightPx, 2);
+        if (snapped.chunk !== chunk) {
+          chunk = snapped.chunk;
+          rest = snapped.rest;
+          log.record('fill', 'snap', i + 1, { tag, text: firstEl.textContent.substring(0, 60), reason: 'sentence-boundary' });
+        }
+      }
+
       let chunkLines = Math.floor(measure(chunk) / lineHeightPx);
 
       let restLines = Math.floor(measure(rest) / lineHeightPx);
