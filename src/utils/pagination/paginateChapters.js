@@ -650,8 +650,9 @@ const snapChunkToSentenceBoundary = (chunk, rest, canvasCtx, lineHeightPx, maxTa
   const innerHtml = getInnerHtml(chunk);
   if (!innerHtml) return { chunk, rest };
 
-  // Walk the inner HTML counting visible chars; record the last .?! position.
-  let lastBoundaryPos = -1;
+  // Walk the inner HTML once, recording the last .?! and last , positions.
+  let lastSentencePos = -1;
+  let lastCommaPos = -1;
   let visibleCount = 0;
   let i = 0;
   while (i < innerHtml.length) {
@@ -665,27 +666,36 @@ const snapChunkToSentenceBoundary = (chunk, rest, canvasCtx, lineHeightPx, maxTa
     } else {
       const ch = innerHtml[i++];
       visibleCount++;
-      if (ch === '.' || ch === '?' || ch === '!') lastBoundaryPos = visibleCount;
+      if (ch === '.' || ch === '?' || ch === '!') lastSentencePos = visibleCount;
+      else if (ch === ',') lastCommaPos = visibleCount;
     }
   }
 
-  // No boundary found, or the boundary is already the very last visible char.
-  if (lastBoundaryPos < 0 || lastBoundaryPos >= visibleCount) return { chunk, rest };
-
-  // Measure the tail (text after the boundary) in lines.
-  const { tailHtml: innerTailHtml } = splitHtmlByCharsPreservingTags(innerHtml, lastBoundaryPos, { trimLeadingSpace: true });
-  const tailText = htmlToText(innerTailHtml).trim();
-  if (!tailText) return { chunk, rest };
-
   const effectiveWidth = (canvasCtx.contentWidth || 0) - (canvasCtx.widthSlack || 0);
   const fontStr = buildFontString(canvasCtx.baseFontSizePx, canvasCtx.fontFamily);
-  const kpResult = getLineBreakPositionsKP(tailText, effectiveWidth, fontStr);
-  const lineStarts = kpResult ? kpResult.lineStarts : getLineBreakPositions(tailText, effectiveWidth, fontStr);
-  if (lineStarts.length > maxTailLines) return { chunk, rest };
 
-  // Safe to snap — split the inner HTML at the sentence boundary.
+  const countTailLines = (boundaryPos) => {
+    const { tailHtml } = splitHtmlByCharsPreservingTags(innerHtml, boundaryPos, { trimLeadingSpace: true });
+    const tailText = htmlToText(tailHtml).trim();
+    if (!tailText) return 0;
+    const kp = getLineBreakPositionsKP(tailText, effectiveWidth, fontStr);
+    const ls = kp ? kp.lineStarts : getLineBreakPositions(tailText, effectiveWidth, fontStr);
+    return ls.length;
+  };
+
+  // Pick the best boundary: prefer .?! (≤2 lines), fall back to , (≤1 line).
+  let chosenPos = -1;
+  if (lastSentencePos >= 0 && lastSentencePos < visibleCount) {
+    if (countTailLines(lastSentencePos) <= maxTailLines) chosenPos = lastSentencePos;
+  }
+  if (chosenPos < 0 && lastCommaPos >= 0 && lastCommaPos < visibleCount) {
+    if (countTailLines(lastCommaPos) <= maxTailLines) chosenPos = lastCommaPos;
+  }
+  if (chosenPos < 0) return { chunk, rest };
+
+  // Split the inner HTML at the chosen boundary.
   const { headHtml: newInnerHead, tailHtml: newInnerTail } =
-    splitHtmlByCharsPreservingTags(innerHtml, lastBoundaryPos, { trimLeadingSpace: false });
+    splitHtmlByCharsPreservingTags(innerHtml, chosenPos, { trimLeadingSpace: false });
 
   // Rebuild chunk preserving the outer tag (style, data-split-head, etc.).
   const openTagMatch  = chunk.match(/^(<[^>]+>)/);
