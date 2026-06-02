@@ -1,0 +1,97 @@
+.plv-desk {
+  flex: 1;
+  overflow-y: auto;
+  background: #4a4a4a;
+  padding: 3rem 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+}
+
+.plv-empty,
+.plv-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #aaa;
+  font-size: 0.9rem;
+  height: 200px;
+}
+
+/* Cada tarjeta de página */
+.plv-page {
+  background: white;
+  box-shadow: 0 3px 24px rgba(0, 0, 0, 0.45), 0 1px 4px rgba(0, 0, 0, 0.25);
+  border-radius: 1px;
+  position: relative;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+/* Encabezado de página (running head) */
+.plv-page-header {
+  box-sizing: border-box;
+}
+
+/* Área de contenido editable */
+.plv-page-content {
+  outline: none;
+  cursor: text;
+  box-sizing: border-box;
+  /* Deja que el contenido sea visible aunque sobrepase un poco */
+  overflow: visible;
+  min-height: 20px;
+}
+
+.plv-page-content:focus {
+  outline: none;
+}
+
+/* Sutil indicador de que es editable al pasar el cursor */
+.plv-page:hover .plv-page-content {
+  background: rgba(37, 99, 235, 0.015);
+}
+
+/* Número de página / folio */
+.plv-page-folio {
+  position: absolute;
+}
+
+/* Barra informativa superior */
+.plv-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+.plv-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-left: auto;
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.plv-chapter-name {
+  font-weight: 500;
+  color: #1f2937;
+}
+
+.plv-page-count {
+  color: #9ca3af;
+}
+
+/* Wrapper del editor completo cuando está en modo diseño */
+.editor-section.page-layout-mode {
+  /* El toolbar (heredado) se queda fijo arriba */
+}

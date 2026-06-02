@@ -5,6 +5,9 @@ import Placeholder from '@tiptap/extension-placeholder';
 import useEditorStore from '../../store/useEditorStore';
 import { usePagination } from '../../hooks/usePagination';
 import PageBreakMarkers from './PageBreakMarkers';
+import { KDP_STANDARDS } from '../../utils/kdpStandards';
+import { calculateContentDimensions } from '../../utils/textMeasurer';
+import PageLayoutView from '../PageLayoutView/PageLayoutView';
 import './Editor.css';
 
 function Editor({ pushChange, onContentChange }) {
@@ -19,12 +22,37 @@ function Editor({ pushChange, onContentChange }) {
   const [quoteTemplate, setQuoteTemplate] = useState('classic');
   const [editorState, setEditorState] = useState({ canUndo: false, canRedo: false });
   const [showPageBreaks, setShowPageBreaks] = useState(false);
+  const [pageLayoutMode, setPageLayoutMode] = useState(false);
   
+  const bookType = useEditorStore((s) => s.bookData?.bookType || 'novela');
+
   const activeChapter = chapters?.find(ch => ch.id === activeChapterId);
   const saveTimeoutRef = useRef(null);
   const lastSaveTimeRef = useRef(null);
   const editorRef = useRef(null);
   const editorContentRef = useRef(null);
+
+  // Dimensiones del libro para el Modo Diseño
+  const pageLayoutDims = useMemo(() => {
+    const bookCfg = KDP_STANDARDS.getBookTypeConfig(bookType);
+    let pageFormatObj;
+    if (config?.pageFormat === 'custom') {
+      const cd = KDP_STANDARDS.getCustomPageDimensions(
+        config?.customPageFormat?.width || 6,
+        config?.customPageFormat?.height || 9,
+        config?.customPageFormat?.unit || 'in'
+      );
+      pageFormatObj = { width: cd.widthMm, height: cd.heightMm };
+    } else {
+      pageFormatObj = KDP_STANDARDS.getPageFormat(config?.pageFormat || bookCfg.recommendedFormat);
+    }
+    const dims = calculateContentDimensions(pageFormatObj, bookCfg, 1.0);
+    const PX_PER_INCH = 96;
+    const fontSizePx = (config?.fontSize || bookCfg.fontSize) * (PX_PER_INCH / 72);
+    const fontFamily = config?.fontFamily || bookCfg.fontFamily;
+    const lineHeight = config?.lineHeight || bookCfg.lineHeight;
+    return { ...dims, fontSizePx, fontFamily, lineHeight };
+  }, [bookType, config?.pageFormat, config?.customPageFormat, config?.fontSize, config?.fontFamily, config?.lineHeight]);
 
   const measureRef = useRef(null);
   const bookDataForPagination = useMemo(() => ({
@@ -337,7 +365,7 @@ function Editor({ pushChange, onContentChange }) {
         <div className="toolbar-separator"></div>
         
         <div className="toolbar-group">
-          <button 
+          <button
             className={`btn btn-icon ${showPageBreaks ? 'active' : ''}`}
             title={showPageBreaks ? 'Ocultar saltos de página' : 'Mostrar saltos de página'}
             onClick={handleTogglePageBreaks}
@@ -347,6 +375,21 @@ function Editor({ pushChange, onContentChange }) {
               <polyline points="14 2 14 8 20 8"/>
               <line x1="12" y1="12" x2="12" y2="18"/>
               <line x1="9" y1="15" x2="15" y2="15"/>
+            </svg>
+          </button>
+          <button
+            className={`btn btn-icon ${pageLayoutMode ? 'page-layout-active' : ''}`}
+            title={pageLayoutMode ? 'Volver a vista normal' : 'Modo Diseño (vista de página)'}
+            onClick={() => {
+              const next = !pageLayoutMode;
+              setPageLayoutMode(next);
+              if (next) setShowPageBreaks(true);
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="1"/>
+              <line x1="3" y1="9" x2="21" y2="9"/>
+              <line x1="3" y1="15" x2="21" y2="15"/>
             </svg>
           </button>
         </div>
@@ -360,27 +403,41 @@ function Editor({ pushChange, onContentChange }) {
         </div>
       </div>
 
-      <div className="editor-content" ref={editorContentRef}>
-        <div ref={measureRef} className="editor-measure-ref" style={{ width: '400px', fontFamily: 'Georgia, serif', fontSize: '12pt', lineHeight: 1.5 }}></div>
-        <div className="editor-wrapper">
-          <EditorContent editor={editor} className={`main-editor ${showPageBreaks ? 'show-page-breaks' : ''}`} />
-          <PageBreakMarkers 
-            pages={pages} 
-            chapterTitle={activeChapter?.title} 
-            editorRef={editorContentRef}
-            visible={showPageBreaks}
-          />
-        </div>
-      </div>
+      {pageLayoutMode ? (
+        <PageLayoutView pushChange={pushChange} onContentChange={onContentChange} />
+      ) : (
+        <>
+          <div className="editor-content" ref={editorContentRef}>
+            <div
+              ref={measureRef}
+              className="editor-measure-ref"
+              style={{ width: '400px', fontFamily: 'Georgia, serif', fontSize: '12pt', lineHeight: 1.5 }}
+            />
+            <div className="editor-wrapper">
+              <EditorContent
+                editor={editor}
+                className={`main-editor${showPageBreaks ? ' show-page-breaks' : ''}`}
+              />
+              <PageBreakMarkers
+                pages={pages}
+                chapterTitle={activeChapter?.title}
+                editorRef={editorContentRef}
+                visible={showPageBreaks}
+                pageLayout={false}
+              />
+            </div>
+          </div>
 
-      <div className="editor-footer">
-        <span className="editor-info">Listo para editar</span>
-        <div className="editor-actions">
-          <button className="btn btn-primary">
-            Guardar capítulo
-          </button>
-        </div>
-      </div>
+          <div className="editor-footer">
+            <span className="editor-info">Listo para editar</span>
+            <div className="editor-actions">
+              <button className="btn btn-primary">
+                Guardar capítulo
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </section>
   );
 }
