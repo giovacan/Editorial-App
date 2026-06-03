@@ -60,11 +60,11 @@ function EditableContent({ html, style, onInput, registerRef }) {
 }
 
 // Tarjeta de una página
-function PageCard({ page, config, bookConfig, pageFormat, scale, totalPages, bookTitle, onInput, registerRef }) {
+function PageCard({ page, config, bookConfig, pageFormat, scale, totalPages, bookTitle, layoutDims, onInput, registerRef }) {
   const layout = useMemo(() =>
-    getPageLayout({ pageData: page, config, bookConfig, pageFormat, previewScale: scale, totalPages, layoutDims: null, bookTitle }),
+    getPageLayout({ pageData: page, config, bookConfig, pageFormat, previewScale: scale, totalPages, layoutDims, bookTitle }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [page, config, bookConfig, pageFormat?.id, scale, totalPages, bookTitle]
+    [page, config, bookConfig, pageFormat?.id, scale, totalPages, layoutDims, bookTitle]
   );
 
   const {
@@ -168,6 +168,24 @@ export default function PageLayoutView({ pushChange, onContentChange }) {
     const s = Math.min(1.1, available / pageWidthPx);
     return { bookConfig: bCfg, pageFormat: pFormat, scale: Math.max(0.45, s) };
   }, [bookType, config?.pageFormat, config?.customPageFormat, containerWidth]);
+
+  // layoutDims del store viene a escala del preview (~0.42); lo escalamos a nuestra escala
+  const storeLayoutDims = useEditorStore(s => s.layoutDims);
+  const scaledLayoutDims = useMemo(() => {
+    if (!storeLayoutDims?.previewScale) return null;
+    const ratio = scale / storeLayoutDims.previewScale;
+    return {
+      ...storeLayoutDims,
+      contentHeight:              storeLayoutDims.contentHeight * ratio,
+      contentWidth:               storeLayoutDims.contentWidth  * ratio,
+      lineHeightPx:               storeLayoutDims.lineHeightPx  * ratio,
+      baseFontSizePx:             storeLayoutDims.baseFontSizePx * ratio,
+      headerSpaceEstimate:        (storeLayoutDims.headerSpaceEstimate        ?? 0) * ratio,
+      chapterStartBottomClearance:(storeLayoutDims.chapterStartBottomClearance ?? 0) * ratio,
+      chapterStartExtraLines:     storeLayoutDims.chapterStartExtraLines ?? 0,
+      previewScale:               scale,
+    };
+  }, [storeLayoutDims, scale]);
 
   // Combina front matter + páginas del motor (igual que el preview)
   const combinedPages = useMemo(() => {
@@ -305,6 +323,7 @@ export default function PageLayoutView({ pushChange, onContentChange }) {
             scale={scale}
             totalPages={combinedPages.length}
             bookTitle={bookTitle}
+            layoutDims={scaledLayoutDims}
             onInput={handleInput}
             registerRef={el => { contentRef.current = el; }}
           />
