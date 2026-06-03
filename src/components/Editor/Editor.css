@@ -107,10 +107,29 @@
   position: relative;
 }
 
+/* ── Modo Diseño: escritorio gris ── */
+.editor-content.editor-page-layout {
+  background: #4a4a4a;
+  padding: 3rem 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
 .editor-wrapper {
   position: relative;
   max-width: 700px;
   margin: 0 auto;
+}
+
+/* ── Modo Diseño: tarjeta de página ── */
+.editor-wrapper.editor-page-layout {
+  max-width: none;
+  margin: 0;
+  background: white;
+  box-shadow: 0 3px 24px rgba(0, 0, 0, 0.45), 0 1px 4px rgba(0, 0, 0, 0.25);
+  border-radius: 1px;
+  /* width y padding se aplican inline desde JS (dependen del formato) */
 }
 
 .main-editor {
@@ -124,10 +143,25 @@
   font-family: Georgia, 'Times New Roman', serif;
 }
 
-.main-editor .ProseMirror {
-  outline: none;
-  min-height: 500px;
+/* ── Modo Diseño: tipografía del libro ── */
+.main-editor.editor-page-layout {
+  max-width: none;
+  margin: 0;
+  min-height: unset;
+  /* font-size, font-family y line-height se aplican inline */
 }
+
+.main-editor.editor-page-layout .ProseMirror {
+  outline: none;
+  min-height: 200px;
+}
+
+/* Headings escalados relativos al font-size del libro en modo diseño */
+.main-editor.editor-page-layout h1 { font-size: 1.8em; margin: 1.5em 0 0.8em; }
+.main-editor.editor-page-layout h2 { font-size: 1.35em; margin: 1.25em 0 0.5em; }
+.main-editor.editor-page-layout h3 { font-size: 1.25em; margin: 1em 0 0.5em; }
+.main-editor.editor-page-layout h4 { font-size: 1.15em; margin: 0.75em 0 0.25em; }
+.main-editor.editor-page-layout p  { margin: 0 0 0.5em 0; }
 
 .main-editor .ProseMirror p.is-editor-empty:first-child::before {
   content: 'Escribe tu contenido aquí...';
@@ -314,4 +348,38 @@
   position: absolute;
   visibility: hidden;
   pointer-events: none;
+}
+
+/* ── Modo Diseño: separadores de página reales ── */
+.page-break-marker.page-layout-separator {
+  transform: none;
+  padding: 0;
+  margin: 0;
+  height: 36px;
+  background: #4a4a4a;
+  border-top: 2px solid #2a2a2a;
+  border-bottom: 2px solid #2a2a2a;
+  align-items: center;
+  justify-content: center;
+}
+
+.page-break-marker.page-layout-separator::before,
+.page-break-marker.page-layout-separator::after {
+  display: none;
+}
+
+.page-break-label.page-layout-label {
+  background: #4a4a4a;
+  color: #bbb;
+  border: 1px solid #666;
+  box-shadow: none;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
+
+/* Botón activo del modo diseño */
+.btn-icon.page-layout-active {
+  background: #1e3a5f;
+  border-color: #1e3a5f;
+  color: white;
 }

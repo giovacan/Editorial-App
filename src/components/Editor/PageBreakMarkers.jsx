@@ -1,10 +1,11 @@
 import { useEffect, useState, useMemo, memo } from 'react';
 
-const PageBreakMarkers = memo(function PageBreakMarkers({ 
-  pages, 
-  chapterTitle, 
+const PageBreakMarkers = memo(function PageBreakMarkers({
+  pages,
+  chapterTitle,
   editorRef,
-  visible 
+  visible,
+  pageLayout
 }) {
   const [markerPositions, setMarkerPositions] = useState([]);
   const [editorElement, setEditorElement] = useState(null);
@@ -144,10 +145,12 @@ const PageBreakMarkers = memo(function PageBreakMarkers({
       {markerPositions.map((marker, index) => (
         <div
           key={`${marker.pageNumber}-${index}`}
-          className="page-break-marker"
+          className={`page-break-marker${pageLayout ? ' page-layout-separator' : ''}`}
           style={{ top: `${marker.y}px` }}
         >
-          <span className="page-break-label">Página {marker.pageNumber}</span>
+          <span className={`page-break-label${pageLayout ? ' page-layout-label' : ''}`}>
+            {pageLayout ? `— Pág. ${marker.pageNumber} —` : `Página ${marker.pageNumber}`}
+          </span>
         </div>
       ))}
     </div>

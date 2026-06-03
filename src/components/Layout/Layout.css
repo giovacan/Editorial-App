@@ -1,11 +1,13 @@
 .app-container {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .app-main {
   flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: 300px 1fr 300px;
   overflow: hidden;

@@ -685,32 +685,75 @@ const snapChunkToSentenceBoundary = (chunk, rest, canvasCtx, lineHeightPx, maxTa
 
   // Pick the best boundary: prefer .?! (≤2 lines), fall back to , (≤1 line).
   let chosenPos = -1;
+  let usedCommaFallback = false;
   if (lastSentencePos >= 0 && lastSentencePos < visibleCount) {
     if (countTailLines(lastSentencePos) <= maxTailLines) chosenPos = lastSentencePos;
   }
   if (chosenPos < 0 && lastCommaPos >= 0 && lastCommaPos < visibleCount) {
-    if (countTailLines(lastCommaPos) <= maxTailLines) chosenPos = lastCommaPos;
+    if (countTailLines(lastCommaPos) <= maxTailLines) {
+      chosenPos = lastCommaPos;
+      usedCommaFallback = true;
+    }
   }
   if (chosenPos < 0) return { chunk, rest };
 
-  // Split the inner HTML at the chosen boundary.
-  const { headHtml: newInnerHead, tailHtml: newInnerTail } =
-    splitHtmlByCharsPreservingTags(innerHtml, chosenPos, { trimLeadingSpace: false });
-
-  // Rebuild chunk preserving the outer tag (style, data-split-head, etc.).
+  // Validate outer tags before any reconstruction.
   const openTagMatch  = chunk.match(/^(<[^>]+>)/);
   const closeTagMatch = chunk.match(/<\/([a-zA-Z]+)>\s*$/);
   if (!openTagMatch || !closeTagMatch) return { chunk, rest };
-  const newChunk = openTagMatch[1] + newInnerHead + `</${closeTagMatch[1]}>`;
-
-  // Rebuild rest: prepend the moved tail into the rest's existing content.
   const restOpenTagMatch  = rest.match(/^(<[^>]+>)/);
   const restCloseTagMatch = rest.match(/<\/([a-zA-Z]+)>\s*$/);
   if (!restOpenTagMatch || !restCloseTagMatch) return { chunk, rest };
+
+  // Split the inner HTML at the chosen boundary.
+  let { headHtml: newInnerHead, tailHtml: newInnerTail } =
+    splitHtmlByCharsPreservingTags(innerHtml, chosenPos, { trimLeadingSpace: false });
+
+  // Build the combined rest content (tail moved out of chunk + original rest).
   const restInner = getInnerHtml(rest);
   const trimmedTail = newInnerTail.trim();
-  const newRestInner = trimmedTail ? `${trimmedTail} ${restInner}` : restInner;
-  const newRest = restOpenTagMatch[1] + newRestInner + `</${restCloseTagMatch[1]}>`;
+  let newRestInner = trimmedTail ? `${trimmedTail} ${restInner}` : restInner;
+
+  // Option A: when we snapped to a comma the chunk may end mid-verse.
+  // Extend the chunk with whatever from newRestInner fits on the same last line.
+  if (usedCommaFallback && newRestInner) {
+    const headText = htmlToText(newInnerHead).trimEnd();
+    const restText = htmlToText(newRestInner).trim();
+
+    if (headText && restText) {
+      const headKp = getLineBreakPositionsKP(headText, effectiveWidth, fontStr);
+      const headLineStarts = headKp ? headKp.lineStarts : getLineBreakPositions(headText, effectiveWidth, fontStr);
+
+      const combined = headText + ' ' + restText;
+      const combKp = getLineBreakPositionsKP(combined, effectiveWidth, fontStr);
+      const combLineStarts = combKp ? combKp.lineStarts : getLineBreakPositions(combined, effectiveWidth, fontStr);
+
+      // First line break that falls after the head — everything before it is on the same verse.
+      const firstBreakAfterHead = combLineStarts.find(pos => pos > headText.length);
+      if (firstBreakAfterHead !== undefined && firstBreakAfterHead > headText.length + 1) {
+        let sameLineText = combined.slice(headText.length + 1, firstBreakAfterHead).trimEnd();
+
+        // If the break falls mid-word, trim back to the last complete word.
+        const charAfterBreak = combined[firstBreakAfterHead];
+        if (charAfterBreak && charAfterBreak !== ' ') {
+          const lastSpace = sameLineText.lastIndexOf(' ');
+          sameLineText = lastSpace >= 0 ? sameLineText.slice(0, lastSpace).trimEnd() : '';
+        }
+
+        const extraVisibleChars = sameLineText.length;
+        if (extraVisibleChars > 0) {
+          const { headHtml: extraHtml, tailHtml: remainingRestInner } =
+            splitHtmlByCharsPreservingTags(newRestInner, extraVisibleChars, { trimLeadingSpace: true });
+          newInnerHead = newInnerHead + extraHtml;
+          newRestInner = remainingRestInner;
+        }
+      }
+    }
+  }
+
+  // Rebuild chunk and rest with the final (possibly extended) content.
+  const newChunk = openTagMatch[1] + newInnerHead + `</${closeTagMatch[1]}>`;
+  const newRest  = restOpenTagMatch[1] + newRestInner + `</${restCloseTagMatch[1]}>`;
 
   return { chunk: newChunk, rest: newRest };
 };
