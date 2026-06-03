@@ -1,5 +1,6 @@
 .plv-desk {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   background: #4a4a4a;
   padding: 3rem 2rem;
