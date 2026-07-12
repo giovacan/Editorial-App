@@ -241,7 +241,15 @@
 
 .preview-content li {
   text-indent: 0;
+  display: list-item;
 }
+
+/* List markers must always render — the block reset above zeroes ul/ol
+   padding, but the engine sets padding-left inline on the list wrapper;
+   these rules guarantee the marker style survives any global reset. */
+.preview-content ul { list-style: disc outside; }
+.preview-content ol { list-style: decimal outside; }
+.preview-content li > p { margin: 0; text-indent: 0; }
 
 .preview-title {
   font-size: 1.5em;

@@ -107,6 +107,7 @@ import {
   fixHeadingsAtBottom,
   cleanupNearlyEmptyPages,
   enforceChapterStartParity,
+  applyVerticalJustification,
 } from './repairs.js';
 
 import {
@@ -240,7 +241,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     (layoutHints?.global?.avoidSplitTags || []).join(','),
     (layoutHints?.global?.keepWithNextTags || []).join(','),
     safeConfig?.pagination?.engineMode || 'optimal',
-    'v46-dp' // bump to force cache invalidation after algorithm changes
+    'v62-dp' // bump to force cache invalidation after algorithm changes
   ].join('|'));
 
   // 'optimal' (default): global DP pagination per chapter — no fill-pass needed.
@@ -577,6 +578,17 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     }
   }
 
+  // Final cut-line alignment guard (catch-all): whatever pass produced a
+  // split-head block, if its LAST LINE is sparse (under 5 words and 55% of
+  // the column) it must NOT stretch — flip to left alignment. The cut-line
+  // law makes these rare; this guard makes them never-grotesque.
+  enforceCutLineAlignment(allPages, canvasCtx);
+
+  // Vertical justification — distribute residual bottom holes across block
+  // gaps so mid-chapter pages end at the same baseline. Runs LAST (after the
+  // safety clamp) because it only ADDS padding and is budget-verified.
+  applyVerticalJustification(allPages, layoutCtx, canvasCtx, safeConfig, log);
+
   // Generate structured summary via logger
   log.generateSummary(allPages, evaluatePageQualityCanvas, layoutCtx.contentHeight, layoutCtx.lineHeightPx, canvasCtx);
 
@@ -777,6 +789,38 @@ const snapChunkToSentenceBoundary = (chunk, rest, canvasCtx, lineHeightPx, maxTa
     }
   }
 
+  // Cut-line fullness guard: a snapped chunk ends mid-line at the sentence
+  // boundary. If that leaves a short last line (an orphan word with visible
+  // empty width beside it), reject the snap — a full justified cut line is
+  // better typography than ending at a sentence (user rule: "si hay una sola
+  // palabra en el último renglón, esa línea aún se puede llenar").
+  // Measured with a word-walk (getLineBreakPositions returns WORD indices,
+  // not char offsets — slicing by them silently disables the check).
+  {
+    const headText = htmlToText(newInnerHead).replace(/\s+/g, ' ').trim();
+    const ctx2d = getEngineCtx2d();
+    // Walk at FULL content width — split fragments render without KP
+    // word-spacing, so the browser breaks them greedily at the real column.
+    const guardWidth = canvasCtx.contentWidth || effectiveWidth;
+    if (headText && ctx2d) {
+      ctx2d.font = fontStr;
+      const spaceW = ctx2d.measureText(' ').width;
+      const ws = headText.split(' ').filter(Boolean);
+      let lineW = 0, lineWords = 0;
+      for (let i = 0; i < ws.length; i++) {
+        const w = ctx2d.measureText(ws[i]).width;
+        const needed = i === 0 ? lineW + w : lineW + spaceW + w;
+        if (i > 0 && needed > guardWidth) { lineW = w; lineWords = 1; }
+        else { lineW = needed; lineWords++; }
+      }
+      const ratio = lineW / guardWidth;
+      // Same cut-line law as splitParagraphByLines: ≥6 words at 68-93% width,
+      // or 85-93% — the 93% ceiling is the DOM tolerance band (saturated lines
+      // wrap in the browser and leave a stretched leftover).
+      if (ratio > 0.93 || !((lineWords >= 6 && ratio >= 0.68) || ratio >= 0.85)) return { chunk, rest };
+    }
+  }
+
   // Rebuild chunk and rest with the final (possibly extended) content.
   const newChunk = openTagMatch[1] + newInnerHead + `</${closeTagMatch[1]}>`;
   const newRest  = restOpenTagMatch[1] + newRestInner + `</${restCloseTagMatch[1]}>`;
@@ -844,6 +888,64 @@ const snapSplitPagesToSentenceBoundaries = (pages, canvasCtx, lineHeightPx, maxT
 
     pages[i] = setPageHtml(page, newCurrentHtml);
     pages[nextIdx] = setPageHtml(nextPage, newNextHtml);
+  }
+};
+
+/**
+ * Catch-all cut-line alignment guard. Scans every split-head block on every
+ * page; if its last rendered line (browser model: full width, style-aware
+ * font/word-spacing) is sparse, flips text-align-last from justify to left so
+ * it can never stretch 1-4 words across the column.
+ * @private
+ */
+const enforceCutLineAlignment = (pages, canvasCtx) => {
+  const ctx2d = canvasCtx?.ctx2d;
+  const W = canvasCtx?.contentWidth || 0;
+  if (!ctx2d || !W) return;
+
+  for (const page of pages) {
+    if (!page?.html || page.isBlank || !/data-split-head/.test(page.html)) continue;
+    const blocks = getPageBlocks(page);
+    let changed = false;
+    const rebuilt = blocks.map((b) => {
+      const outer = b.outerHtml;
+      if (!/data-split-head/.test(outer)) return outer;
+      const open = (outer.match(/^<[^>]+>/) || [''])[0];
+      if (!/text-align-last:\s*justify/i.test(open)) return outer;
+      const txt = htmlToText(b.innerHTML || '').replace(/\s+/g, ' ').trim();
+      if (!txt) return outer;
+
+      const fsM = open.match(/font-size:\s*([\d.]+)(pt|px)/i);
+      let fpx = canvasCtx.baseFontSizePx;
+      if (fsM) fpx = fsM[2] === 'pt' ? parseFloat(fsM[1]) * (96 / 72) : parseFloat(fsM[1]);
+      const fontStr = buildFontString(
+        fpx, canvasCtx.fontFamily,
+        /font-weight:\s*(bold|[7-9]00)/i.test(open),
+        /font-style:\s*italic/i.test(open)
+      );
+      const wsM = open.match(/word-spacing:\s*(-?[\d.]+)px/i);
+      ctx2d.font = fontStr;
+      const spaceW = ctx2d.measureText(' ').width + (wsM ? parseFloat(wsM[1]) : 0);
+      const words = txt.split(' ').filter(Boolean);
+      let lineW = 0, lineWords = 0;
+      for (let i = 0; i < words.length; i++) {
+        const w = ctx2d.measureText(words[i]).width;
+        const needed = i === 0 ? lineW + w : lineW + spaceW + w;
+        if (i > 0 && needed > W) { lineW = w; lineWords = 1; }
+        else { lineW = needed; lineWords++; }
+      }
+      // Keep justify ONLY when the full cut-line law holds (6+ words at
+      // 68-93%, or 85-93%); anything else — sparse OR saturated — renders
+      // left-aligned so it can never stretch nor wrap into a stretched line.
+      const ratio = lineW / W;
+      const lawOk = ratio <= 0.93 && ((lineWords >= 6 && ratio >= 0.68) || ratio >= 0.85);
+      if (lawOk) return outer;
+      changed = true;
+      return outer.replace(/text-align-last:\s*justify/i, 'text-align-last:left');
+    });
+    if (changed) {
+      Object.assign(page, setPageHtml(page, rebuilt.join('')));
+    }
   }
 };
 

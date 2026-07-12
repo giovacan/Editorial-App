@@ -449,6 +449,17 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
         }
         if (paginationLog) {
           useEditorStore.getState().setPaginationLog(paginationLog);
+          // Dev only: persist the log to pagination-log.json via the Vite
+          // middleware so layout issues can be diagnosed offline.
+          if (import.meta.env.DEV) {
+            try {
+              fetch('/api/pagination-log', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ log: paginationLog }),
+              }).catch(() => {});
+            } catch { /* never block pagination on logging */ }
+          }
         }
       } catch (e) {
         console.error('[PAGINATE] ERROR en paginateChapters:', e, e?.stack);
@@ -656,6 +667,14 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
 
   }, [tocConfig, frontMatterConfig, layoutDims, safeBookData.title, safeBookData.author]);
 
+  // DOM-truth corrections from the layout verification loop (Preview): the
+  // browser measured real overflow and rebalanced pages — adopt them as the
+  // new pagination result so preview AND exports use the corrected layout.
+  const applyDomCorrections = useCallback((correctedPages) => {
+    setPages(correctedPages);
+    useEditorStore.getState().setPaginatedPages(correctedPages);
+  }, []);
+
   return {
     pages,
     layoutDims,
@@ -663,7 +682,8 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
     showErrorDialog,
     currentError,
     handleErrorAction,
-    closeErrorDialog
+    closeErrorDialog,
+    applyDomCorrections
   };
 };
 

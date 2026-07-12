@@ -162,6 +162,12 @@ export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safe
       const head = chunks[0];
       const rest = chunks.slice(1).reduce((a, b) => mergeIntoOne(a, b));
       result = { head, rest };
+    } else if (process.env.NODE_ENV === 'development') {
+      log.record('dp', 'split-null', 0, {
+        maxLines,
+        chunks: chunks ? chunks.length : 0,
+        text: htmlToText(html).trim().slice(0, 60),
+      });
     }
     splitCache.set(key, result);
     return result;
@@ -379,20 +385,26 @@ export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safe
     const unusedLines = Math.floor(Math.max(0, cand.budget - cand.height) / lineHeightPx);
 
     if (!isLast) {
-      // Underfill tiers (mirrors evaluatePageQualityCanvas)
-      if (unusedLines > 4) cost += 500;
-      else if (unusedLines > 3) cost += 200;
-      else cost += unusedLines * 40;
+      // Underfill penalty — user priority: pages must fill ≥95%. One unused
+      // line is cheap slack (lets the DP dodge an orphan word by cutting one
+      // line earlier); from the second line on it grows steeply so any visible
+      // hole loses against a split, and craters only survive when truly forced.
+      if (unusedLines === 1) cost += 40;
+      else if (unusedLines === 2) cost += 220;
+      else if (unusedLines === 3) cost += 460;
+      else if (unusedLines > 3) cost += 460 + (unusedLines - 3) * 220;
 
       const fillPct = cand.height / cand.budget;
       cost += Math.min(Math.max(0, targetFill - fillPct) * 200, 100);
     }
 
-    // Heading / keep-with-next stranded at page bottom
+    // Heading / keep-with-next stranded at page bottom — must stay strictly
+    // worse than the largest possible underfill crater (~3700), otherwise the
+    // scaled underfill penalty could push a heading to the page bottom.
     if (!isLast && (cand.type === 'block-end' || cand.type === 'final' || cand.type === 'forced')) {
       const endEl = content[cand.endIdx];
-      if (isHeadingOrBold(endEl)) cost += 2500;
-      else if (isKeepWithNext(endEl)) cost += 1800;
+      if (isHeadingOrBold(endEl)) cost += 5000;
+      else if (isKeepWithNext(endEl)) cost += 4000;
 
       // Widow-like: complete 1-line paragraph isolated at the very bottom of a full page
       if (endEl && endEl.tag === 'P' && !endEl.isBold && unusedLines <= 0) {
@@ -400,10 +412,12 @@ export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safe
         if (elLines <= 1) cost += 500;
       }
 
-      // Runt: complete paragraph at bottom whose own last line is severely short
+      // Runt: complete paragraph at bottom whose own last line is severely
+      // short. Capped: the raw table reaches 2000+ with user configs and would
+      // otherwise beat fill — the author's paragraph shape is not worth a hole.
       if (endEl && (endEl.tag === 'P' || endEl.tag === 'BLOCKQUOTE') && !endEl.isBold && unusedLines <= 1) {
         const m = getLastLineMetrics((endEl.textContent || '').trim(), canvasCtx);
-        cost += computeRuntLinePenalty(m.lastLineWords, m.widthRatio ?? 1, minLastLineWords) * 0.5;
+        cost += Math.min(computeRuntLinePenalty(m.lastLineWords, m.widthRatio ?? 1, minLastLineWords) * 0.5, 150);
       }
     }
 
@@ -418,17 +432,25 @@ export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safe
       if (cand.widowLines < 2) cost += 1000;
       else if (cand.widowLines < effMinWidow) cost += 200;
 
+      // Runt on the cut line — capped at 250 so it stays subordinate to fill:
+      // with the raw table (up to ~5000 with minLastLineWords configs) the DP
+      // preferred leaving 15-line holes over any imperfect cut. User priority
+      // is the inverse: fill ≥95% first; an orphan word on a FULL page is
+      // tolerable, an orphan word next to empty space is not (and with 1 free
+      // line costing only 40, the DP will cut a line earlier when that avoids
+      // the runt cheaply).
       const chunkText = htmlToText(cand.chunkHtml).trim();
       const m = getLastLineMetrics(chunkText, canvasCtx);
-      cost += computeRuntLinePenalty(m.lastLineWords, m.widthRatio ?? 1, minLastLineWords);
+      cost += Math.min(computeRuntLinePenalty(m.lastLineWords, m.widthRatio ?? 1, minLastLineWords), 250);
 
       if (chunkText.endsWith('-')) cost += 300;
       if (!SENTENCE_END_RE.test(chunkText)) cost += MID_SENTENCE_CUT_PENALTY;
 
-      // Split right after a heading with too few following lines
+      // Split right after a heading with too few following lines — same
+      // hierarchy as heading_at_bottom: must beat any underfill crater.
       if (cand.headingBeforeSplit) {
         const needed = minFollowLinesFor(cand.headingEl);
-        if (cand.orphanLines < needed) cost += 1500;
+        if (cand.orphanLines < needed) cost += 4000;
       }
     }
 
@@ -480,6 +502,28 @@ export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safe
       if (total < bestTotal) {
         bestTotal = total;
         best = { cost: total, cand, next: { idx: cand.nextIdx, restHtml: cand.nextRest } };
+      }
+    }
+
+    // DEV: when the chosen page leaves a visible hole, dump every candidate so
+    // underfill decisions can be diagnosed from pagination-log.json.
+    if (process.env.NODE_ENV === 'development' && best) {
+      const chosenUnused = Math.floor(Math.max(0, best.cand.budget - best.cand.height) / lineHeightPx);
+      const chosenIsLast = best.cand.nextIdx >= content.length && !best.cand.nextRest;
+      if (chosenUnused > 4 && !chosenIsLast) {
+        log.record('dp', 'underfill-choice', 0, {
+          idx, hasRest: !!restHtml,
+          chosen: { type: best.cand.type, endIdx: best.cand.endIdx, unused: chosenUnused, total: +best.cost.toFixed(0) },
+          nextElTag: content[best.cand.nextIdx]?.tag,
+          nextElText: (content[best.cand.nextIdx]?.textContent || '').slice(0, 50),
+          cands: scored.slice(0, 10).map(({ cand, edge }) => ({
+            t: cand.type,
+            end: cand.endIdx,
+            fill: +((cand.height / cand.budget) * 100).toFixed(0),
+            edge: +edge.toFixed(0),
+            o: cand.orphanLines, w: cand.widowLines,
+          })),
+        });
       }
     }
 

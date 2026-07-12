@@ -1,5 +1,5 @@
 import { measureHtmlHeight, buildFontString } from './textLayoutEngine';
-import { collapseWhitespace } from './textPreprocess.js';
+import { collapseWhitespace, splitWordsAtDashes } from './textPreprocess.js';
 import {
   extractInlineStyle,
   getInnerHtml as getIrInnerHtml,
@@ -10,42 +10,65 @@ import {
 
 /**
  * Find the character position (in collapsed plain text) where the last complete
- * line within maxLines ends. Always returns a position at a space boundary —
- * never mid-word. Returns -1 if all content fits within maxLines.
+ * line within maxLines ends. Dash-aware: em/en-dashes are line-break
+ * opportunities in the browser (and in countLines), so they must be modeled
+ * here too — otherwise the predicted cut line diverges from what the DOM
+ * renders and stray words appear alone after the jump.
+ *
+ * Returns an object:
+ *   { pos, lastLineWords, lastLineWidth, prevPos, lastTokenAdvance }
+ *   pos = -1 when everything fits, 0 when unusable.
  */
 const findSplitPos = (collapsed, maxLines, availableWidth, fontStr, indentPx, wordSpacingPx, ctx2d) => {
-  if (!ctx2d || !collapsed || maxLines <= 0 || availableWidth <= 0) return 0;
+  if (!ctx2d || !collapsed || maxLines <= 0 || availableWidth <= 0) return { pos: 0 };
 
   ctx2d.font = fontStr;
   const spaceWidth = ctx2d.measureText(' ').width + wordSpacingPx;
-  const words = collapsed.split(' ').filter(w => w.length > 0);
-  if (words.length === 0) return -1;
+  const rawWords = collapsed.split(' ').filter(w => w.length > 0);
+  if (rawWords.length === 0) return { pos: -1 };
+
+  // Tokens with char ranges; dash fragments join their predecessor without a space.
+  const tokens = [];
+  let cp = 0;
+  for (let wi = 0; wi < rawWords.length; wi++) {
+    if (wi > 0) cp += 1; // the inter-word space
+    const frags = splitWordsAtDashes([rawWords[wi]]);
+    let f = cp;
+    for (let fi = 0; fi < frags.length; fi++) {
+      tokens.push({ text: frags[fi], end: f + frags[fi].length, joinsPrev: fi > 0 });
+      f += frags[fi].length;
+    }
+    cp += rawWords[wi].length;
+  }
 
   let lineCount = 1;
   let lineWidth = indentPx;
-  let charPos = 0;
   let splitPos = 0;
+  let lineTokens = []; // tokens on the (current) last line, with advances
 
-  for (let i = 0; i < words.length; i++) {
-    const ww = ctx2d.measureText(words[i]).width;
-    const needed = i === 0 ? lineWidth + ww : lineWidth + spaceWidth + ww;
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    const ww = ctx2d.measureText(t.text).width;
+    const eff = i === 0 ? 0 : (t.joinsPrev ? 0 : spaceWidth);
+    const needed = lineWidth + eff + ww;
 
     if (i > 0 && needed > availableWidth) {
       lineCount++;
       if (lineCount > maxLines) {
-        // Word i starts the line beyond capacity — split before it
-        return splitPos;
+        // Token i starts the line beyond capacity — split before it
+        return { pos: splitPos, lastLineWords: lineTokens.length, lastLineWidth: lineWidth, lineTokens };
       }
       lineWidth = ww;
+      lineTokens = [{ end: t.end, advance: ww }];
     } else {
       lineWidth = needed;
+      lineTokens.push({ end: t.end, advance: eff + ww });
     }
 
-    charPos += (i === 0 ? 0 : 1) + words[i].length;
-    splitPos = charPos;
+    splitPos = t.end;
   }
 
-  return -1; // all lines fit
+  return { pos: -1 }; // all lines fit
 };
 
 export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, textAlign, hasIndent = false, indentValue = 1.5, preserveFirstIndent = false, canvasCtx = null) => {
@@ -59,6 +82,39 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
 
   // Deterministic measure function (Canvas, no DOM layout)
   const measure = (htmlStr) => measureHtmlHeight(htmlStr, canvasCtx);
+
+  // Paragraphs with explicit <br> breaks (verse, poetry, scripture quotes):
+  // never cut mid-verse — split BETWEEN verses (at <br> boundaries). The floor
+  // is line-based, not verse-based: each side must keep ≥2 RENDERED lines
+  // (verse-count floors made 2-3 verse scripture quotes atomic and forced
+  // multi-line holes on quote-heavy books).
+  if (/<br[\s/>]/i.test(html)) {
+    const measureBr = (h) => measureHtmlHeight(h, canvasCtx);
+    const inner = getIrInnerHtml(html);
+    const segs = inner.split(/<br\s*\/?>/i);
+    const openTagM = html.match(/^<[^>]+>/);
+    const closeTagM = html.match(/<\/[a-zA-Z]+>\s*$/);
+    if (segs.length < 2 || !openTagM || !closeTagM) return [html];
+    const cleanOpen = openTagM[0]
+      .replace(/\s*data-split-head="[^"]*"/gi, '')
+      .replace(/\s*data-continuation="[^"]*"/gi, '')
+      // Verse chunks end at natural verse boundaries — never stretch them.
+      .replace(/text-align-last:\s*[^;"]+/i, 'text-align-last:left');
+    const build = (arr, attr) =>
+      cleanOpen.replace(/>$/, `${attr}>`) + arr.join('<br>') + closeTagM[0];
+    const lineH = canvasCtx?.lineHeightPx || 10;
+    let k = -1;
+    for (let t = 1; t <= segs.length - 1; t++) {
+      if (measureBr(build(segs.slice(0, t), ' data-split-head="true"')) <= maxHeight) k = t;
+      else break;
+    }
+    if (k < 1) return [html];
+    const head = build(segs.slice(0, k), ' data-split-head="true"');
+    const rest = build(segs.slice(k), ' data-continuation="true"');
+    // Line-level orphan/widow floors: ≥2 rendered lines on each side.
+    if (measureBr(head) < lineH * 2 || measureBr(rest) < lineH * 2) return [html];
+    return [head, rest];
+  }
 
   const lines = [];
   let remainingHtml = html;
@@ -140,16 +196,84 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
 
     const textIndentM = (originalStyles || '').match(/text-indent:\s*([\d.]+)em/i);
     const splitIndentPx = (isFirstChunk && textIndentM) ? parseFloat(textIndentM[1]) * splitFontSizePx : 0;
-    const splitAvailW = (canvasCtx?.contentWidth || 0) - (canvasCtx?.widthSlack || 0);
+    // Cut walk width = FULL content width (no justify slack). Split fragments
+    // render without KP word-spacing, so the browser breaks them greedily at
+    // the real column width; cutting with the 6% slack width made the browser
+    // pull 1-2 short words per line and re-compose the fragment, leaving a
+    // sparse stretched leftover as the visible cut line.
+    const splitAvailW = (canvasCtx?.contentWidth || 0);
     const wsM = (originalStyles || '').match(/word-spacing:\s*([\d.]+)px/i);
     const splitWordSpacingPx = wsM ? parseFloat(wsM[1]) : 0;
 
     const collapsed = collapseWhitespace(text);
-    const splitPos = findSplitPos(
+    let splitInfo = findSplitPos(
       collapsed, maxLines, splitAvailW, splitFontStr,
       splitIndentPx, splitWordSpacingPx, canvasCtx?.ctx2d
     );
 
+    // ── LEY DE LA LÍNEA DE CORTE ─────────────────────────────────────────
+    // The cut line (last visible line before the page jump) must be full
+    // enough to justify: ≥6 words at ≥68% width, or ≥85% width. If not, the
+    // whole short line moves to the next page (retreat one line): a sparse
+    // line before a jump reads as a broken paragraph ("texto mocho").
+    // Additionally, a cut line packed beyond 97.5% of the column gets its last
+    // token pushed to the continuation — zero headroom is how the DOM ends up
+    // wrapping that word into a lone stretched line.
+    let cutLineLawMet = false;
+    if (splitInfo.pos > 0 && canvasCtx?.ctx2d) {
+      // Law: 6+ words at 68-93% width, or any composition at 85-93%. The 93%
+      // ceiling is the DOM tolerance band — saturated lines wrap in the
+      // browser on sub-pixel differences.
+      const lawOk = (s) => {
+        if (!s || s.pos <= 0) return false;
+        const ratio = s.lastLineWidth / splitAvailW;
+        if (ratio > 0.93) return false;
+        return (s.lastLineWords >= 6 && ratio >= 0.68) || ratio >= 0.85;
+      };
+
+      // DOM-headroom band: a cut line packed beyond 93% of the column has no
+      // tolerance — any sub-pixel Canvas↔DOM difference wraps its tail word
+      // into a lone stretched line. Drop tokens until the line sits at ≤93%
+      // (justify absorbs the remainder invisibly across 6+ words).
+      const applyHeadroomBand = (info) => {
+        if (!info || info.pos <= 0 || !Array.isArray(info.lineTokens)) return info;
+        const toks = info.lineTokens.slice();
+        let width = info.lastLineWidth;
+        while (toks.length > 6 && width / splitAvailW > 0.93) {
+          const popped = toks.pop();
+          width -= popped.advance;
+        }
+        if (toks.length === info.lineTokens.length) return info;
+        return {
+          ...info,
+          pos: toks[toks.length - 1].end,
+          lastLineWords: toks.length,
+          lastLineWidth: width,
+          lineTokens: toks,
+        };
+      };
+
+      splitInfo = applyHeadroomBand(splitInfo);
+      if (lawOk(splitInfo)) {
+        cutLineLawMet = true;
+      } else {
+        for (let retreat = 1; retreat <= 2 && maxLines - retreat >= 1; retreat++) {
+          let rInfo = findSplitPos(
+            collapsed, maxLines - retreat, splitAvailW, splitFontStr,
+            splitIndentPx, splitWordSpacingPx, canvasCtx.ctx2d
+          );
+          if (rInfo.pos <= 0) break;
+          rInfo = applyHeadroomBand(rInfo);
+          if (lawOk(rInfo)) {
+            splitInfo = rInfo;
+            cutLineLawMet = true;
+            break;
+          }
+        }
+      }
+    }
+
+    const splitPos = splitInfo.pos;
     if (splitPos <= 0) {
       // Nothing fits or ctx2d unavailable — push as-is to avoid infinite loop
       lines.push(remainingHtml);
@@ -183,10 +307,17 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
         ? getQuoteStyle(effectiveQuoteConfig, quoteTemplate, effectiveBaseFontSizePt, effectiveBaseLineHeight, effectiveTextAlign)
         : `margin:0;padding:0;text-align:${effectiveTextAlign};text-indent:${indent};text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;`);
 
-    // Split-head last line: left-aligned, not stretched.
-    // With text-align-last:justify, 1-2 word last lines stretch across the full column
-    // width — visually terrible. Left-aligned short last lines are standard typography.
-    if (newRemainingHtml) {
+    // Split-head cut line: JUSTIFIED only when the cut-line law holds (≥6
+    // words at ≥68% width, or ≥85% width). The cut line is an interior line
+    // of the paragraph (it continues on the next page), so a full line must
+    // read as normal justified text. If the law could not be satisfied even
+    // after retreating, fall back to left alignment — stretching a sparse
+    // line across the column is worse than a small right-edge gap.
+    if (newRemainingHtml && effectiveTextAlign === 'justify' && cutLineLawMet) {
+      finalStyle = finalStyle
+        .replace(/text-align-last:[^;]+;?/gi, '')
+        .replace(/;?\s*$/, ';') + 'text-align-last:justify;';
+    } else if (newRemainingHtml) {
       finalStyle = finalStyle
         .replace(/text-align-last:[^;]+;?/gi, '')
         .replace(/;?\s*$/, ';') + 'text-align-last:left;';

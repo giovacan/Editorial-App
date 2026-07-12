@@ -43,6 +43,100 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * Vertical justification (InDesign-style) — distributes the residual bottom
+ * hole of underfull pages across the gaps between blocks so every mid-chapter
+ * page ends at (nearly) the same baseline.
+ *
+ * Rules:
+ *   - Never touches blank, title-only, or chapter-last pages (a chapter's last
+ *     page ends short by design, like in any printed book).
+ *   - Uses padding-bottom (additive, no margin-collapse interaction, never
+ *     shrinks an existing margin).
+ *   - Per-gap increment capped at 60% of a line so gaps stay subtle.
+ *   - Budget-verified with Canvas measurement; reverts if the page would
+ *     exceed budget (the old distributeVerticalSpace overflowed — this one
+ *     cannot).
+ *
+ * Disable with safeConfig.pagination.verticalJustify = false.
+ */
+export const applyVerticalJustification = (pages, layoutCtx, canvasCtx, safeConfig, log = null) => {
+  if (safeConfig?.pagination?.verticalJustify === false) return;
+  const { contentHeight, lineHeightPx } = layoutCtx;
+  const chStartExtra = Math.max(0, (layoutCtx.headerSpaceEstimate || 0) - (layoutCtx.chapterStartBottomClearance || 0))
+    + (layoutCtx.chapterStartExtraLines || 0) * lineHeightPx;
+  const MAX_PER_GAP = Math.max(2, lineHeightPx * 0.6);
+  const RESERVE_PX = 2; // keep a hair of slack against DOM rounding
+
+  for (let i = 0; i < pages.length; i++) {
+    const page = pages[i];
+    if (!page || page.isBlank || page.isTitleOnlyPage || !page.html) continue;
+    if (page.isChapterLastPage) continue;
+
+    const blocks = getPageBlocks(page);
+    if (blocks.length < 2) continue;
+
+    const budget = contentHeight - getDomSlack() + (page.isFirstChapterPage ? chStartExtra : 0);
+    const pageH = measureHtmlHeight(page.html, canvasCtx);
+    const hole = budget - pageH - RESERVE_PX;
+    if (hole < lineHeightPx * 0.3) continue;
+
+    // Per-gap caps. On chapter-start pages the gap AFTER the title block may
+    // absorb up to 3 lines — a chapter opener with breathing room under its
+    // title is standard book design, and it lets few-block opener pages reach
+    // the same bottom baseline as the rest.
+    const gaps = blocks.length - 1;
+    const isTitleBlock = (b) =>
+      /data-chapter-start/.test(b.outerHtml) || b.dataset?.chapterStart === 'true';
+    const caps = [];
+    for (let g = 0; g < gaps; g++) {
+      caps.push(page.isFirstChapterPage && isTitleBlock(blocks[g])
+        ? lineHeightPx * 3
+        : MAX_PER_GAP);
+    }
+
+    // Distribute: title gap absorbs first, the rest is spread evenly (capped).
+    const adds = new Array(gaps).fill(0);
+    let remaining = hole;
+    for (let g = 0; g < gaps && remaining > 0; g++) {
+      if (caps[g] > MAX_PER_GAP) {
+        adds[g] = Math.min(remaining, caps[g]);
+        remaining -= adds[g];
+      }
+    }
+    if (remaining > 0 && gaps > 0) {
+      const normalGaps = caps.filter(c => c <= MAX_PER_GAP).length || gaps;
+      const perGap = Math.min(remaining / normalGaps, MAX_PER_GAP);
+      for (let g = 0; g < gaps; g++) {
+        if (caps[g] <= MAX_PER_GAP) adds[g] += perGap;
+      }
+    }
+    for (let g = 0; g < gaps; g++) adds[g] = Math.round(adds[g] * 10) / 10;
+    if (adds.every(a => a < 0.5)) continue;
+
+    const newHtml = blocks.map((b, bi) => {
+      const add = bi < gaps ? adds[bi] : 0; // never pad the last block
+      if (add < 0.5) return b.outerHtml;
+      if (/style="/.test(b.outerHtml)) {
+        return b.outerHtml.replace(/style="([^"]*)"/, (m, s) =>
+          `style="${s.replace(/;?\s*$/, ';')}padding-bottom:${add}px;"`);
+      }
+      return b.outerHtml.replace(/^<(\w+)/, `<$1 style="padding-bottom:${add}px;"`);
+    }).join('');
+
+    const newH = measureHtmlHeight(newHtml, canvasCtx);
+    if (newH > budget) continue; // safety: never overflow
+
+    Object.assign(pages[i], setPageHtml(page, newHtml));
+    if (log && process.env.NODE_ENV === 'development') {
+      log.record('vjust', 'apply', page.pageNumber || i + 1, {
+        hole: +hole.toFixed(1), gaps, adds,
+        before: +pageH.toFixed(0), after: +newH.toFixed(0), budget: +budget.toFixed(0),
+      });
+    }
+  }
+};
+
+/**
  * Indent repair pass — fixes <p> elements with text-indent:0 that should have
  * first-line indent.
  *
@@ -183,19 +277,29 @@ export const mergeSplitFragments = (pages, log = null) => {
     let changed = false;
 
     // Helper: rebuild element outerHtml with merged innerHTML and updated text-align-last
-    const buildMerged = (base, addedInner) => {
+    const buildMerged = (base, addedEl) => {
+      const addedInner = typeof addedEl === 'string' ? addedEl : addedEl.innerHTML;
       const mergedInner = base.innerHTML + ' ' + addedInner;
-      // Always use text-align-last:left — "justify" stretches the last visible line
-      // of a fragment, making it appear wider than other paragraphs on the page.
+      // If the absorbed tail is itself a split-head (its paragraph continues on
+      // the next page), the merged block's last line is a CUT line — keep it
+      // justified so it reads as an interior line. Otherwise it is a true
+      // paragraph ending — left-aligned.
+      const tailIsSplitHead = typeof addedEl !== 'string'
+        && (/data-split-head/.test(addedEl.outerHtml || '') || addedEl.dataset?.splitHead === 'true');
+      const isJustified = /text-align:\s*justify/i.test(base.style || '');
+      const alignLast = (tailIsSplitHead && isJustified) ? 'justify' : 'left';
       const newStyle = (base.style || '')
         .replace(/text-align-last:[^;]+;?/gi, '')
         .replace(/data-continuation:[^;]+;?/gi, '')
-        + `text-align-last:left;`;
+        + `text-align-last:${alignLast};`;
       // Remove data-continuation attribute and update style
       const tag = base.tag.toLowerCase();
       let newOuter = base.outerHtml
         .replace(/\s*data-continuation="[^"]*"/gi, '')
         .replace(/\bstyle="[^"]*"/, `style="${newStyle}"`);
+      if (tailIsSplitHead && !/data-split-head/.test(newOuter)) {
+        newOuter = newOuter.replace(/^<(\w+)/, '<$1 data-split-head="true"');
+      }
       // Rebuild with merged inner
       const openTagEnd = newOuter.indexOf('>');
       if (openTagEnd === -1) return `<${tag}>${mergedInner}</${tag}>`;
@@ -212,7 +316,7 @@ export const mergeSplitFragments = (pages, log = null) => {
         const prev = children[j];
         if (prev.tag !== tag) break;
 
-        const merged = { ...prev, outerHtml: buildMerged(prev, el.innerHTML), innerHTML: prev.innerHTML + ' ' + el.innerHTML };
+        const merged = { ...prev, outerHtml: buildMerged(prev, el), innerHTML: prev.innerHTML + ' ' + el.innerHTML };
         children = [...children.slice(0, j), merged, ...children.slice(j + 1, i), ...children.slice(i + 1)];
         i = j; // re-check from merged position
         changed = true;
@@ -243,7 +347,7 @@ export const mergeSplitFragments = (pages, log = null) => {
         continue;
       }
 
-      const merged = { ...el, outerHtml: buildMerged(el, next.innerHTML), innerHTML: el.innerHTML + ' ' + next.innerHTML };
+      const merged = { ...el, outerHtml: buildMerged(el, next), innerHTML: el.innerHTML + ' ' + next.innerHTML };
       children = [...children.slice(0, i), merged, ...children.slice(i + 2)];
       i--;
       changed = true;

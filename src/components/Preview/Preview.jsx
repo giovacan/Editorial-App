@@ -100,7 +100,7 @@ function Preview() {
 
   const previewScale = Math.min(0.42, SIDEBAR_CONTENT_WIDTH / (pageFormat.width * PX_PER_MM));
 
-  const { pages = [], validationState, showErrorDialog, currentError, handleErrorAction, closeErrorDialog } =
+  const { pages = [], validationState, showErrorDialog, currentError, handleErrorAction, closeErrorDialog, applyDomCorrections } =
     usePagination(bookData, config, measureRef, previewScale);
 
   const frontMatterPages = useEditorStore((s) => s.frontMatterPages) || [];
@@ -122,11 +122,28 @@ function Preview() {
   }, [frontMatterPages, pages]);
 
 
-  // P6: Layout verification — DOM vs Canvas audit (dev mode only)
+  // P6: Layout verification — DOM vs Canvas audit + DOM-truth correction loop.
+  // Pages whose REAL rendered height exceeds the budget get their trailing
+  // blocks moved to the next page automatically (runs in prod too).
   const layoutDims = useEditorStore((s) => s.layoutDims);
-  const layoutAuditReport = useLayoutVerification(pages, layoutDims);
+  const layoutAuditReport = useLayoutVerification(pages, layoutDims, applyDomCorrections);
 
-  // When DOM audit completes, append it to the pagination log
+  // When DOM audit completes, append it to the pagination log so the on-disk
+  // pagination-log.json includes real DOM-vs-Canvas deltas per page.
+  useEffect(() => {
+    if (!import.meta.env.DEV || !layoutAuditReport) return;
+    const paginationLog = useEditorStore.getState().paginationLog;
+    if (!paginationLog) return;
+    try {
+      fetch('/api/pagination-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          log: { ...paginationLog, layoutAudit: formatLayoutAuditText(layoutAuditReport) },
+        }),
+      }).catch(() => {});
+    } catch { /* logging must never break the preview */ }
+  }, [layoutAuditReport]);
 
   const paginationProgressObj = useEditorStore((s) => s.paginationProgress);
   const isPaginationRunning = paginationProgressObj?.isActive ?? false;

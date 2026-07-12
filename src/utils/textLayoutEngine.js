@@ -191,6 +191,48 @@ const calculateElementHeight = (parsed, layoutCtx) => {
   const isItalic = styles.fontStyle === 'italic';
   const fontString = buildFontString(elFontSizePx, fontFamily, isBold, isItalic);
 
+  // Lists: every <li> starts its own rendered line (often several). Counting
+  // the joined text as one paragraph undercounts lines — measure per item.
+  if ((tag === 'UL' || tag === 'OL') && parsed.innerHTML && /<li/i.test(parsed.innerHTML)) {
+    const items = parsed.innerHTML.match(/<li[^>]*>[\s\S]*?<\/li>/gi) || [];
+    if (items.length > 0) {
+      let liLines = 0;
+      for (const it of items) {
+        const t = collapseWhitespace(it.replace(/<[^>]*>/g, ' ')).trim();
+        liLines += t
+          ? countLines(t, availableWidth, fontString, 0, letterSpacingPx, wordSpacingPx, noHyphenation)
+          : 1;
+      }
+      const liMarginTop = resolveSize(styles.marginTop, styles.marginTopUnit, elFontSizePx);
+      const liMarginBottom = resolveSize(styles.marginBottom, styles.marginBottomUnit, elFontSizePx);
+      const liPaddingV = resolveSize(styles.paddingTop, styles.paddingTopUnit, elFontSizePx)
+        + resolveSize(styles.paddingBottom, styles.paddingBottomUnit, elFontSizePx);
+      return liMarginTop + liPaddingV + liLines * lineHeightPx + liMarginBottom;
+    }
+  }
+
+  // Explicit <br> line breaks (verse, poetry, addresses): each segment starts
+  // a fresh rendered line the width-based counter cannot see. Count each
+  // segment independently; empty segments (<br><br>) count as one blank line.
+  if (parsed.innerHTML && /<br[\s/>]/i.test(parsed.innerHTML)) {
+    const segments = parsed.innerHTML.split(/<br\s*\/?>/i);
+    let brLines = 0;
+    for (let si = 0; si < segments.length; si++) {
+      const segText = collapseWhitespace(segments[si].replace(/<[^>]*>/g, ' ')).trim();
+      if (!segText) { brLines += 1; continue; }
+      brLines += countLines(
+        segText, availableWidth, fontString,
+        si === 0 ? indentPx : 0, letterSpacingPx, wordSpacingPx, noHyphenation
+      );
+    }
+    const brContentH = brLines * lineHeightPx;
+    const brMarginTop = resolveSize(styles.marginTop, styles.marginTopUnit, elFontSizePx);
+    const brMarginBottom = resolveSize(styles.marginBottom, styles.marginBottomUnit, elFontSizePx);
+    const brPaddingV = resolveSize(styles.paddingTop, styles.paddingTopUnit, elFontSizePx)
+      + resolveSize(styles.paddingBottom, styles.paddingBottomUnit, elFontSizePx);
+    return brMarginTop + brPaddingV + brContentH + brMarginBottom;
+  }
+
   // Check paragraph cache first
   const collapsedText = collapseWhitespace(text);
   const cacheKey = getParagraphCacheKey(collapsedText, fontString, availableWidth, indentPx, wordSpacingPx) + (noHyphenation ? '|noHyph' : '');
@@ -802,6 +844,18 @@ export const applyKpWordSpacingWorkerSafe = (pageHtml, layoutCtx) => {
 
       if (Math.abs(medianWs) < 0.01) continue;
 
+      // Browser-model guard: the browser breaks greedily at the FULL column
+      // width. Positive word-spacing can push a borderline line over and add
+      // a rendered line the engine never accounted for (the +1/+2-line DOM
+      // overflows found by the layout audit). Apply the spacing only if the
+      // greedy line count at browser width stays unchanged.
+      const browserW = layoutCtx.contentWidth - paddingH - marginLPx - marginRPx - borderL;
+      if (browserW > 0 && medianWs > 0) {
+        const linesBefore = countLines(collapsed, browserW, fontStr, indentPx, 0, wsFromStyle, true);
+        const linesAfter  = countLines(collapsed, browserW, fontStr, indentPx, 0, medianWs, true);
+        if (linesAfter > linesBefore) continue;
+      }
+
       // Inject word-spacing into the element's inline style via regex.
       // Match the opening tag of this element using its innerHTML prefix as anchor.
       const escaped = el.innerHTML.substring(0, 60).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -811,6 +865,10 @@ export const applyKpWordSpacingWorkerSafe = (pageHtml, layoutCtx) => {
       );
       const match = result.match(elPattern);
       if (match) {
+        // Never retune word-spacing on split fragments: changing it re-flows
+        // the paragraph AFTER the page cut was decided, pushing words off the
+        // cut line and leaving stretched 1-2 word leftovers at page bottom.
+        if (/data-split-head|data-continuation/.test(match[0])) continue;
         const currentStyle = match[2].replace(/word-spacing\s*:[^;]+;?/g, '').replace(/;?\s*$/, '');
         const newStyle = `${currentStyle};word-spacing:${medianWs.toFixed(3)}px`;
         result = result.replace(elPattern, `$1style="${newStyle}"$3`);
