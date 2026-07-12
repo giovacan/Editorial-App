@@ -99,6 +99,8 @@ import {
   greedyPaginate,
 } from './breakpoints.js';
 
+import { optimalPaginate } from './optimalPaginate.js';
+
 import {
   repairMissingIndents,
   mergeSplitFragments,
@@ -237,8 +239,14 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     layoutHints?.global?.targetFillPct,
     (layoutHints?.global?.avoidSplitTags || []).join(','),
     (layoutHints?.global?.keepWithNextTags || []).join(','),
-    'v45' // bump to force cache invalidation after algorithm changes
+    safeConfig?.pagination?.engineMode || 'optimal',
+    'v46-dp' // bump to force cache invalidation after algorithm changes
   ].join('|'));
+
+  // 'optimal' (default): global DP pagination per chapter — no fill-pass needed.
+  // 'greedy': legacy page-by-page engine + fill-pass (kept as fallback).
+  const engineMode = safeConfig?.pagination?.engineMode || 'optimal';
+  let usedGreedyFallback = engineMode !== 'optimal';
 
   const chapterHashes = [];
   const chapterPageSlices = [];
@@ -288,7 +296,21 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
         log.record('greedy', 'diag', 0, { note: 'indent-check', para: pi, indent: indentM?.[1] ?? 'none', text: (e.textContent||'').substring(0,50) });
       });
     }
-    const chapterPages = greedyPaginate(elements, layoutCtx, canvasCtx, measureDiv, safeConfig, chapter, log, chapterLayoutPolicy);
+    let chapterPages = null;
+    if (engineMode === 'optimal') {
+      try {
+        chapterPages = optimalPaginate(elements, layoutCtx, canvasCtx, measureDiv, safeConfig, chapter, log, chapterLayoutPolicy);
+      } catch (err) {
+        usedGreedyFallback = true;
+        if (process.env.NODE_ENV === 'development') {
+          log.record('dp', 'fallback-to-greedy', 0, { chapter: i, error: String(err?.message || err) });
+        }
+        chapterPages = null;
+      }
+    }
+    if (!chapterPages) {
+      chapterPages = greedyPaginate(elements, layoutCtx, canvasCtx, measureDiv, safeConfig, chapter, log, chapterLayoutPolicy);
+    }
     chapterPageSlices.push(clonePageSlice(chapterPages));
     allPages.push(...chapterPages);
   }
@@ -299,11 +321,15 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
   // Fix headings at bottom BEFORE fill-pass so fill-pass accounts for moved headings
   fixHeadingsAtBottom(allPages, canvasCtx, layoutCtx, log);
 
-  // Single forward fill-pass
-  applyFillPass(allPages, layoutCtx, canvasCtx, measureDiv, safeConfig, log);
+  // Single forward fill-pass — legacy greedy engine only. The optimal DP
+  // engine already balances fill globally; running the fill-pass on top of it
+  // would just shuffle content around (the "jumping paragraphs" symptom).
+  if (usedGreedyFallback) {
+    applyFillPass(allPages, layoutCtx, canvasCtx, measureDiv, safeConfig, log);
+  }
 
   // Snap split-head pages to sentence boundaries (covers cuts from both greedyPaginate and fill-pass)
-  snapSplitPagesToSentenceBoundaries(allPages, canvasCtx, lineHeightPx, 2);
+  snapSplitPagesToSentenceBoundaries(allPages, canvasCtx, lineHeightPx, 2, layoutCtx);
 
   // Cleanup nearly-empty pages
   cleanupNearlyEmptyPages(allPages, layoutCtx, canvasCtx);
@@ -574,7 +600,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
  *
  * @private
  */
-const flattenChapterElements = (chapter, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
+export const flattenChapterElements = (chapter, layoutCtx, canvasCtx, measureDiv, safeConfig) => {
   const { baseFontSize, baseLineHeight, textAlign, lineHeightPx, contentHeight } = layoutCtx;
   const elements = [];
   const chapterId = `ch_${(chapter.title || 'unknown').substring(0, 20).replace(/\s+/g, '_')}`;
@@ -763,8 +789,19 @@ const snapChunkToSentenceBoundary = (chunk, rest, canvasCtx, lineHeightPx, maxTa
  * ends mid-sentence, snap backward to the last .?! within maxTailLines so the
  * page ends at a natural sentence boundary instead of looking chopped.
  * Runs after fill-pass so it covers cuts from both greedyPaginate and fill-pass.
+ *
+ * Budget-aware: a snap is rejected when the receiving page would overflow
+ * (which used to cascade into the safety clamp and wreck the layout) or when
+ * the donor page would end up more than 2 lines under budget.
  */
-const snapSplitPagesToSentenceBoundaries = (pages, canvasCtx, lineHeightPx, maxTailLines = 2) => {
+const snapSplitPagesToSentenceBoundaries = (pages, canvasCtx, lineHeightPx, maxTailLines = 2, layoutCtx = null) => {
+  const contentHeight = layoutCtx?.contentHeight ?? 0;
+  const chStartExtra = layoutCtx
+    ? Math.max(0, (layoutCtx.headerSpaceEstimate || 0) - (layoutCtx.chapterStartBottomClearance || 0))
+      + (layoutCtx.chapterStartExtraLines || 0) * lineHeightPx
+    : 0;
+  const budgetFor = (p) => contentHeight - getDomSlack() + (p?.isFirstChapterPage ? chStartExtra : 0);
+
   for (let i = 0; i < pages.length - 1; i++) {
     const page = pages[i];
     if (!page.html || page.isBlank) continue;
@@ -796,6 +833,15 @@ const snapSplitPagesToSentenceBoundaries = (pages, canvasCtx, lineHeightPx, maxT
 
     const newCurrentHtml = blocks.slice(0, -1).map(b => b.outerHtml).join('') + newChunk;
     const newNextHtml = newRest + nextBlocks.slice(1).map(b => b.outerHtml).join('');
+
+    if (contentHeight > 0) {
+      // Receiver must not overflow — otherwise the safety clamp would re-split
+      // it blindly and cascade damage down the chapter.
+      if (measureHtmlHeight(newNextHtml, canvasCtx) > budgetFor(nextPage)) continue;
+      // Donor must not end up visibly hollow (more than 2 lines under budget).
+      if (measureHtmlHeight(newCurrentHtml, canvasCtx) < budgetFor(page) - 2 * lineHeightPx) continue;
+    }
+
     pages[i] = setPageHtml(page, newCurrentHtml);
     pages[nextIdx] = setPageHtml(nextPage, newNextHtml);
   }
