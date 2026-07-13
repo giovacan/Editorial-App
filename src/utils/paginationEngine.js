@@ -221,13 +221,19 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
     // wrapping that word into a lone stretched line.
     let cutLineLawMet = false;
     if (splitInfo.pos > 0 && canvasCtx?.ctx2d) {
-      // Law: 6+ words at 68-93% width, or any composition at 85-93%. The 93%
-      // ceiling is the DOM tolerance band — saturated lines wrap in the
-      // browser on sub-pixel differences.
+      // Law: 6+ words at ≥68% width, or ≥85%. The 93% ceiling is a DOM
+      // tolerance band needed ONLY when the browser re-breaks lines; with
+      // deterministic line rendering wrapping is impossible, so saturated cut
+      // lines are welcome (maximum fill). Line rendering phase 1 covers plain
+      // <p> only — blocks with inline runs or quotes stay native and keep the
+      // ceiling.
+      const wrapSafe = canvasCtx?.engineLinesRender === true
+        && !isBlockquote
+        && !/<(strong|b|em|i|span)[\s>]/i.test(remainingHtml);
       const lawOk = (s) => {
         if (!s || s.pos <= 0) return false;
         const ratio = s.lastLineWidth / splitAvailW;
-        if (ratio > 0.93) return false;
+        if (!wrapSafe && ratio > 0.93) return false;
         return (s.lastLineWords >= 6 && ratio >= 0.68) || ratio >= 0.85;
       };
 
@@ -253,7 +259,7 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
         };
       };
 
-      splitInfo = applyHeadroomBand(splitInfo);
+      if (!wrapSafe) splitInfo = applyHeadroomBand(splitInfo);
       if (lawOk(splitInfo)) {
         cutLineLawMet = true;
       } else {
@@ -263,7 +269,7 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
             splitIndentPx, splitWordSpacingPx, canvasCtx.ctx2d
           );
           if (rInfo.pos <= 0) break;
-          rInfo = applyHeadroomBand(rInfo);
+          if (!wrapSafe) rInfo = applyHeadroomBand(rInfo);
           if (lawOk(rInfo)) {
             splitInfo = rInfo;
             cutLineLawMet = true;

@@ -173,6 +173,10 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
       italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1
     },
     noHyphenation: true,  // Match DOM hyphens:none — no browser hyphenation
+    // Deterministic line rendering active: the preview draws the engine's
+    // lines, so browser re-wrapping is impossible — cut lines can be packed
+    // to 100% and always justified (no anti-wrap ceilings needed).
+    engineLinesRender: safeConfig?.render?.engineLines !== false,
   };
   // Inject canonical line-metrics fn for the logger (avoids circular import)
   canvasCtx._computeLineMetricsFn = (plainText, isContinuation, isLastOnPage) =>
@@ -241,7 +245,8 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     (layoutHints?.global?.avoidSplitTags || []).join(','),
     (layoutHints?.global?.keepWithNextTags || []).join(','),
     safeConfig?.pagination?.engineMode || 'optimal',
-    'v62-dp' // bump to force cache invalidation after algorithm changes
+    safeConfig?.render?.engineLines !== false ? 'el1' : 'el0',
+    'v63-dp' // bump to force cache invalidation after algorithm changes
   ].join('|'));
 
   // 'optimal' (default): global DP pagination per chapter — no fill-pass needed.
@@ -814,10 +819,13 @@ const snapChunkToSentenceBoundary = (chunk, rest, canvasCtx, lineHeightPx, maxTa
         else { lineW = needed; lineWords++; }
       }
       const ratio = lineW / guardWidth;
-      // Same cut-line law as splitParagraphByLines: ≥6 words at 68-93% width,
-      // or 85-93% — the 93% ceiling is the DOM tolerance band (saturated lines
-      // wrap in the browser and leave a stretched leftover).
-      if (ratio > 0.93 || !((lineWords >= 6 && ratio >= 0.68) || ratio >= 0.85)) return { chunk, rest };
+      // Same cut-line law as splitParagraphByLines. The 93% saturation
+      // ceiling only matters when the browser re-breaks lines — i.e. for
+      // blocks the line renderer does not draw (runs/quotes).
+      const snapWrapSafe = canvasCtx.engineLinesRender === true
+        && !/<(strong|b|em|i|span)[\s>]/i.test(newInnerHead);
+      const snapCeilingOk = snapWrapSafe || ratio <= 0.93;
+      if (!snapCeilingOk || !((lineWords >= 6 && ratio >= 0.68) || ratio >= 0.85)) return { chunk, rest };
     }
   }
 
@@ -934,11 +942,17 @@ const enforceCutLineAlignment = (pages, canvasCtx) => {
         if (i > 0 && needed > W) { lineW = w; lineWords = 1; }
         else { lineW = needed; lineWords++; }
       }
-      // Keep justify ONLY when the full cut-line law holds (6+ words at
-      // 68-93%, or 85-93%); anything else — sparse OR saturated — renders
-      // left-aligned so it can never stretch nor wrap into a stretched line.
+      // Keep justify ONLY when the cut-line law holds. With deterministic
+      // line rendering the browser cannot wrap, so the 93% saturation ceiling
+      // does not apply — but only for blocks the line renderer actually draws
+      // (plain <p>, no inline runs); the rest stay native and keep the ceiling.
       const ratio = lineW / W;
-      const lawOk = ratio <= 0.93 && ((lineWords >= 6 && ratio >= 0.68) || ratio >= 0.85);
+      const wrapSafe = canvasCtx.engineLinesRender === true
+        && (b.tag || '').toUpperCase() === 'P'
+        && !/<(strong|b|em|i|span)[\s>]/i.test(b.innerHTML || '');
+      const lawOk = wrapSafe
+        ? ((lineWords >= 6 && ratio >= 0.68) || ratio >= 0.85)
+        : (ratio <= 0.93 && ((lineWords >= 6 && ratio >= 0.68) || ratio >= 0.85));
       if (lawOk) return outer;
       changed = true;
       return outer.replace(/text-align-last:\s*justify/i, 'text-align-last:left');
