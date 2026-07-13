@@ -212,9 +212,14 @@ const computeLineBreaks = (collapsed, width, fontStr, indentPx, wordSpacingPx, s
     }
     const prefix = fittingHyphenPrefix(nt.text, available, ctx2d);
     if (!prefix) continue;
-    // Never leave the paragraph's final line empty: if the next line is the
-    // last one and consists of that single token, keep at least 3 chars.
-    if (li === lines.length - 2 && lines[li + 1].endChar - nt.end + nt.text.length <= prefix.length + 2) continue;
+    // Never impoverish the paragraph's FINAL line: pulling a syllable from it
+    // when it holds ≤2 words leaves a lone partial word at the paragraph end
+    // (reported: "última línea de una sola palabra").
+    if (li === lines.length - 2) {
+      const finalLineText = collapsed.slice(line.endChar).trim();
+      const finalWords = finalLineText.split(/\s+/).filter(Boolean).length;
+      if (finalWords <= 2) continue;
+    }
     line.hyphenPull = prefix.length;                // chars pulled from next word
     line.endChar = (nt.end - nt.text.length) + prefix.length;
     line.pulledMidWord = true;
@@ -321,6 +326,10 @@ const renderBlockAsLines = (block, layoutCtx) => {
     return `style="${cleaned}text-indent:0;" data-engine-lines="true"`;
   });
 
+  // Cut-line hyphen: the CUTTER pulled a syllable of the continuation's first
+  // word into this block's last line (data-cut-hyphen) — draw the hyphen.
+  const cutHyphen = /data-cut-hyphen/.test(open);
+
   const spans = lineHtmls.map((lh, i) => {
     const isLast = i === lineHtmls.length - 1;
     const parts = ['display:block'];
@@ -328,7 +337,7 @@ const renderBlockAsLines = (block, layoutCtx) => {
     if (i === 0 && indentPx > 0) parts.push(`text-indent:${indentPx.toFixed(2)}px`);
     // Hyphen pull: the line ends mid-word (a syllable of the next line's
     // first word was pulled up) — draw the hyphen, like print.
-    const body = hyphened[i] ? `${lh}-` : lh;
+    const body = (hyphened[i] || (isLast && cutHyphen)) ? `${lh}-` : lh;
     return `<span class="el-line" style="${parts.join(';')};">${body}</span>`;
   }).join('');
 

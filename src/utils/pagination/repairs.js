@@ -279,7 +279,12 @@ export const mergeSplitFragments = (pages, log = null) => {
     // Helper: rebuild element outerHtml with merged innerHTML and updated text-align-last
     const buildMerged = (base, addedEl) => {
       const addedInner = typeof addedEl === 'string' ? addedEl : addedEl.innerHTML;
-      const mergedInner = base.innerHTML + ' ' + addedInner;
+      // Cut-hyphen heads end mid-word: re-joining with their continuation must
+      // NOT insert a space ("conti" + "nuar" → "continuar").
+      const baseCutHyphen = /data-cut-hyphen/.test(base.outerHtml || '');
+      const mergedInner = baseCutHyphen
+        ? base.innerHTML + addedInner
+        : base.innerHTML + ' ' + addedInner;
       // If the absorbed tail is itself a split-head (its paragraph continues on
       // the next page), the merged block's last line is a CUT line — keep it
       // justified so it reads as an interior line. Otherwise it is a true

@@ -1,6 +1,7 @@
 import { measureHtmlHeight, buildFontString } from './textLayoutEngine';
 import { collapseWhitespace, splitWordsAtDashes } from './textPreprocess.js';
 import { parseInlineRuns, measureStyled, resolveHorizontalBoxPx } from './lineRenderer.js';
+import { fittingHyphenPrefix } from './spanishHyphen.js';
 import {
   extractInlineStyle,
   getInnerHtml as getIrInnerHtml,
@@ -291,21 +292,71 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
         };
       };
 
+      // Guionado en el corte: when the cut line is short because its NEXT
+      // word is long (the reported "última línea sin justificar"), pull a
+      // syllable prefix of that word into the cut line — the page ends in
+      // "conti-" and the next page starts "nuar", like print books do.
+      // The hyphen itself is drawn by the renderer (data-cut-hyphen), so the
+      // stored text stays intact for EPUB.
+      const tryHyphenExtend = (info) => {
+        if (!info || info.pos <= 0 || !canvasCtx?.ctx2d) return null;
+        const ratio = info.lastLineWidth / splitAvailW;
+        if (ratio >= 0.68) return null; // only short cut lines need it
+        const spaceAt = collapsed[info.pos] === ' ' ? 1 : 0;
+        const restStr = collapsed.slice(info.pos + spaceAt);
+        const nextWord = (restStr.match(/^\S+/) || [''])[0];
+        if (!nextWord) return null;
+        const ctx2d = canvasCtx.ctx2d;
+        // Word style: for runs, only extend when the word is style-uniform.
+        if (splitStyled) {
+          const s0 = splitStyled.charStyles[info.pos + spaceAt] || 0;
+          for (let k = 1; k < nextWord.length; k++) {
+            if ((splitStyled.charStyles[info.pos + spaceAt + k] || 0) !== s0) return null;
+          }
+          ctx2d.font = splitStyled.fonts[s0];
+        } else {
+          ctx2d.font = splitFontStr;
+        }
+        const spaceW = ctx2d.measureText(' ').width + splitWordSpacingPx;
+        const avail = splitAvailW * 0.93 - info.lastLineWidth - spaceW;
+        if (avail <= 0) return null;
+        const prefix = fittingHyphenPrefix(nextWord, avail, ctx2d);
+        if (!prefix) return null;
+        const prefixW = ctx2d.measureText(prefix).width;
+        return {
+          ...info,
+          pos: info.pos + spaceAt + prefix.length,
+          lastLineWords: info.lastLineWords + 1,
+          lastLineWidth: info.lastLineWidth + spaceW + prefixW,
+          cutHyphen: true,
+        };
+      };
+
       if (!wrapSafe) splitInfo = applyHeadroomBand(splitInfo);
       if (lawOk(splitInfo)) {
         cutLineLawMet = true;
       } else {
-        for (let retreat = 1; retreat <= 2 && maxLines - retreat >= 1; retreat++) {
-          let rInfo = findSplitPos(
-            collapsed, maxLines - retreat, splitAvailW, splitFontStr,
-            splitIndentPx, splitWordSpacingPx, canvasCtx.ctx2d, splitStyled
-          );
-          if (rInfo.pos <= 0) break;
-          if (!wrapSafe) rInfo = applyHeadroomBand(rInfo);
-          if (lawOk(rInfo)) {
-            splitInfo = rInfo;
-            cutLineLawMet = true;
-            break;
+        const extended = tryHyphenExtend(splitInfo);
+        if (extended && lawOk(extended)) {
+          splitInfo = extended;
+          cutLineLawMet = true;
+        } else {
+          for (let retreat = 1; retreat <= 2 && maxLines - retreat >= 1; retreat++) {
+            let rInfo = findSplitPos(
+              collapsed, maxLines - retreat, splitAvailW, splitFontStr,
+              splitIndentPx, splitWordSpacingPx, canvasCtx.ctx2d, splitStyled
+            );
+            if (rInfo.pos <= 0) break;
+            if (!wrapSafe) rInfo = applyHeadroomBand(rInfo);
+            if (!lawOk(rInfo)) {
+              const rExt = tryHyphenExtend(rInfo);
+              if (rExt && lawOk(rExt)) rInfo = rExt;
+            }
+            if (lawOk(rInfo)) {
+              splitInfo = rInfo;
+              cutLineLawMet = true;
+              break;
+            }
           }
         }
       }
@@ -361,10 +412,11 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
         .replace(/;?\s*$/, ';') + 'text-align-last:left;';
     }
 
+    const cutAttrs = `${newRemainingHtml ? ' data-split-head="true"' : ''}${newRemainingHtml && splitInfo.cutHyphen ? ' data-cut-hyphen="true"' : ''}`;
     if (isBlockquote) {
-      chunkHtml = `<blockquote class="quote ${quoteTemplate}" style="${finalStyle}"${newRemainingHtml ? ' data-split-head="true"' : ''}>${chunkHtml}</blockquote>`;
+      chunkHtml = `<blockquote class="quote ${quoteTemplate}" style="${finalStyle}"${cutAttrs}>${chunkHtml}</blockquote>`;
     } else {
-      chunkHtml = `<p style="${finalStyle}"${newRemainingHtml ? ' data-split-head="true"' : ''}>${chunkHtml}</p>`;
+      chunkHtml = `<p style="${finalStyle}"${cutAttrs}>${chunkHtml}</p>`;
     }
 
     lines.push(chunkHtml);
