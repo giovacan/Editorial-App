@@ -36,7 +36,7 @@ const MAX_CORRECTION_PASSES = 6;
  * measuring with the REAL DOM (contentWrapper). Pure with respect to the
  * input array — returns a new pages array, or null if nothing was corrected.
  */
-const computeDomCorrections = (pages, results, contentWrapper, contentHeight, chStartExtra, lineHeightPx, renderTransform) => {
+export const computeDomCorrections = (pages, results, contentWrapper, contentHeight, chStartExtra, lineHeightPx, renderTransform) => {
   const domHeightOf = (html) => {
     contentWrapper.innerHTML = renderTransform ? renderTransform(html) : html;
     return contentWrapper.scrollHeight;
@@ -101,10 +101,26 @@ const computeDomCorrections = (pages, results, contentWrapper, contentHeight, ch
   let changed = false;
   const touched = [];
 
-  for (const r of results) {
-    if (!r.clipped) continue;
-    const page = corrected[r.pageIndex];
+  // Resolve every clipped page to its OBJECT before any splice happens:
+  // inserting/removing pages shifts array positions, so r.pageIndex from the
+  // audit becomes stale after the first structural change. Working with stale
+  // indices made later iterations steal blocks from healthy pages and pile
+  // them onto the wrong receiver (books "se desconfiguraban": pages with 3x
+  // their budget, scrambled text). Object identity survives splices.
+  // Work queue (page OBJECTS): when a receiver ends up overfull after taking
+  // the carry, it is re-processed IN THIS SAME PASS instead of waiting for
+  // another audit round — the pass budget (MAX_CORRECTION_PASSES) used to run
+  // out mid-cascade and leave pages holding 2-3x their budget.
+  const queue = results
+    .filter(r => r.clipped)
+    .map(r => corrected[r.pageIndex]);
+  let guard = (corrected.length + queue.length) * 3;
+
+  while (queue.length > 0 && guard-- > 0) {
+    const page = queue.shift();
     if (!page || !page.html || page.isBlank || page.isTitleOnlyPage) continue;
+    const pageIdx = corrected.indexOf(page);
+    if (pageIdx === -1) continue;
 
     const isChStart = !!(page.isFirstChapterPage || page.html.includes('data-chapter-start="true"'));
     const budget = contentHeight + (isChStart ? chStartExtra : 0);
@@ -137,7 +153,7 @@ const computeDomCorrections = (pages, results, contentWrapper, contentHeight, ch
     touched.push({ page, budget });
 
     // Receiver: next non-blank page of the SAME chapter.
-    let nextIdx = r.pageIndex + 1;
+    let nextIdx = pageIdx + 1;
     while (nextIdx < corrected.length && corrected[nextIdx]?.isBlank) nextIdx++;
     const next = corrected[nextIdx];
 
@@ -145,9 +161,10 @@ const computeDomCorrections = (pages, results, contentWrapper, contentHeight, ch
       // Receiver: strip its stale justification padding — its hole changed.
       next.html = carryHtml + stripPad(next.html);
       next.blocks = parseTopLevelBlocks(next.html);
+      queue.push(next); // cascade now if the carry made it overflow
     } else {
       // Chapter's last page overflowed — insert a fresh page right after it.
-      corrected.splice(r.pageIndex + 1, 0, {
+      const freshPage = {
         html: carryHtml,
         blocks: parseTopLevelBlocks(carryHtml),
         pageNumber: 0,
@@ -157,19 +174,21 @@ const computeDomCorrections = (pages, results, contentWrapper, contentHeight, ch
         isFirstChapterPage: false,
         currentSubheader: page.currentSubheader || '',
         isDomCorrected: true,
-      });
+      };
+      corrected.splice(pageIdx + 1, 0, freshPage);
+      queue.push(freshPage); // the carry itself may exceed one page
       // Keep chapter-start parity: the insertion shifts every later page by
       // one; drop the first parity blank that follows (if any) to compensate,
       // otherwise insert a compensating blank after the new page.
       let blankIdx = -1;
-      for (let j = r.pageIndex + 2; j < corrected.length; j++) {
+      for (let j = pageIdx + 2; j < corrected.length; j++) {
         if (corrected[j]?.isBlank && !corrected[j]?.isExtraEndPage) { blankIdx = j; break; }
         if (corrected[j]?.isFirstChapterPage || corrected[j]?.isTitleOnlyPage) break;
       }
       if (blankIdx !== -1) {
         corrected.splice(blankIdx, 1);
-      } else if (corrected.slice(r.pageIndex + 2).some(p => p.isFirstChapterPage || p.isTitleOnlyPage)) {
-        corrected.splice(r.pageIndex + 2, 0, {
+      } else if (corrected.slice(pageIdx + 2).some(p => p.isFirstChapterPage || p.isTitleOnlyPage)) {
+        corrected.splice(pageIdx + 2, 0, {
           html: '', blocks: [], pageNumber: 0, isBlank: true,
           chapterTitle: '', currentSubheader: '',
         });
