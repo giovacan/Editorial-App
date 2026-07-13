@@ -246,7 +246,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     (layoutHints?.global?.keepWithNextTags || []).join(','),
     safeConfig?.pagination?.engineMode || 'optimal',
     safeConfig?.render?.engineLines !== false ? 'el1' : 'el0',
-    'v69-dp' // bump to force cache invalidation after algorithm changes
+    'v70-dp' // bump to force cache invalidation after algorithm changes
   ].join('|'));
 
   // 'optimal' (default): global DP pagination per chapter — no fill-pass needed.
@@ -918,50 +918,81 @@ const enforceCutLineAlignment = (pages, canvasCtx) => {
   const W = canvasCtx?.contentWidth || 0;
   if (!ctx2d || !W) return;
 
-  for (const page of pages) {
+  // Line metrics of a block's innerHTML at full width (greedy, style-aware).
+  const lastLineMetrics = (innerHtml, open) => {
+    const txt = htmlToText(innerHtml || '').replace(/\s+/g, ' ').trim();
+    if (!txt) return null;
+    const fsM = open.match(/font-size:\s*([\d.]+)(pt|px)/i);
+    let fpx = canvasCtx.baseFontSizePx;
+    if (fsM) fpx = fsM[2] === 'pt' ? parseFloat(fsM[1]) * (96 / 72) : parseFloat(fsM[1]);
+    const fontStr = buildFontString(fpx, canvasCtx.fontFamily,
+      /font-weight:\s*(bold|[7-9]00)/i.test(open), /font-style:\s*italic/i.test(open));
+    const wsM = open.match(/word-spacing:\s*(-?[\d.]+)px/i);
+    ctx2d.font = fontStr;
+    const spaceW = ctx2d.measureText(' ').width + (wsM ? parseFloat(wsM[1]) : 0);
+    const words = txt.split(' ').filter(Boolean);
+    let lineW = 0, lineWords = 0;
+    for (let i = 0; i < words.length; i++) {
+      const w = ctx2d.measureText(words[i]).width;
+      const needed = i === 0 ? lineW + w : lineW + spaceW + w;
+      if (i > 0 && needed > W) { lineW = w; lineWords = 1; }
+      else { lineW = needed; lineWords++; }
+    }
+    return { ratio: lineW / W, words: lineWords, fontStr };
+  };
+
+  const lawHolds = (m, wrapSafe) => {
+    if (!m) return false;
+    if (!wrapSafe && m.ratio > 0.93) return false;
+    return (m.words >= 6 && m.ratio >= 0.68) || m.ratio >= 0.85;
+  };
+
+  for (let pi = 0; pi < pages.length; pi++) {
+    const page = pages[pi];
     if (!page?.html || page.isBlank || !/data-split-head/.test(page.html)) continue;
     const blocks = getPageBlocks(page);
     let changed = false;
-    const rebuilt = blocks.map((b) => {
+
+    const rebuilt = blocks.map((b, bi) => {
       const outer = b.outerHtml;
       if (!/data-split-head/.test(outer)) return outer;
       const open = (outer.match(/^<[^>]+>/) || [''])[0];
       if (!/text-align-last:\s*justify/i.test(open)) return outer;
-      const txt = htmlToText(b.innerHTML || '').replace(/\s+/g, ' ').trim();
-      if (!txt) return outer;
 
-      const fsM = open.match(/font-size:\s*([\d.]+)(pt|px)/i);
-      let fpx = canvasCtx.baseFontSizePx;
-      if (fsM) fpx = fsM[2] === 'pt' ? parseFloat(fsM[1]) * (96 / 72) : parseFloat(fsM[1]);
-      const fontStr = buildFontString(
-        fpx, canvasCtx.fontFamily,
-        /font-weight:\s*(bold|[7-9]00)/i.test(open),
-        /font-style:\s*italic/i.test(open)
-      );
-      const wsM = open.match(/word-spacing:\s*(-?[\d.]+)px/i);
-      ctx2d.font = fontStr;
-      const spaceW = ctx2d.measureText(' ').width + (wsM ? parseFloat(wsM[1]) : 0);
-      const words = txt.split(' ').filter(Boolean);
-      let lineW = 0, lineWords = 0;
-      for (let i = 0; i < words.length; i++) {
-        const w = ctx2d.measureText(words[i]).width;
-        const needed = i === 0 ? lineW + w : lineW + spaceW + w;
-        if (i > 0 && needed > W) { lineW = w; lineWords = 1; }
-        else { lineW = needed; lineWords++; }
-      }
-      // Keep justify ONLY when the cut-line law holds. With deterministic
-      // line rendering the browser cannot wrap, so the 93% saturation ceiling
-      // does not apply — but only for blocks the line renderer actually draws
-      // (plain <p>, no inline runs); the rest stay native and keep the ceiling.
-      const ratio = lineW / W;
       const btag = (b.tag || '').toUpperCase();
       const wrapSafe = canvasCtx.engineLinesRender === true
         && (btag === 'P' || btag === 'BLOCKQUOTE')
         && !/&|<span[^>]*style=/i.test(b.innerHTML || '');
-      const lawOk = wrapSafe
-        ? ((lineWords >= 6 && ratio >= 0.68) || ratio >= 0.85)
-        : (ratio <= 0.93 && ((lineWords >= 6 && ratio >= 0.68) || ratio >= 0.85));
-      if (lawOk) return outer;
+
+      const m = lastLineMetrics(b.innerHTML, open);
+      if (lawHolds(m, wrapSafe)) return outer;
+
+      // The paragraph CONTINUES (split-head): its last visible line is an
+      // interior line and must stay justified & full. Instead of degrading it
+      // to left (visible gap), PULL words from its continuation (the first
+      // block of the next page, data-continuation) until the line is full.
+      const isLastBlockOnPage = bi === blocks.length - 1;
+      if (isLastBlockOnPage && m) {
+        let nextIdx = pi + 1;
+        while (nextIdx < pages.length && pages[nextIdx]?.isBlank) nextIdx++;
+        const nextPage = pages[nextIdx];
+        if (nextPage?.html && page.chapterTitle === nextPage.chapterTitle) {
+          const nextBlocks = getPageBlocks(nextPage);
+          const cont = nextBlocks[0];
+          if (cont && /data-continuation/.test(cont.outerHtml)) {
+            const pulled = pullToFillCutLine(b, cont, m, canvasCtx, W);
+            if (pulled) {
+              // Rewrite the continuation block on the next page (shorter now).
+              const nextRebuilt = [pulled.contHtml, ...nextBlocks.slice(1).map(x => x.outerHtml)].join('');
+              Object.assign(pages[nextIdx], setPageHtml(nextPage, nextRebuilt));
+              changed = true;
+              return pulled.headHtml;
+            }
+          }
+        }
+      }
+
+      // No continuation to pull from (true tail / severed fragment) → left.
       changed = true;
       return outer.replace(/text-align-last:\s*justify/i, 'text-align-last:left');
     });
@@ -969,6 +1000,55 @@ const enforceCutLineAlignment = (pages, canvasCtx) => {
       Object.assign(page, setPageHtml(page, rebuilt.join('')));
     }
   }
+};
+
+/**
+ * Pull leading words from a continuation block into the split-head's last
+ * (short) line so it fills ≥85% width and stays justified. Returns
+ * { headHtml, contHtml } or null when it can't help.
+ * @private
+ */
+const pullToFillCutLine = (headBlock, contBlock, headMetrics, canvasCtx, W) => {
+  const ctx2d = canvasCtx.ctx2d;
+  const headInner = getInnerHtml(headBlock.outerHtml);
+  const contInner = getInnerHtml(contBlock.outerHtml);
+  const contText = htmlToText(contInner).replace(/\s+/g, ' ').trim();
+  if (!contText) return null;
+
+  ctx2d.font = headMetrics.fontStr;
+  const spaceW = ctx2d.measureText(' ').width;
+  const contWords = contText.split(' ');
+
+  // Greedily add continuation words until the head's last line reaches ~92%.
+  let lineW = headMetrics.ratio * W;
+  let take = 0;
+  for (let i = 0; i < contWords.length; i++) {
+    const w = ctx2d.measureText(contWords[i]).width;
+    const needed = lineW + spaceW + w;
+    if (needed / W > 0.97) break;
+    lineW = needed;
+    take++;
+    if (lineW / W >= 0.85) break;
+  }
+  if (take === 0 || lineW / W < 0.68) return null;
+
+  // Move `take` words (by char length) from cont inner to head inner.
+  let chars = 0;
+  for (let i = 0; i < take; i++) chars += (i > 0 ? 1 : 0) + contWords[i].length;
+  const { headHtml: moved, tailHtml: remaining } =
+    splitHtmlByCharsPreservingTags(contInner, chars, { trimLeadingSpace: false });
+  const movedText = htmlToText(moved).trim();
+  const remainingText = htmlToText(remaining).trim();
+  if (!movedText || !remainingText) return null; // never empty the continuation
+
+  const headOpen = (headBlock.outerHtml.match(/^<[^>]+>/) || [''])[0];
+  const headClose = (headBlock.outerHtml.match(/<\/[a-zA-Z]+>\s*$/) || ['</p>'])[0];
+  const contOpen = (contBlock.outerHtml.match(/^<[^>]+>/) || [''])[0];
+  const contClose = (contBlock.outerHtml.match(/<\/[a-zA-Z]+>\s*$/) || ['</p>'])[0];
+
+  const newHead = headOpen + headInner + ' ' + moved.trim() + headClose;
+  const newCont = contOpen + remaining.replace(/^\s+/, '') + contClose;
+  return { headHtml: newHead, contHtml: newCont };
 };
 
 /**
