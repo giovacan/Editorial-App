@@ -65,6 +65,21 @@ const MAX_BLOCK_END_CANDIDATES = 5;
 // under it.
 const MAX_DP_STATES = 60000;
 
+// Above this element count the DP's cost (states × per-candidate splits, each
+// splitParagraphByLines ~50ms) dominates pagination time — a single 100-page
+// chapter took over a minute. The windows below keep each DP run bounded; on
+// running text the global optimum barely beats greedy, so windowing loses
+// almost nothing in quality while turning cost back to ~linear.
+const DP_WINDOW_ELEMENTS = 60;
+
+// Module-level split cache — split results depend only on (html, maxLines),
+// not on which window/chapter asks. Sharing across windows of a huge chapter
+// (and across the incremental re-paginations of an editing session) turns the
+// dominant cost (splitParagraphByLines) into a one-time price per unique cut.
+// Cleared when it grows too large to avoid unbounded memory.
+const _moduleSplitCache = new Map();
+const _MAX_SPLIT_CACHE = 8000;
+
 // Mild preference for page breaks at sentence boundaries (works together with
 // the snap-to-sentence post-pass; keeping it mild avoids fighting page fill).
 const MID_SENTENCE_CUT_PENALTY = 30;
@@ -90,6 +105,28 @@ export const _dpStats = { states: 0, measures: 0, measuredChars: 0, splits: 0 };
  * @returns {Page[]}
  */
 export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, chapter, log, chapterLayoutPolicy = null) => {
+  // Window huge chapters: run the DP on bounded element segments so cost stays
+  // ~linear. The title lives in the first window; later windows are title-less
+  // continuation chapters that append their pages (renumbered by the caller).
+  if (elements.length > DP_WINDOW_ELEMENTS * 1.5) {
+    const hasTitle = elements.length > 0 && elements[0].isTitle;
+    const title = hasTitle ? [elements[0]] : [];
+    const body = hasTitle ? elements.slice(1) : elements;
+    const out = [];
+    let first = true;
+    for (let s = 0; s < body.length; s += DP_WINDOW_ELEMENTS) {
+      const seg = body.slice(s, s + DP_WINDOW_ELEMENTS);
+      const segElements = first ? [...title, ...seg] : seg;
+      const segChapter = first ? chapter : { ...chapter, __windowCont: true };
+      const segPages = optimalPaginate(
+        segElements, layoutCtx, canvasCtx, measureDiv, safeConfig, segChapter, log, chapterLayoutPolicy
+      );
+      out.push(...segPages);
+      first = false;
+    }
+    return out;
+  }
+
   const {
     contentHeight, lineHeightPx, minOrphanLines, textAlign,
     splitLongParagraphs, headerSpaceEstimate: headerSpaceEst,
@@ -145,11 +182,11 @@ export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safe
   // Returns { head, rest } or null. Cached per (html, maxLines) — different DP
   // states frequently ask for the exact same split; splitParagraphByLines only
   // depends on maxH through floor(maxH / lineHeightPx).
-  const splitCache = new Map();
+  const splitKeyPrefix = `${lineHeightPx}|${canvasCtx.contentWidth}|${canvasCtx.widthSlack || 0}|${indentValue}|${textAlign}|`;
   const splitPara = (html, maxH) => {
     const maxLines = Math.max(1, Math.floor(maxH / lineHeightPx));
-    const key = `${simpleHash(html)}|${html.length}|${maxLines}`;
-    if (splitCache.has(key)) return splitCache.get(key);
+    const key = `${splitKeyPrefix}${simpleHash(html)}|${html.length}|${maxLines}`;
+    if (_moduleSplitCache.has(key)) return _moduleSplitCache.get(key);
     _dpStats.splits++;
     const hasIndent = /^<p[\s>]/i.test(html.trim());
     const preserveIndent = /text-indent:\s*0[^.]/.test(html);
@@ -162,14 +199,9 @@ export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safe
       const head = chunks[0];
       const rest = chunks.slice(1).reduce((a, b) => mergeIntoOne(a, b));
       result = { head, rest };
-    } else if (process.env.NODE_ENV === 'development') {
-      log.record('dp', 'split-null', 0, {
-        maxLines,
-        chunks: chunks ? chunks.length : 0,
-        text: htmlToText(html).trim().slice(0, 60),
-      });
     }
-    splitCache.set(key, result);
+    if (_moduleSplitCache.size > _MAX_SPLIT_CACHE) _moduleSplitCache.clear();
+    _moduleSplitCache.set(key, result);
     return result;
   };
 
@@ -205,7 +237,7 @@ export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safe
           }
         }
       } else if (splitLongParagraphs) {
-        for (let delta = 0; delta <= 2; delta++) {
+        for (let delta = 0; delta <= 1; delta++) {
           const maxH = spaceForRest - delta * lineHeightPx;
           if (maxH < minOrphan * lineHeightPx) break;
           const split = splitPara(restHtml, maxH, false);
@@ -245,6 +277,19 @@ export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safe
 
     for (let e = idx; e < content.length; e++) {
       const el = content[e];
+      // Incremental height: measuring the growing `acc+el.html` string each
+      // step is O(n²) in a full window. Add per-element heights instead
+      // (elements were pre-measured in flatten); only the exact fit check at
+      // the boundary needs a precise combined measure.
+      const elH = el.height != null ? el.height : measure(el.html);
+      if (accH + elH <= budget) {
+        acc = acc + el.html;
+        accH = accH + elH;
+        blockEnds.push({ endIdx: e, html: acc, height: accH });
+        lastAddedEl = el;
+        continue;
+      }
+      // Near the budget — confirm with a precise measure (margin collapsing).
       const withEl = acc + el.html;
       const withElH = measure(withEl);
       if (withElH <= budget) {
@@ -292,7 +337,7 @@ export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safe
         }
       }
     } else if (splitLongParagraphs && isSplittableTag(f.tag) && !f.isBold && remainingSpace >= lineHeightPx) {
-      for (let delta = 0; delta <= 2; delta++) {
+      for (let delta = 0; delta <= 1; delta++) {
         const maxH = remainingSpace - delta * lineHeightPx;
         if (maxH < minOrphan * lineHeightPx) break;
         const split = splitPara(f.html, maxH, false);
@@ -330,7 +375,13 @@ export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safe
 
   const makeSplitCandidate = (pageHtml, pageHeight, chunkHtml, restHtml, endIdx, nextIdx, budget, headingBeforeSplit, headingEl = null) => {
     const chunkH = measure(chunkHtml);
-    const restH = measure(restHtml);
+    // widowLines only gates the widow floor (≥2 lines). A long remainder is
+    // always well above it, so skip the costly full measure for big rests —
+    // measuring a huge rest string per split candidate was a major cost.
+    const restText = restHtml ? htmlToText(restHtml) : '';
+    const restH = restText.length <= 220
+      ? measure(restHtml)
+      : lineHeightPx * 6; // long remainder → far above any widow floor
     return {
       type: 'split',
       html: pageHtml,

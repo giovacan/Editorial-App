@@ -594,7 +594,15 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
   // split-head block, if its LAST LINE is sparse (under 5 words and 55% of
   // the column) it must NOT stretch — flip to left alignment. The cut-line
   // law makes these rare; this guard makes them never-grotesque.
-  enforceCutLineAlignment(allPages, canvasCtx);
+  // Wrapped: a bug here must never blank the whole book — the pages already
+  // paginated correctly; alignment is cosmetic.
+  try {
+    enforceCutLineAlignment(allPages, canvasCtx);
+  } catch (err) {
+    if (process.env.NODE_ENV === 'development') {
+      log.record('cut-align', 'error', 0, { error: String(err?.message || err) });
+    }
+  }
 
   // Vertical justification — distribute residual bottom holes across block
   // gaps so mid-chapter pages end at the same baseline. Runs LAST (after the
