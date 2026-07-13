@@ -59,7 +59,7 @@ const MAX_LINE_CACHE = 3000;
  * (entities, nested blocks, styled spans) → null (block renders natively).
  * Returns { text, charStyles } where charStyles[i] ∈ {0,1,2,3} = bold|italic bits.
  */
-const parseInlineRuns = (inner) => {
+export const parseInlineRuns = (inner) => {
   if (inner.indexOf('&') !== -1) return null; // entities shift char offsets
   let bold = 0, italic = 0;
   let text = '';
@@ -92,7 +92,7 @@ const parseInlineRuns = (inner) => {
  * Horizontal box consumption (margins + paddings + left border) parsed from
  * an inline style string — used to compute a quote's effective column width.
  */
-const resolveHorizontalBoxPx = (styleStr, fontPx) => {
+export const resolveHorizontalBoxPx = (styleStr, fontPx) => {
   const toPx = (v) => {
     const m = String(v).trim().match(/^(-?[\d.]+)(em|px|pt)?$/);
     if (!m) return 0;
@@ -121,7 +121,7 @@ const resolveHorizontalBoxPx = (styleStr, fontPx) => {
 };
 
 // Measure a char range with per-char styles (segments measured in their font).
-const measureStyled = (ctx2d, str, startChar, charStyles, fonts) => {
+export const measureStyled = (ctx2d, str, startChar, charStyles, fonts) => {
   let w = 0, i = 0;
   while (i < str.length) {
     const s = charStyles[startChar + i] || 0;

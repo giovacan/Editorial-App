@@ -1,5 +1,6 @@
 import { measureHtmlHeight, buildFontString } from './textLayoutEngine';
 import { collapseWhitespace, splitWordsAtDashes } from './textPreprocess.js';
+import { parseInlineRuns, measureStyled, resolveHorizontalBoxPx } from './lineRenderer.js';
 import {
   extractInlineStyle,
   getInnerHtml as getIrInnerHtml,
@@ -19,11 +20,15 @@ import {
  *   { pos, lastLineWords, lastLineWidth, prevPos, lastTokenAdvance }
  *   pos = -1 when everything fits, 0 when unusable.
  */
-const findSplitPos = (collapsed, maxLines, availableWidth, fontStr, indentPx, wordSpacingPx, ctx2d) => {
+const findSplitPos = (collapsed, maxLines, availableWidth, fontStr, indentPx, wordSpacingPx, ctx2d, styled = null) => {
   if (!ctx2d || !collapsed || maxLines <= 0 || availableWidth <= 0) return { pos: 0 };
 
   ctx2d.font = fontStr;
   const spaceWidth = ctx2d.measureText(' ').width + wordSpacingPx;
+  const measureToken = (t) => {
+    if (!styled) { ctx2d.font = fontStr; return ctx2d.measureText(t.text).width; }
+    return measureStyled(ctx2d, t.text, t.end - t.text.length, styled.charStyles, styled.fonts);
+  };
   const rawWords = collapsed.split(' ').filter(w => w.length > 0);
   if (rawWords.length === 0) return { pos: -1 };
 
@@ -48,7 +53,7 @@ const findSplitPos = (collapsed, maxLines, availableWidth, fontStr, indentPx, wo
 
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
-    const ww = ctx2d.measureText(t.text).width;
+    const ww = measureToken(t);
     const eff = i === 0 ? 0 : (t.joinsPrev ? 0 : spaceWidth);
     const needed = lineWidth + eff + ww;
 
@@ -198,19 +203,43 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
 
     const textIndentM = (originalStyles || '').match(/text-indent:\s*([\d.]+)em/i);
     const splitIndentPx = (isFirstChunk && textIndentM) ? parseFloat(textIndentM[1]) * splitFontSizePx : 0;
-    // Cut walk width = FULL content width (no justify slack). Split fragments
-    // render without KP word-spacing, so the browser breaks them greedily at
-    // the real column width; cutting with the 6% slack width made the browser
-    // pull 1-2 short words per line and re-compose the fragment, leaving a
-    // sparse stretched leftover as the visible cut line.
-    const splitAvailW = (canvasCtx?.contentWidth || 0);
+    // Cut walk width = the SAME effective width the line renderer draws with:
+    // full content width (no justify slack) minus the block's own horizontal
+    // box (quote margins/padding/border). Cutting at any other width lets the
+    // rendered composition drift and spill a lone word after the cut.
+    const splitAvailW = (canvasCtx?.contentWidth || 0)
+      - resolveHorizontalBoxPx(originalStyles || '', splitFontSizePx);
     const wsM = (originalStyles || '').match(/word-spacing:\s*([\d.]+)px/i);
     const splitWordSpacingPx = wsM ? parseFloat(wsM[1]) : 0;
 
     const collapsed = collapseWhitespace(text);
+
+    // Run-aware cut walk: bold/italic segments measure wider than the base
+    // font; walking them plain desynced the cut line from the renderer
+    // (reported: lone small word after a cut on an italicized quote).
+    let splitStyled = null;
+    {
+      const innerNow = getIrInnerHtml(remainingHtml);
+      if (/<(strong|b|em|i|span)[\s>]/i.test(innerNow)) {
+        const runsNow = parseInlineRuns(innerNow);
+        // Exact text equality guarantees charStyles ↔ collapsed offsets align.
+        if (runsNow && runsNow.text === collapsed) {
+          splitStyled = {
+            charStyles: runsNow.charStyles,
+            fonts: [
+              splitFontStr,
+              buildFontString(splitFontSizePx, canvasCtx?.fontFamily || 'Georgia, serif', true, splitIsItalic),
+              buildFontString(splitFontSizePx, canvasCtx?.fontFamily || 'Georgia, serif', splitIsBold, true),
+              buildFontString(splitFontSizePx, canvasCtx?.fontFamily || 'Georgia, serif', true, true),
+            ],
+          };
+        }
+      }
+    }
+
     let splitInfo = findSplitPos(
       collapsed, maxLines, splitAvailW, splitFontStr,
-      splitIndentPx, splitWordSpacingPx, canvasCtx?.ctx2d
+      splitIndentPx, splitWordSpacingPx, canvasCtx?.ctx2d, splitStyled
     );
 
     // ── LEY DE LA LÍNEA DE CORTE ─────────────────────────────────────────
@@ -269,7 +298,7 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
         for (let retreat = 1; retreat <= 2 && maxLines - retreat >= 1; retreat++) {
           let rInfo = findSplitPos(
             collapsed, maxLines - retreat, splitAvailW, splitFontStr,
-            splitIndentPx, splitWordSpacingPx, canvasCtx.ctx2d
+            splitIndentPx, splitWordSpacingPx, canvasCtx.ctx2d, splitStyled
           );
           if (rInfo.pos <= 0) break;
           if (!wrapSafe) rInfo = applyHeadroomBand(rInfo);
