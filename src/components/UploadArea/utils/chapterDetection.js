@@ -28,6 +28,15 @@ export const isChapterHeading = (el) => {
     if (/^CAPITULO\s+/i.test(text)) return true;
     if (/^CHAPTER\s+/i.test(text)) return true;
 
+    // Numbered lesson/section families (workbooks, devotionals, courses):
+    // "LECCIÓN 1 La Intención Original De Dios", "MÓDULO 2", "DÍA 7"...
+    // Length guard: a heading is short; a narrative paragraph that merely
+    // STARTS with "Día 1 fue..." must not become a chapter.
+    if (text.length <= 80
+        && /^(lección|leccion|lesson|sección|seccion|section|unidad|unit|módulo|modulo|module|tema|sesión|sesion|session|día|dia|day)\s*#?\d+/i.test(text)) {
+      return true;
+    }
+
     if (SPECIAL_CHAPTERS.includes(text.toLowerCase())) return true;
   }
   return false;
