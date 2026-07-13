@@ -37,6 +37,18 @@ describe('isChapterHeading', () => {
     expect(approved.has(9)).toBe(true);   // lección real con cuerpo
   });
 
+  it('la cola de un listado pegado al título real se rescata si sigue cuerpo', () => {
+    // CONTENIDO glue: TOC en 3..8 y el título real en 9 (adyacente al listado),
+    // seguido de texto narrativo → la cola se aprueba, el resto no.
+    const bodyAfter = (idx) => idx === 9;
+    const approved = filterIndexListings([3, 4, 5, 6, 7, 8, 9], bodyAfter);
+    expect(approved.has(9)).toBe(true);
+    for (const i of [3, 4, 5, 6, 7, 8]) expect(approved.has(i)).toBe(false);
+    // sin rescate (cola seguida de más listado u otra cosa) → todo fuera
+    const none = filterIndexListings([3, 4, 5, 6], () => false);
+    expect(none.size).toBe(0);
+  });
+
   it('no confunde párrafos narrativos', () => {
     expect(isChapterHeading(p('Día 1 fue el más difícil de todos porque no sabíamos qué esperar del viaje ni de las personas que encontraríamos en el camino hacia la ciudad.'))).toBe(false);
     expect(isChapterHeading(p('La lección más importante de mi vida llegó tarde.'))).toBe(false);

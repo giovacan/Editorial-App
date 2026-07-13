@@ -51,13 +51,33 @@ export const isChapterHeading = (el) => {
  * @param {number[]} indices - ascending element indices of heading candidates
  * @returns {Set<number>} indices approved as real chapter headings
  */
-export const filterIndexListings = (indices) => {
+export const filterIndexListings = (indices, isRealAfterRun = null) => {
   const approved = new Set();
+  let run = [];
+
+  const flushRun = () => {
+    if (run.length === 0) return;
+    if (run.length === 1) {
+      approved.add(run[0]);
+    } else if (isRealAfterRun) {
+      // A TOC often sits GLUED to the first real heading ("CONTENIDO,
+      // INTRODUCCIÓN, LECCIÓN 1..5, INTRODUCCIÓN, <texto>"): the run's tail
+      // is a real chapter start when body text follows it.
+      const tail = run[run.length - 1];
+      if (isRealAfterRun(tail)) approved.add(tail);
+    }
+    run = [];
+  };
+
   for (let k = 0; k < indices.length; k++) {
-    const prevAdjacent = k > 0 && indices[k] - indices[k - 1] <= 1;
-    const nextAdjacent = k < indices.length - 1 && indices[k + 1] - indices[k] <= 1;
-    if (!prevAdjacent && !nextAdjacent) approved.add(indices[k]);
+    if (run.length > 0 && indices[k] - run[run.length - 1] <= 1) {
+      run.push(indices[k]);
+    } else {
+      flushRun();
+      run = [indices[k]];
+    }
   }
+  flushRun();
   return approved;
 };
 
@@ -76,7 +96,12 @@ export const detectChaptersInRawHtml = (htmlContent) => {
     }
   });
 
-  const approved = filterIndexListings(candidates.map(c => c.elementIndex));
+  const candidateSet = new Set(candidates.map(c => c.elementIndex));
+  const approved = filterIndexListings(candidates.map(c => c.elementIndex), (idx) => {
+    const next = allElements[idx + 1];
+    const t = next?.textContent?.trim() || '';
+    return t.length >= 120 && !candidateSet.has(idx + 1);
+  });
   return candidates.filter(c => approved.has(c.elementIndex));
 };
 

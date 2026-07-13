@@ -221,7 +221,13 @@ export const parseHtmlContent = (htmlContent) => {
     const t = el.textContent?.trim() || '';
     if (t && t.length >= 2 && isChapterHeading(el)) headingCandidates.push(i);
   });
-  const approvedHeadings = filterIndexListings(headingCandidates);
+  const candidateSet = new Set(headingCandidates);
+  const approvedHeadings = filterIndexListings(headingCandidates, (idx) => {
+    // Run tail is a REAL heading when followed by body text (long, non-heading).
+    const next = topChildren[idx + 1];
+    const t = next?.textContent?.trim() || '';
+    return t.length >= 120 && !candidateSet.has(idx + 1);
+  });
 
   topChildren.forEach((el, index) => {
     const text = el.textContent?.trim() || '';
