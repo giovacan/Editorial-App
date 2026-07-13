@@ -140,7 +140,7 @@ const measureStyled = (ctx2d, str, startChar, charStyles, fonts) => {
  * Returns an array of { endChar, spaceAfter } line descriptors (collapsed-text
  * char offsets), or null when measurement is unavailable.
  */
-const computeLineBreaks = (collapsed, width, fontStr, indentPx, wordSpacingPx, styled = null) => {
+const computeLineBreaks = (collapsed, width, fontStr, indentPx, wordSpacingPx, styled = null, skipPull = false) => {
   const ctx2d = getCtx2d();
   if (!ctx2d || !collapsed || width <= 0) return null;
   ctx2d.font = fontStr;
@@ -189,6 +189,7 @@ const computeLineBreaks = (collapsed, width, fontStr, indentPx, wordSpacingPx, s
   // syllable prefix of that word pulled up, ending in "-" like print books.
   // Line COUNT never changes (following lines only lose characters), so
   // pagination heights are untouched — this is presentation only.
+  if (skipPull) return lines;
   for (let li = 0; li < lines.length - 1; li++) {
     const line = lines[li];
     const nt = line.nextToken;
@@ -337,6 +338,24 @@ const renderBlockAsLines = (block, layoutCtx) => {
   if (_lineCache.size > MAX_LINE_CACHE) _lineCache.clear();
   _lineCache.set(cacheKey, result);
   return result;
+};
+
+/**
+ * Line count under the EXACT model the line renderer draws with (greedy,
+ * dash-aware, full effective width, per-run fonts). Used by the height engine
+ * for engine-lines blocks so planned heights equal drawn heights.
+ *
+ * @param {string} text - collapsed plain text
+ * @param {number} width - effective column width (NO justify slack)
+ * @param {string} fontStr - base font string
+ * @param {number} indentPx
+ * @param {number} wordSpacingPx
+ * @param {object|null} styled - { charStyles, fonts } for inline runs
+ * @returns {number} line count (0 = unavailable)
+ */
+export const countEngineLines = (text, width, fontStr, indentPx, wordSpacingPx, styled = null) => {
+  const lines = computeLineBreaks(text, width, fontStr, indentPx, wordSpacingPx, styled, true);
+  return lines ? lines.length : 0;
 };
 
 /**

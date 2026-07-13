@@ -240,7 +240,13 @@ export function useLayoutVerification(pages, layoutDims, onCorrections = null, r
     // measures fewer lines (wider available width) and reports lower heights, creating
     // a false discrepancy with DOM. The engine uses JUSTIFY_SLACK_RATIO = 0.06.
     const widthSlack = textAlign === 'justify' ? contentWidth * 0.06 : 0;
-    const canvasCtx = { ...createLayoutContext(baseFontSizePx, baseLineHeight, contentWidth, fontFamily), widthSlack, lineHeightPx, noHyphenation: true };
+    const canvasCtx = {
+      ...createLayoutContext(baseFontSizePx, baseLineHeight, contentWidth, fontFamily),
+      widthSlack, lineHeightPx, noHyphenation: true,
+      // Match the engine's height model: blocks the line renderer draws are
+      // counted with the renderer's walker (full width, per-run fonts).
+      engineLinesRender: !!renderTransform,
+    };
 
     // Wait for render + fonts to settle (double rAF)
     let cancelled = false;

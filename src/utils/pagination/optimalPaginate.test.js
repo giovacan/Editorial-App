@@ -103,6 +103,8 @@ const makeCanvasCtx = () => ({
   lineHeightPx: LINE_HEIGHT_PX,
   textAlign: 'justify',
   noHyphenation: true,
+  // Same height model the engine uses (engine-lines default ON).
+  engineLinesRender: true,
 });
 
 const paginate = (engineMode) => {

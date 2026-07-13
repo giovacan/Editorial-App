@@ -51,6 +51,7 @@ import {
   getLineBreakPositionsKP,
   countHyphenationMetrics,
 } from './lineBreaking.js';
+import { countEngineLines } from './lineRenderer.js';
 
 // Re-export getLineBreakPositionsKP for consumers that import it from textLayoutEngine
 export { getLineBreakPositionsKP } from './lineBreaking.js';
@@ -233,10 +234,69 @@ const calculateElementHeight = (parsed, layoutCtx) => {
     return brMarginTop + brPaddingV + brContentH + brMarginBottom;
   }
 
-  // Check paragraph cache first
   const collapsedText = collapseWhitespace(text);
+
+  // ── Engine-lines height model ────────────────────────────────────────
+  // When the deterministic line renderer will DRAW this block, count its
+  // lines with the renderer's EXACT walker (greedy, dash-aware, full width,
+  // per-run fonts) so planned height === rendered height. The old KP-at-
+  // slack-width model overcounted lines for these blocks, which showed up as
+  // bottom holes the vertical justification couldn't see.
+  let elCounted = false;
+  if (layoutCtx.engineLinesRender && (tag === 'P' || tag === 'BLOCKQUOTE')) {
+    const innerH = parsed.innerHTML || '';
+    const rendable = innerH.indexOf('&') === -1
+      && !/<span[^>]*style=/i.test(innerH)
+      && !/<(br|img|table|ul|ol|h[1-6]|div|blockquote)[\s/>]/i.test(innerH);
+    if (rendable) {
+      let styled = null;
+      let ok = true;
+      if (runs && runs.length > 0 && hasStyledRuns(runs)) {
+        const charStyles = [];
+        let joined = '';
+        for (const r of runs) {
+          if (r.fontSize) { ok = false; break; }
+          const s = (r.bold ? 1 : 0) | (r.italic ? 2 : 0);
+          joined += r.text;
+          for (let k = 0; k < r.text.length; k++) charStyles.push(s);
+        }
+        if (ok) {
+          styled = {
+            charStyles,
+            fonts: [
+              buildFontString(elFontSizePx, fontFamily, isBold, isItalic),
+              buildFontString(elFontSizePx, fontFamily, true, isItalic),
+              buildFontString(elFontSizePx, fontFamily, isBold, true),
+              buildFontString(elFontSizePx, fontFamily, true, true),
+            ],
+            text: joined,
+          };
+        }
+      }
+      if (ok) {
+        const effW = contentWidth - paddingH - marginLPx - marginRPx - borderLeft;
+        const walkText = styled ? collapseWhitespace(styled.text) : collapsedText;
+        const elKey = getParagraphCacheKey(walkText, fontString, effW, indentPx, wordSpacingPx) + '|EL' + (styled ? 'r' : 'p');
+        const c = _paragraphLayoutCache.get(elKey);
+        if (c !== undefined) {
+          lineCount = c;
+          elCounted = true;
+        } else {
+          const cnt = countEngineLines(walkText, effW, fontString, indentPx, wordSpacingPx, styled);
+          if (cnt > 0) {
+            lineCount = cnt;
+            elCounted = true;
+            _paragraphLayoutCache.set(elKey, cnt);
+          }
+        }
+      }
+    }
+  }
+
+  // Check paragraph cache first
   const cacheKey = getParagraphCacheKey(collapsedText, fontString, availableWidth, indentPx, wordSpacingPx) + (noHyphenation ? '|noHyph' : '');
-  const cached = _paragraphLayoutCache.get(cacheKey);
+  const cached = elCounted ? lineCount : _paragraphLayoutCache.get(cacheKey);
+  if (!elCounted) {
   if (cached !== undefined) {
     lineCount = cached;
   } else {
@@ -268,6 +328,7 @@ const calculateElementHeight = (parsed, layoutCtx) => {
       }
     }
     _paragraphLayoutCache.set(cacheKey, lineCount);
+  }
   }
 
   // Calculate content height
