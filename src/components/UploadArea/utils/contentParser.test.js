@@ -53,6 +53,35 @@ describe('parseHtmlContent con tabla de contenidos propia', () => {
     expect(chapters.length).toBe(3);
   });
 
+  it('detecta el título del cuerpo aunque difiera del índice en una palabra', () => {
+    const html4 = [
+      '<p>CONTENIDO</p>',
+      '<p>INTRODUCCIÓN</p>',
+      '<p>LECCIÓN 2\tLas Actitudes Y Excusas Frente Al Llamado De Dios</p>',
+      '<p>INTRODUCCIÓN</p>',
+      `<p>${CUERPO}</p>`,
+      // cuerpo con "LAS ... Y LAS EXCUSAS" (una palabra extra vs índice)
+      '<p>LAS ACTITUDES Y LAS EXCUSAS FRENTE AL LLAMADO DE DIOS</p>',
+      `<p>${CUERPO}</p>`,
+    ].join('');
+    const { chapters } = parseHtmlContent(html4);
+    const titles = chapters.map(c => c.title);
+    expect(titles.some(t => /ACTITUDES Y LAS EXCUSAS/i.test(t))).toBe(true);
+  });
+
+  it('no descarta contenido que aparece antes del primer capítulo', () => {
+    const html5 = [
+      '<p>CONTENIDO</p>',
+      '<p>LECCIÓN 1\tPrimera</p>',
+      `<p>Texto de prólogo que aparece antes de cualquier título detectado y que no debe perderse jamás en la importación del documento.</p>`,
+      '<p>PRIMERA</p>',
+      `<p>${CUERPO}</p>`,
+    ].join('');
+    const { chapters } = parseHtmlContent(html5);
+    const allHtml = chapters.map(c => c.html).join('');
+    expect(allHtml).toContain('Texto de prólogo que aparece antes');
+  });
+
   it('lecciones reales con cuerpo siguen abriendo capítulo', () => {
     const html2 = [
       `<p>INTRODUCCIÓN</p>`,

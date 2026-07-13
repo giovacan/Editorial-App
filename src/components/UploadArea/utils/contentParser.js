@@ -265,12 +265,29 @@ export const parseHtmlContent = (htmlContent) => {
       const namePart = raw.replace(NUM_PREFIX_RE, '').trim();
       if (namePart.length >= 4) tocKeys.add(norm(namePart));
     }
+    // Token sets per TOC entry — body titles often differ from the index by
+    // an article/word ("Las Actitudes Y Excusas" vs "LAS ACTITUDES Y LAS
+    // EXCUSAS"), so match by high token overlap, not exact equality.
+    const STOP = new Set(['el','la','los','las','un','una','de','del','y','o','a','en','para','por','con','al','su','the','of','and','to','for']);
+    const contentTokens = (s) => norm(s).split(' ').filter(w => w.length > 1 && !STOP.has(w));
+    const tocTokenSets = [...tocKeys].map(k => new Set(contentTokens(k))).filter(s => s.size >= 2);
+
     const tocEnd = Math.max(...skipIndices);
     for (let i = tocEnd + 1; i < topChildren.length; i++) {
       if (approvedHeadings.has(i)) continue;
       const t = topChildren[i].textContent?.trim() || '';
       if (!t || t.length > 90) continue;
-      if (tocKeys.has(norm(t))) approvedHeadings.add(i);
+      const nt = norm(t);
+      if (tocKeys.has(nt)) { approvedHeadings.add(i); continue; }
+      // Fuzzy: a body line whose content words are (almost) a superset of a
+      // TOC entry's content words is that chapter's title.
+      const lineToks = new Set(contentTokens(t));
+      if (lineToks.size < 2) continue;
+      for (const toc of tocTokenSets) {
+        let hit = 0;
+        for (const w of toc) if (lineToks.has(w)) hit++;
+        if (hit / toc.size >= 0.75) { approvedHeadings.add(i); break; }
+      }
     }
   }
 
@@ -296,7 +313,13 @@ export const parseHtmlContent = (htmlContent) => {
         if (currentSection) currentChapter.html += `<h3>${currentSection.title}</h3>${currentSection.html}`;
         currentSection = { id: `section-${Date.now()}-${index}`, type: 'section', title: text, html: '' };
       }
-    } else if (currentChapter) {
+    } else {
+      // Body content. If it appears BEFORE any chapter heading (e.g. after the
+      // omitted TOC but before the first real title), open an implicit
+      // front-matter chapter so nothing is dropped.
+      if (!currentChapter) {
+        currentChapter = { id: makeChapterId(chapters.length), type: 'chapter', title: '', html: '', wordCount: 0 };
+      }
       if (isBoldInlineOpener(el, text)) {
         // Buffer bold opener; keep pendingParagraph (will merge all three later)
         if (pendingBoldOpener) {
