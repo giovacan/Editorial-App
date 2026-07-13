@@ -257,9 +257,21 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
   const chapterHashes = [];
   const chapterPageSlices = [];
 
+  // Weight progress by chapter SIZE (element/char count), not just index, so a
+  // single huge chapter doesn't freeze the bar. Fine-grained window callbacks
+  // advance the bar within a big chapter too.
+  const chapterWeights = chapters.map(ch => Math.max(1, (ch.html || '').length));
+  const totalWeight = chapterWeights.reduce((a, b) => a + b, 0);
+  let doneWeight = 0;
+  const reportProgress = (chapterIdx, withinFraction) => {
+    if (!onProgress) return;
+    const frac = (doneWeight + chapterWeights[chapterIdx] * withinFraction) / totalWeight;
+    onProgress(frac, 1); // total=1 → onProgress computes percent from the fraction
+  };
+
   for (let i = 0; i < chapters.length; i++) {
     const chapter = chapters[i];
-    if (onProgress) onProgress(i + 1, chapters.length);
+    reportProgress(i, 0);
 
     const chHash = simpleHash((chapter.html || '') + '|' + (chapter.title || '') + '|' + configFingerprint);
     chapterHashes.push(chHash);
@@ -305,7 +317,8 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     let chapterPages = null;
     if (engineMode === 'optimal') {
       try {
-        chapterPages = optimalPaginate(elements, layoutCtx, canvasCtx, measureDiv, safeConfig, chapter, log, chapterLayoutPolicy);
+        const onWindow = (frac) => reportProgress(i, frac);
+        chapterPages = optimalPaginate(elements, layoutCtx, canvasCtx, measureDiv, safeConfig, chapter, log, chapterLayoutPolicy, onWindow);
       } catch (err) {
         usedGreedyFallback = true;
         if (process.env.NODE_ENV === 'development') {
@@ -319,6 +332,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     }
     chapterPageSlices.push(clonePageSlice(chapterPages));
     allPages.push(...chapterPages);
+    doneWeight += chapterWeights[i];
   }
 
   // Re-number all pages sequentially

@@ -104,7 +104,7 @@ export const _dpStats = { states: 0, measures: 0, measuredChars: 0, splits: 0 };
  * @param {object|null} chapterLayoutPolicy
  * @returns {Page[]}
  */
-export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, chapter, log, chapterLayoutPolicy = null) => {
+export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safeConfig, chapter, log, chapterLayoutPolicy = null, onWindow = null) => {
   // Window huge chapters: run the DP on bounded element segments so cost stays
   // ~linear. The title lives in the first window; later windows are title-less
   // continuation chapters that append their pages (renumbered by the caller).
@@ -114,6 +114,8 @@ export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safe
     const body = hasTitle ? elements.slice(1) : elements;
     const out = [];
     let first = true;
+    const totalWindows = Math.ceil(body.length / DP_WINDOW_ELEMENTS);
+    let w = 0;
     for (let s = 0; s < body.length; s += DP_WINDOW_ELEMENTS) {
       const seg = body.slice(s, s + DP_WINDOW_ELEMENTS);
       const segElements = first ? [...title, ...seg] : seg;
@@ -123,6 +125,8 @@ export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safe
       );
       out.push(...segPages);
       first = false;
+      w++;
+      if (onWindow) onWindow(w / totalWindows); // advance the bar per window
     }
     return out;
   }
