@@ -16,6 +16,7 @@ import TOCPanel from './TOCPanel';
 import ValidationErrorDialog from '../ValidationErrorDialog/ValidationErrorDialog';
 import PaginationProgressBar from '../PaginationProgressBar/PaginationProgressBar';
 import { useLayoutVerification, formatLayoutAuditText } from '../../hooks/useLayoutVerification';
+import { renderPageAsEngineLines } from '../../utils/lineRenderer';
 import './Preview.css';
 
 const PX_PER_MM = 3.7795;
@@ -125,8 +126,19 @@ function Preview() {
   // P6: Layout verification — DOM vs Canvas audit + DOM-truth correction loop.
   // Pages whose REAL rendered height exceeds the budget get their trailing
   // blocks moved to the next page automatically (runs in prod too).
+  // The audit measures pages through the SAME render transform the preview
+  // uses, so verification always matches what is displayed.
   const layoutDims = useEditorStore((s) => s.layoutDims);
-  const layoutAuditReport = useLayoutVerification(pages, layoutDims, applyDomCorrections);
+  const auditTransform = useMemo(() => {
+    if (safeConfig.render?.engineLines === false || !layoutDims?.contentWidth) return null;
+    const ctx = {
+      contentWidth: layoutDims.contentWidth,
+      baseFontSizePx: layoutDims.baseFontSizePx,
+      fontFamily: layoutDims.fontFamily,
+    };
+    return (html) => renderPageAsEngineLines(html, ctx);
+  }, [layoutDims, safeConfig.render?.engineLines]); // eslint-disable-line react-hooks/exhaustive-deps
+  const layoutAuditReport = useLayoutVerification(pages, layoutDims, applyDomCorrections, auditTransform);
 
   // When DOM audit completes, append it to the pagination log so the on-disk
   // pagination-log.json includes real DOM-vs-Canvas deltas per page.
@@ -237,9 +249,21 @@ function Preview() {
   // 1 line of breathing room — does NOT affect engine contentHeight.
   const pageNumGapPx = lineHeightPx;
 
-  // Use page HTML directly — <br> injection disabled (CSS last-line semantics
-  // prevent justify on lines before <br>, making pages taller not shorter).
-  const renderedHtml = debugHtml;
+  // Deterministic line rendering: the engine's line breaks are drawn as
+  // display:block spans (interior lines justified, final line per the block's
+  // own alignment). The browser cannot re-wrap them — engine↔DOM divergence
+  // is impossible by construction. Disable with config.render.engineLines=false.
+  const engineLinesOn = safeConfig.render?.engineLines !== false;
+  const renderedHtml = useMemo(() => {
+    if (isFrontMatterPage || debugConfig.enabled || !engineLinesOn || !layoutDims?.contentWidth) {
+      return debugHtml;
+    }
+    return renderPageAsEngineLines(debugHtml, {
+      contentWidth: layoutDims.contentWidth,
+      baseFontSizePx: layoutDims.baseFontSizePx,
+      fontFamily: layoutDims.fontFamily,
+    });
+  }, [debugHtml, isFrontMatterPage, engineLinesOn, layoutDims]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { showMagnifier, setShowMagnifier, magnifierZoom, setMagnifierZoom, magnifierPanelRef,
     magnifierPos, updateMagnifierPosition, handleMouseEnterPreview, handleMouseLeavePreview,

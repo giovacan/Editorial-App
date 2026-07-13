@@ -36,9 +36,9 @@ const MAX_CORRECTION_PASSES = 6;
  * measuring with the REAL DOM (contentWrapper). Pure with respect to the
  * input array — returns a new pages array, or null if nothing was corrected.
  */
-const computeDomCorrections = (pages, results, contentWrapper, contentHeight, chStartExtra, lineHeightPx) => {
+const computeDomCorrections = (pages, results, contentWrapper, contentHeight, chStartExtra, lineHeightPx, renderTransform) => {
   const domHeightOf = (html) => {
-    contentWrapper.innerHTML = html;
+    contentWrapper.innerHTML = renderTransform ? renderTransform(html) : html;
     return contentWrapper.scrollHeight;
   };
 
@@ -195,9 +195,10 @@ const computeDomCorrections = (pages, results, contentWrapper, contentHeight, ch
  * @param {Array} pages - paginated pages array (each has .html, .isBlank, .pageNumber)
  * @param {object|null} layoutDims - { contentHeight, contentWidth, lineHeightPx, baseFontSizePx, baseLineHeight, fontFamily, textAlign }
  * @param {Function|null} onCorrections - callback(newPages) — enables the DOM-truth correction loop
+ * @param {Function|null} renderTransform - html→html transform the preview applies (measure what is displayed)
  * @returns {object|null} - { summary, pages[] } or null if not ready
  */
-export function useLayoutVerification(pages, layoutDims, onCorrections = null) {
+export function useLayoutVerification(pages, layoutDims, onCorrections = null, renderTransform = null) {
   const [report, setReport] = useState(null);
   const measureDivRef = useRef(null);
   const correctionPassesRef = useRef(0);
@@ -293,8 +294,9 @@ export function useLayoutVerification(pages, layoutDims, onCorrections = null) {
           const page = pages[i];
           if (!page.html || page.isBlank) continue;
 
-          // DOM measurement — set content inside wrapper, style tag persists
-          contentWrapper.innerHTML = page.html;
+          // DOM measurement — set content inside wrapper, style tag persists.
+          // Apply the preview's render transform so we measure what is shown.
+          contentWrapper.innerHTML = renderTransform ? renderTransform(page.html) : page.html;
           const domHeight = contentWrapper.scrollHeight;
 
           // Measure where the last line of text actually ends (visual bottom of last element).
@@ -346,7 +348,7 @@ export function useLayoutVerification(pages, layoutDims, onCorrections = null) {
         if (onCorrections) {
           const clipped = results.filter(r => r.clipped);
           if (clipped.length > 0 && correctionPassesRef.current < MAX_CORRECTION_PASSES) {
-            const fixed = computeDomCorrections(pages, results, contentWrapper, contentHeight, chStartExtra, lineHeightPx);
+            const fixed = computeDomCorrections(pages, results, contentWrapper, contentHeight, chStartExtra, lineHeightPx, renderTransform);
             if (fixed) {
               correctionPassesRef.current++;
               if (IS_DEV) {
@@ -459,7 +461,7 @@ export function useLayoutVerification(pages, layoutDims, onCorrections = null) {
       cancelled = true;
       cancelAnimationFrame(raf1);
     };
-  }, [pages, layoutDims]);
+  }, [pages, layoutDims, renderTransform]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cleanup DOM on unmount
   useEffect(() => {
