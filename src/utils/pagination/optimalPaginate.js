@@ -484,8 +484,21 @@ export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safe
       cost += 15; // fragment base cost
 
       if (cand.orphanLines < effMinOrphan) cost += 1000;
-      if (cand.widowLines < 2) cost += 1000;
-      else if (cand.widowLines < effMinWidow) cost += 200;
+      // Widow of 1 line stranded on a nearly-empty next page is the worst
+      // visible defect (crater like the p33 "…establecida por el Señor Jesús.").
+      // Scale the widow penalty by HOW empty that next page would be, so the DP
+      // pulls the whole paragraph forward instead of orphaning its tail.
+      if (cand.widowLines < 2) {
+        cost += 1000;
+        // The continuation page holds `widowLines` (≈1) of a chapter that has
+        // more content — a deep crater. Penalize the emptiness hard.
+        const contFillLines = cand.widowLines;
+        const pageLines = Math.max(1, Math.round(cand.budget / lineHeightPx));
+        const craterLines = pageLines - contFillLines;
+        if (craterLines > 4) cost += 400 + (craterLines - 4) * 120;
+      } else if (cand.widowLines < effMinWidow) {
+        cost += 200;
+      }
 
       // Runt on the cut line — capped at 250 so it stays subordinate to fill:
       // with the raw table (up to ~5000 with minLastLineWords configs) the DP
