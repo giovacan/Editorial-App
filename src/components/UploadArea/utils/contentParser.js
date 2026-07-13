@@ -245,6 +245,35 @@ export const parseHtmlContent = (htmlContent) => {
     }
   }
 
+  // TOC-driven title matching: the document's own index TELLS US the chapter
+  // names. Body lines that match a TOC entry (with or without the "LECCIÓN N"
+  // prefix — e.g. the entry says "LECCIÓN 1  La Intención Original De Dios"
+  // and the body heading is just "LA INTENCIÓN ORIGINAL DE DIOS") are real
+  // chapter starts even when no pattern would catch them.
+  if (tocStart !== -1) {
+    const norm = (s) => s.toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9ñ¿?¡!]+/gi, ' ')
+      .trim();
+    const NUM_PREFIX_RE = /^(lección|leccion|lesson|sección|seccion|section|unidad|unit|módulo|modulo|module|tema|sesión|sesion|session|día|dia|day|capítulo|capitulo|chapter|parte|part)\s*#?\d+\s*/i;
+    const tocKeys = new Set();
+    for (const i of skipIndices) {
+      if (i === tocStart) continue;
+      const raw = topChildren[i]?.textContent?.trim() || '';
+      if (raw.length < 4) continue;
+      tocKeys.add(norm(raw));
+      const namePart = raw.replace(NUM_PREFIX_RE, '').trim();
+      if (namePart.length >= 4) tocKeys.add(norm(namePart));
+    }
+    const tocEnd = Math.max(...skipIndices);
+    for (let i = tocEnd + 1; i < topChildren.length; i++) {
+      if (approvedHeadings.has(i)) continue;
+      const t = topChildren[i].textContent?.trim() || '';
+      if (!t || t.length > 90) continue;
+      if (tocKeys.has(norm(t))) approvedHeadings.add(i);
+    }
+  }
+
   topChildren.forEach((el, index) => {
     if (skipIndices.has(index)) return; // documento's own TOC — omitted
     const text = el.textContent?.trim() || '';

@@ -32,6 +32,27 @@ describe('parseHtmlContent con tabla de contenidos propia', () => {
     expect(allHtml).toContain('Tarde o temprano');
   });
 
+  it('títulos del cuerpo que coinciden con la TDC abren capítulo (sin prefijo)', () => {
+    const html3 = [
+      '<p>CONTENIDO</p>',
+      '<p>INTRODUCCIÓN</p>',
+      '<p>LECCIÓN 1\tLa Intención Original De Dios</p>',
+      '<p>LECCIÓN 2\tLas Actitudes Y Excusas</p>',
+      '<p>INTRODUCCIÓN</p>',
+      `<p>${CUERPO}</p>`,
+      '<p>LA INTENCIÓN ORIGINAL DE DIOS</p>',   // título del cuerpo SIN "LECCIÓN 1"
+      `<p>${CUERPO}</p>`,
+      '<p>LAS ACTITUDES Y EXCUSAS</p>',
+      `<p>${CUERPO}</p>`,
+    ].join('');
+    const { chapters } = parseHtmlContent(html3);
+    const titles = chapters.map(c => c.title);
+    expect(titles.some(t => /^INTRODUCCIÓN$/i.test(t))).toBe(true);
+    expect(titles.some(t => /INTENCIÓN ORIGINAL/i.test(t))).toBe(true);
+    expect(titles.some(t => /ACTITUDES Y EXCUSAS/i.test(t))).toBe(true);
+    expect(chapters.length).toBe(3);
+  });
+
   it('lecciones reales con cuerpo siguen abriendo capítulo', () => {
     const html2 = [
       `<p>INTRODUCCIÓN</p>`,
