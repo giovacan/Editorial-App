@@ -145,6 +145,31 @@ export const parseHtmlContent = (htmlContent) => {
     return false;
   };
 
+  // ── Book title extraction ────────────────────────────────────────────
+  // The document's own title is usually the first substantial line, sitting
+  // BEFORE the TOC marker / first chapter: a short, non-heading, non-body
+  // line (often the largest/bold). Extract it so the app can prefill the
+  // book title instead of leaving it blank.
+  const detectBookTitle = () => {
+    const first = Array.from(tempDiv.children).slice(0, 8);
+    const TOC_RE = /^(contenido|índice|indice|tabla de contenidos?|table of contents)$/i;
+    for (const el of first) {
+      const t = el.textContent?.trim() || '';
+      if (!t || t.length < 3) continue;
+      if (TOC_RE.test(t)) break;               // reached the TOC — title (if any) was before it
+      if (isChapterHeading(el)) break;          // reached a real chapter — no standalone title
+      if (t.length > 90) break;                 // long paragraph = body already started
+      if (/[.!?]$/.test(t)) continue;           // sentence = not a title
+      if (/^["«“”‘“]/.test(t)) continue;
+      return t;                                 // first clean short line = book title
+    }
+    return '';
+  };
+  const bookTitle = detectBookTitle();
+  const bookTitleNorm = bookTitle
+    ? bookTitle.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9ñ]+/gi, ' ').trim()
+    : '';
+
   const allElements = tempDiv.querySelectorAll('p, h1, h2, h3, h4, h5, h6, div, section, article');
 
   if (allElements.length < 5 && htmlContent.length > 5000) {
@@ -317,10 +342,18 @@ export const parseHtmlContent = (htmlContent) => {
     }
   }
 
+  let bookTitleConsumed = false;
   topChildren.forEach((el, index) => {
     if (skipIndices.has(index)) return; // documento's own TOC — omitted
     const text = el.textContent?.trim() || '';
     if (!text || text.length < 2) return;
+
+    // Drop the standalone book-title line from the body (it moves to the
+    // book metadata). Only the first occurrence, only before any chapter.
+    if (!bookTitleConsumed && !currentChapter && bookTitleNorm) {
+      const tn = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9ñ]+/gi, ' ').trim();
+      if (tn === bookTitleNorm) { bookTitleConsumed = true; return; }
+    }
 
     if (approvedHeadings.has(index)) {
       flushAll();
@@ -391,5 +424,5 @@ export const parseHtmlContent = (htmlContent) => {
   }
 
   chapters.forEach(ch => { ch.wordCount = calcWordCount(ch.html); });
-  return { chapters, detectedHeadings };
+  return { chapters, detectedHeadings, bookTitle };
 };

@@ -466,9 +466,14 @@ const useEditorStore = create<EditorState>()(
       editing: { ...state.editing, activeChapterId: id }
     })),
 
-    loadContent: (chapters) => set((state) => {
+    loadContent: (chapters, bookTitle?: string) => set((state) => {
+      // Prefill the book title from the document when we found one and the
+      // user hasn't set one already (never clobber an existing title).
+      const nextTitle = (bookTitle && !state.bookData.title)
+        ? bookTitle
+        : state.bookData.title;
       const newState = {
-        bookData: { ...state.bookData, chapters },
+        bookData: { ...state.bookData, chapters, title: nextTitle },
         editing: {
           ...state.editing,
           activeChapterId: chapters[0]?.id || null

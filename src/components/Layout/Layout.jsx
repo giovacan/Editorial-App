@@ -159,8 +159,8 @@ function Layout() {
     URL.revokeObjectURL(url);
   };
 
-  const handleContentLoaded = (loadedChapters) => {
-    loadContent(loadedChapters);
+  const handleContentLoaded = (loadedChapters, bookTitle) => {
+    loadContent(loadedChapters, bookTitle);
   };
 
   const handleExportPdf  = () => setExportModal({ open: true, format: 'pdf' });

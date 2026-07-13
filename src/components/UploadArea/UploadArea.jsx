@@ -11,6 +11,7 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
   const [mammothReady, setMammothReady] = useState(() => !!window.mammoth);
   const [detectedChaptersLocal, setDetectedChaptersLocal] = useState([]);
   const [pendingChapters, setPendingChapters] = useState(null);
+  const [pendingBookTitle, setPendingBookTitle] = useState('');
   const [showChapterDetection, setShowChapterDetection] = useState(false);
   const [chapterDetectionConfirmed, setChapterDetectionConfirmed] = useState(false);
   const fileInputRef = useRef(null);
@@ -73,7 +74,7 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
   };
 
   const handleHtmlContent = (htmlContent) => {
-    const { chapters, detectedHeadings } = parseHtmlContent(htmlContent);
+    const { chapters, detectedHeadings, bookTitle } = parseHtmlContent(htmlContent);
     if (detectedHeadings.length > 0) {
       const chapterDetections = chapters.map((ch, idx) => ({
         chapterId: ch.id, chapterIndex: idx,
@@ -81,17 +82,18 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
       }));
       setDetectedChaptersLocal(chapterDetections);
       setPendingChapters(chapters);
+      setPendingBookTitle(bookTitle || '');
       setShowChapterDetection(true);
     } else {
       setConfirmedChapterTitles([]);
-      onContentLoaded(chapters);
+      onContentLoaded(chapters, bookTitle || '');
     }
   };
 
   const handleChaptersConfirm = (confirmedList) => {
     setConfirmedChapterTitles(confirmedList.filter(ch => ch.confirmed).map(ch => ch.detectedTitle));
     if (onChaptersDetected) onChaptersDetected(confirmedList);
-    if (pendingChapters) { onContentLoaded(pendingChapters); setPendingChapters(null); }
+    if (pendingChapters) { onContentLoaded(pendingChapters, pendingBookTitle); setPendingChapters(null); setPendingBookTitle(''); }
     // Dialog stays open — closes automatically when pagination finishes
     setChapterDetectionConfirmed(true);
   };

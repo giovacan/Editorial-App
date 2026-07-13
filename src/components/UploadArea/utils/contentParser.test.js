@@ -108,6 +108,28 @@ describe('parseHtmlContent con tabla de contenidos propia', () => {
     expect(titles.some(t => /Una vida viviendo/i.test(t))).toBe(false);
   });
 
+  it('extrae el título del libro y lo saca del contenido', () => {
+    const html = [
+      '<p>CREADOS PARA UN PROPÓSITO</p>',   // título del libro
+      '<p>CONTENIDO</p>',
+      '<p>INTRODUCCIÓN</p>',
+      '<p>LECCIÓN 1\tPrimera Lección</p>',
+      '<p>INTRODUCCIÓN</p>',
+      `<p>${CUERPO}</p>`,
+    ].join('');
+    const { chapters, bookTitle } = parseHtmlContent(html);
+    expect(bookTitle).toBe('CREADOS PARA UN PROPÓSITO');
+    // El título NO aparece como contenido/capítulo
+    expect(chapters.map(c => c.title).some(t => /CREADOS PARA UN/i.test(t))).toBe(false);
+    expect(chapters.map(c => c.html).join('')).not.toContain('CREADOS PARA UN PROPÓSITO');
+  });
+
+  it('no inventa título cuando el documento arranca con cuerpo', () => {
+    const html = `<p>${CUERPO}</p><p>Más texto narrativo de cuerpo que sigue el flujo natural del documento sin ningún título.</p>`;
+    const { bookTitle } = parseHtmlContent(html);
+    expect(bookTitle).toBe('');
+  });
+
   it('no descarta contenido que aparece antes del primer capítulo', () => {
     const html5 = [
       '<p>CONTENIDO</p>',
