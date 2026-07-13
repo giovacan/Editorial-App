@@ -24,6 +24,7 @@
 
 import { buildFontString } from './textMeasurement.js';
 import { collapseWhitespace, splitWordsAtDashes } from './textPreprocess.js';
+import { fittingHyphenPrefix } from './spanishHyphen.js';
 import {
   htmlToText,
   getInnerHtml,
@@ -89,14 +90,36 @@ const computeLineBreaks = (collapsed, width, fontStr, indentPx, wordSpacingPx) =
     const eff = i === 0 ? 0 : (t.joinsPrev ? 0 : spaceW);
     const needed = lineWidth + eff + ww;
     if (i > 0 && needed > width) {
-      lines.push({ endChar: lineEnd });
+      lines.push({ endChar: lineEnd, width: lineWidth, nextToken: t });
       lineWidth = ww;
     } else {
       lineWidth = needed;
     }
     lineEnd = t.end;
   }
-  lines.push({ endChar: lineEnd });
+  lines.push({ endChar: lineEnd, width: lineWidth, nextToken: null });
+
+  // ── Hyphen pull (guionado) ────────────────────────────────────────────
+  // A justified line that ends short because its next word was long gets a
+  // syllable prefix of that word pulled up, ending in "-" like print books.
+  // Line COUNT never changes (following lines only lose characters), so
+  // pagination heights are untouched — this is presentation only.
+  for (let li = 0; li < lines.length - 1; li++) {
+    const line = lines[li];
+    const nt = line.nextToken;
+    if (!nt || nt.joinsPrev) continue;              // dash boundaries: no pull
+    if (line.width / width >= 0.93) continue;       // already full — no gap
+    const available = width - line.width - spaceW;
+    if (available <= 0) continue;
+    const prefix = fittingHyphenPrefix(nt.text, available, ctx2d);
+    if (!prefix) continue;
+    // Never leave the paragraph's final line empty: if the next line is the
+    // last one and consists of that single token, keep at least 3 chars.
+    if (li === lines.length - 2 && lines[li + 1].endChar - nt.end + nt.text.length <= prefix.length + 2) continue;
+    line.hyphenPull = prefix.length;                // chars pulled from next word
+    line.endChar = (nt.end - nt.text.length) + prefix.length;
+    line.pulledMidWord = true;
+  }
   return lines;
 };
 
@@ -141,6 +164,7 @@ const renderBlockAsLines = (block, layoutCtx) => {
 
   // Slice the inner HTML at the line boundaries (preserves inline tags).
   const lineHtmls = [];
+  const hyphened = [];
   let remaining = inner;
   let consumed = 0;
   for (let li = 0; li < lines.length - 1; li++) {
@@ -149,10 +173,12 @@ const renderBlockAsLines = (block, layoutCtx) => {
     const { headHtml, tailHtml } = splitHtmlByCharsPreservingTags(remaining, localEnd, { trimLeadingSpace: true });
     if (!headHtml) { _lineCache.set(cacheKey, false); return null; }
     lineHtmls.push(headHtml);
+    hyphened.push(!!lines[li].pulledMidWord);
     remaining = tailHtml;
     consumed = lines[li].endChar + (collapsed[lines[li].endChar] === ' ' ? 1 : 0);
   }
   lineHtmls.push(remaining);
+  hyphened.push(false);
   if (!remaining || !htmlToText(remaining).trim()) { _lineCache.set(cacheKey, false); return null; }
 
   // The block's own final-line alignment (left for paragraph ends, justify
@@ -173,7 +199,10 @@ const renderBlockAsLines = (block, layoutCtx) => {
     const parts = ['display:block'];
     parts.push(`text-align-last:${isLast ? finalAlign : 'justify'}`);
     if (i === 0 && indentPx > 0) parts.push(`text-indent:${indentPx.toFixed(2)}px`);
-    return `<span class="el-line" style="${parts.join(';')};">${lh}</span>`;
+    // Hyphen pull: the line ends mid-word (a syllable of the next line's
+    // first word was pulled up) — draw the hyphen, like print.
+    const body = hyphened[i] ? `${lh}-` : lh;
+    return `<span class="el-line" style="${parts.join(';')};">${body}</span>`;
   }).join('');
 
   const closeTag = (outer.match(/<\/[a-zA-Z]+>\s*$/) || ['</p>'])[0];

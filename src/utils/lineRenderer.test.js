@@ -37,7 +37,8 @@ describe('renderPageAsEngineLines', () => {
       .map(s => collapseWhitespace(htmlToText(s)).trim());
     let rendered = '';
     for (const lt of lineTexts) {
-      if (!rendered) rendered = lt;
+      if (!rendered) { rendered = lt; continue; }
+      if (/-$/.test(rendered)) rendered = rendered.slice(0, -1) + lt; // guionado: unir sin espacio
       else if (/[—–]$/.test(rendered)) rendered += lt;
       else rendered += ' ' + lt;
     }
