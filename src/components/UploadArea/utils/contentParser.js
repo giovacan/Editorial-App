@@ -247,6 +247,7 @@ export const parseHtmlContent = (htmlContent) => {
     if (t && t.length >= 2 && isChapterHeading(el)) headingCandidates.push(i);
   });
   const candidateSet = new Set(headingCandidates);
+  const headingLabels = new Map(); // elementIndex → structural label ("LECCIÓN 1")
   const approvedHeadings = filterIndexListings(headingCandidates, (idx) => {
     // Run tail is a REAL heading when followed by body text (long, non-heading).
     const next = topChildren[idx + 1];
@@ -283,25 +284,27 @@ export const parseHtmlContent = (htmlContent) => {
       .normalize('NFD').replace(/[̀-ͯ]/g, '')
       .replace(/[^a-z0-9ñ]+/gi, ' ')
       .trim();
-    const NUM_PREFIX_RE = /^(lección|leccion|lesson|sección|seccion|section|unidad|unit|módulo|modulo|module|tema|sesión|sesion|session|día|dia|day|capítulo|capitulo|chapter|parte|part)\s*#?\d+\s*/i;
+    const NUM_PREFIX_RE = /^(lección|leccion|lesson|sección|seccion|section|unidad|unit|módulo|modulo|module|tema|sesión|sesion|session|día|dia|day|capítulo|capitulo|chapter|parte|part)\s*#?\d+/i;
     const tocKeys = new Set();
-    const tocNames = []; // per-entry name (sin prefijo) for token matching
+    const tocEntryData = []; // { name, label } per TOC entry (label = "LECCIÓN 1" o '')
     for (const i of skipIndices) {
       if (i === tocStart) continue;
       const raw = topChildren[i]?.textContent?.trim() || '';
       if (raw.length < 4) continue;
       tocKeys.add(norm(raw));
+      const prefixM = raw.match(NUM_PREFIX_RE);
+      const label = prefixM ? prefixM[0].replace(/\s+/g, ' ').trim().toUpperCase() : '';
       const namePart = raw.replace(NUM_PREFIX_RE, '').trim();
-      if (namePart.length >= 4) { tocKeys.add(norm(namePart)); tocNames.push(namePart); }
-      else tocNames.push(raw);
+      if (namePart.length >= 4) { tocKeys.add(norm(namePart)); tocEntryData.push({ name: namePart, label }); }
+      else tocEntryData.push({ name: raw, label });
     }
     // Stopwords include possessives (mi/su/tu…): the index may say "Mi
     // Propósito" while the body titles it "Su Propósito".
     const STOP = new Set(['el','la','los','las','un','una','de','del','y','o','a','en','para','por','con','al','su','mi','tu','sus','mis','tus','nuestro','nuestra','the','of','and','to','for','my','your','his','her']);
     const contentTokens = (s) => norm(s).split(' ').filter(w => w.length > 1 && !STOP.has(w));
     // One token set per TOC ENTRY so each chapter matches at most once.
-    const tocEntries = tocNames
-      .map(n => ({ toks: new Set(contentTokens(n)), norm: norm(n), used: false }))
+    const tocEntries = tocEntryData
+      .map(e => ({ toks: new Set(contentTokens(e.name)), norm: norm(e.name), label: e.label, used: false }))
       .filter(e => e.toks.size >= 2);
 
     const jaccard = (a, b) => {
@@ -338,9 +341,49 @@ export const parseHtmlContent = (htmlContent) => {
         if (best && bestSim >= 0.6) matched = best;
       }
 
-      if (matched) { matched.used = true; approvedHeadings.add(i); }
+      if (matched) {
+        matched.used = true;
+        approvedHeadings.add(i);
+        if (matched.label) headingLabels.set(i, matched.label);
+      }
     }
   }
+
+  // Structural label helpers. A chapter's stored fields:
+  //   label  — "LECCIÓN 1" / "CAPÍTULO 3" ('' for front-matter like INTRODUCCIÓN)
+  //   name   — the chapter's own name ("La Intención Original De Dios")
+  //   title  — display composite: `${label}  ${name}` (or just name/label)
+  // Rule (user): respect the document's label if present; else auto-generate.
+  const LABEL_IN_TEXT_RE = /^\s*(lección|leccion|lesson|sección|seccion|section|unidad|unit|módulo|modulo|module|tema|sesión|sesion|session|día|dia|day|capítulo|capitulo|chapter|parte|part)\s*#?\d+\s*[-–—:.\t ]*/i;
+  const FRONT_MATTER_RE = /^(introducción|introduccion|introduction|prólogo|prologo|prologue|prefacio|preface|epílogo|epilogo|epilogue|dedicatoria|agradecimientos|acknowledgements|conclusión|conclusion|colofón|colofon|bibliografía|bibliografia|foreword)\b/i;
+  const isFrontMatter = (name) => FRONT_MATTER_RE.test((name || '').trim());
+  const AUTO_LABEL_WORD = 'LECCIÓN'; // matches this document's family; generic enough
+
+  let autoCounter = 0;
+  const makeChapterFields = (rawText, tocLabel) => {
+    const raw = (rawText || '').trim();
+    // 1) Label already inside the body title text? Split & respect it.
+    const inTextM = raw.match(LABEL_IN_TEXT_RE);
+    if (inTextM) {
+      const label = inTextM[0].replace(/[-–—:.\t ]+$/, '').replace(/\s+/g, ' ').trim().toUpperCase();
+      const name = raw.slice(inTextM[0].length).trim() || raw;
+      autoCounter++;
+      return { label, name, title: `${label}  ${name}` };
+    }
+    // 2) Front matter — never numbered.
+    if (isFrontMatter(raw)) {
+      return { label: '', name: raw, title: raw };
+    }
+    // 3) Label known from the TOC entry — respect it.
+    if (tocLabel) {
+      autoCounter++;
+      return { label: tocLabel, name: raw, title: `${tocLabel}  ${raw}` };
+    }
+    // 4) Auto-generate a sequential label.
+    autoCounter++;
+    const label = `${AUTO_LABEL_WORD} ${autoCounter}`;
+    return { label, name: raw, title: `${label}  ${raw}` };
+  };
 
   let bookTitleConsumed = false;
   topChildren.forEach((el, index) => {
@@ -364,7 +407,12 @@ export const parseHtmlContent = (htmlContent) => {
         }
         chapters.push(currentChapter);
       }
-      currentChapter = { id: makeChapterId(chapters.length), type: 'chapter', title: text, html: '', wordCount: 0 };
+      const fields = makeChapterFields(text, headingLabels.get(index));
+      currentChapter = {
+        id: makeChapterId(chapters.length), type: 'chapter',
+        title: fields.title, chapterLabel: fields.label, chapterName: fields.name,
+        html: '', wordCount: 0
+      };
       currentSection = null;
     } else if (isSubtitle(el)) {
       flushAll();

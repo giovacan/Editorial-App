@@ -130,6 +130,53 @@ describe('parseHtmlContent con tabla de contenidos propia', () => {
     expect(bookTitle).toBe('');
   });
 
+  it('adjunta el rótulo (LECCIÓN N) del índice al capítulo, front-matter sin rótulo', () => {
+    const html = [
+      '<p>CONTENIDO</p>',
+      '<p>INTRODUCCIÓN</p>',
+      '<p>LECCIÓN 1\tLa Intención Original De Dios</p>',
+      '<p>LECCIÓN 2\tLas Actitudes Y Excusas</p>',
+      '<p>INTRODUCCIÓN</p>',
+      `<p>${CUERPO}</p>`,
+      '<p>LA INTENCIÓN ORIGINAL DE DIOS</p>',   // cuerpo sin rótulo → lo toma del índice
+      `<p>${CUERPO}</p>`,
+      '<p>LAS ACTITUDES Y EXCUSAS</p>',
+      `<p>${CUERPO}</p>`,
+    ].join('');
+    const { chapters } = parseHtmlContent(html);
+    const intro = chapters.find(c => /INTRODUCCIÓN/i.test(c.chapterName || c.title));
+    expect(intro.chapterLabel).toBe('');                        // front-matter: sin rótulo
+    const l1 = chapters.find(c => /INTENCIÓN ORIGINAL/i.test(c.chapterName || ''));
+    expect(l1.chapterLabel).toBe('LECCIÓN 1');                  // rótulo del índice
+    expect(l1.chapterName).toMatch(/INTENCIÓN ORIGINAL/i);
+    expect(l1.title).toBe('LECCIÓN 1  LA INTENCIÓN ORIGINAL DE DIOS');
+    const l2 = chapters.find(c => /ACTITUDES/i.test(c.chapterName || ''));
+    expect(l2.chapterLabel).toBe('LECCIÓN 2');
+  });
+
+  it('rótulo ya presente en el texto del cuerpo se respeta tal cual', () => {
+    const html = [
+      '<p>CAPÍTULO 3 - La Virtud Del Pudor</p>',
+      `<p>${CUERPO}</p>`,
+    ].join('');
+    const { chapters } = parseHtmlContent(html);
+    const ch = chapters.find(c => /PUDOR|Virtud/i.test(c.title));
+    expect(ch.chapterLabel).toBe('CAPÍTULO 3');
+    expect(ch.chapterName).toMatch(/Virtud Del Pudor/i);
+  });
+
+  it('auto-numera capítulos sin rótulo (y sin índice que consultar)', () => {
+    const html = [
+      '<p>CAPÍTULO 1 Primero</p>',      // trae rótulo → respeta y avanza contador
+      `<p>${CUERPO}</p>`,
+      '<h1>Un Título Sin Número</h1>',  // H1 sin rótulo → auto
+      `<p>${CUERPO}</p>`,
+    ].join('');
+    const { chapters } = parseHtmlContent(html);
+    const auto = chapters.find(c => /Sin Número/i.test(c.chapterName || c.title));
+    expect(auto.chapterLabel).toMatch(/\b2\b/); // segundo capítulo → número 2
+  });
+
   it('no descarta contenido que aparece antes del primer capítulo', () => {
     const html5 = [
       '<p>CONTENIDO</p>',

@@ -675,7 +675,14 @@ export const buildChapterTitleHtml = (chapter, config, baseFontSize, lineHeightP
   const hierarchyEnabled = ctConfig.hierarchyEnabled !== false;
   let parsedTitle = { label: null, title: chapter.title, detected: false };
   if (hierarchyEnabled) {
-    parsedTitle = parseChapterTitleHierarchy(chapter.title);
+    // Prefer the explicit structural fields the importer produced
+    // (chapterLabel = "LECCIÓN 1", chapterName = "La Intención…"); fall back
+    // to parsing the title string for chapters created before this existed.
+    if (chapter.chapterLabel && chapter.chapterName) {
+      parsedTitle = { label: chapter.chapterLabel, title: chapter.chapterName, detected: true };
+    } else {
+      parsedTitle = parseChapterTitleHierarchy(chapter.title);
+    }
   }
 
   const renderTitleInner = () => {
