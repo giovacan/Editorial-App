@@ -229,7 +229,24 @@ export const parseHtmlContent = (htmlContent) => {
     return t.length >= 120 && !candidateSet.has(idx + 1);
   });
 
+  // Document's own table of contents: OMIT it entirely — the app generates
+  // its own TOC. Region = the CONTENIDO/ÍNDICE marker + the short/listing
+  // lines that follow, until the first real heading or body paragraph.
+  const TOC_MARKER_RE = /^(contenido|índice|indice|tabla de contenidos?|table of contents)$/i;
+  const skipIndices = new Set();
+  const tocStart = topChildren.findIndex(el => TOC_MARKER_RE.test((el.textContent || '').trim()));
+  if (tocStart !== -1) {
+    skipIndices.add(tocStart);
+    for (let i = tocStart + 1; i < Math.min(topChildren.length, tocStart + 60); i++) {
+      if (approvedHeadings.has(i)) break;
+      const t = topChildren[i].textContent?.trim() || '';
+      if (candidateSet.has(i) || t.length <= 100) { skipIndices.add(i); continue; }
+      break; // long non-heading text = body — the TOC region ended
+    }
+  }
+
   topChildren.forEach((el, index) => {
+    if (skipIndices.has(index)) return; // documento's own TOC — omitted
     const text = el.textContent?.trim() || '';
     if (!text || text.length < 2) return;
 
