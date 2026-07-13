@@ -251,9 +251,12 @@ export const parseHtmlContent = (htmlContent) => {
   // and the body heading is just "LA INTENCIÓN ORIGINAL DE DIOS") are real
   // chapter starts even when no pattern would catch them.
   if (tocStart !== -1) {
+    // Normalize for matching: lowercase, strip accents AND all punctuation
+    // (¿?¡!.,: etc.) so "¿Cómo … Propósito?" (index) == "Cómo … Propósito"
+    // (body). Keeping the signs made tokens like "¿como" ≠ "como".
     const norm = (s) => s.toLowerCase()
       .normalize('NFD').replace(/[̀-ͯ]/g, '')
-      .replace(/[^a-z0-9ñ¿?¡!]+/gi, ' ')
+      .replace(/[^a-z0-9ñ]+/gi, ' ')
       .trim();
     const NUM_PREFIX_RE = /^(lección|leccion|lesson|sección|seccion|section|unidad|unit|módulo|modulo|module|tema|sesión|sesion|session|día|dia|day|capítulo|capitulo|chapter|parte|part)\s*#?\d+\s*/i;
     const tocKeys = new Set();
@@ -268,7 +271,9 @@ export const parseHtmlContent = (htmlContent) => {
     // Token sets per TOC entry — body titles often differ from the index by
     // an article/word ("Las Actitudes Y Excusas" vs "LAS ACTITUDES Y LAS
     // EXCUSAS"), so match by high token overlap, not exact equality.
-    const STOP = new Set(['el','la','los','las','un','una','de','del','y','o','a','en','para','por','con','al','su','the','of','and','to','for']);
+    // Stopwords include possessives (mi/su/tu…): the index may say "Mi
+    // Propósito" while the body titles it "Su Propósito".
+    const STOP = new Set(['el','la','los','las','un','una','de','del','y','o','a','en','para','por','con','al','su','mi','tu','sus','mis','tus','nuestro','nuestra','the','of','and','to','for','my','your','his','her']);
     const contentTokens = (s) => norm(s).split(' ').filter(w => w.length > 1 && !STOP.has(w));
     const tocTokenSets = [...tocKeys].map(k => new Set(contentTokens(k))).filter(s => s.size >= 2);
 

@@ -69,6 +69,19 @@ describe('parseHtmlContent con tabla de contenidos propia', () => {
     expect(titles.some(t => /ACTITUDES Y LAS EXCUSAS/i.test(t))).toBe(true);
   });
 
+  it('matchea a pesar de signos ¿? y posesivos distintos (mi vs su)', () => {
+    const html6 = [
+      '<p>CONTENIDO</p>',
+      '<p>LECCIÓN 5\t¿Cómo Descubrir Mi Propósito?</p>',
+      '<p>INTRODUCCIÓN</p>',
+      `<p>${CUERPO}</p>`,
+      '<p>CÓMO DESCUBRIR SU PROPÓSITO</p>',   // sin signos, "su" en vez de "mi"
+      `<p>${CUERPO}</p>`,
+    ].join('');
+    const { chapters } = parseHtmlContent(html6);
+    expect(chapters.map(c => c.title).some(t => /DESCUBRIR SU PROPÓSITO/i.test(t))).toBe(true);
+  });
+
   it('no descarta contenido que aparece antes del primer capítulo', () => {
     const html5 = [
       '<p>CONTENIDO</p>',
