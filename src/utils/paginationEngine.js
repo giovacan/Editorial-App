@@ -110,7 +110,9 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
     }
     if (k < 1) return [html];
     const head = build(segs.slice(0, k), ' data-split-head="true"');
-    const rest = build(segs.slice(k), ' data-continuation="true"');
+    // Verse continuation: same paragraph — never indented.
+    const restOpen = cleanOpen.replace(/text-indent:\s*[^;"]+/i, 'text-indent:0');
+    const rest = restOpen.replace(/>$/, ' data-continuation="true">') + segs.slice(k).join('<br>') + closeTagM[0];
     // Line-level orphan/widow floors: ≥2 rendered lines on each side.
     if (measureBr(head) < lineH * 2 || measureBr(rest) < lineH * 2) return [html];
     return [head, rest];
@@ -353,7 +355,11 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
       const restFirstLetter = restPlainText.match(/\p{L}/u)?.[0] || '';
       const restStartsLower = restFirstLetter && restFirstLetter === restFirstLetter.toLowerCase()
         && restFirstLetter !== restFirstLetter.toUpperCase();
-      const isMidSentence = restStartsLower || !/[.!?»"\u201D\u2026]\s*$/.test(chunkPlainText);
+      // The rest is ALWAYS a continuation of the same paragraph - even when
+      // the cut fell exactly at a sentence end: a split paragraph NEVER
+      // indents its continuation (the old sentence-boundary branch that
+      // indented it was a typographic error).
+      const isMidSentence = true; void restStartsLower; void chunkPlainText;
 
       let continuationStyle;
       if (isMidSentence) {
