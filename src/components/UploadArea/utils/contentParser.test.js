@@ -226,4 +226,23 @@ describe('parseHtmlContent con tabla de contenidos propia', () => {
     expect(titles.filter(t => /^LECCIÓN/i.test(t)).length).toBe(2);
     expect(titles.some(t => /^INTRODUCCIÓN$/i.test(t))).toBe(true);
   });
+
+  it('normaliza espacios múltiples y etiquetas <em> sueltas del documento', () => {
+    const html = [
+      `<p>CAPÍTULO 1 Primero</p>`,
+      `<p>panorama profético sobre cualquier           acontecimiento global que enfrentemos. ${CUERPO}</p>`,
+      `<p>Rey, y él mismo nos salvará! </em> Él nos salvará de esos gobernantes. ${CUERPO}</p>`,
+    ].join('');
+    const { chapters } = parseHtmlContent(html);
+    const allHtml = chapters.map(c => c.html).join('');
+    // sin runs de 3+ espacios
+    expect(/\S {3,}\S/.test(allHtml)).toBe(false);
+    // sin </em> huérfano
+    const emOpen = (allHtml.match(/<em[\s>]/gi) || []).length;
+    const emClose = (allHtml.match(/<\/em>/gi) || []).length;
+    expect(emClose).toBeLessThanOrEqual(emOpen);
+    // el texto se conserva
+    expect(allHtml).toContain('panorama profético sobre cualquier acontecimiento');
+    expect(allHtml).toContain('Rey, y él mismo nos salvará');
+  });
 });

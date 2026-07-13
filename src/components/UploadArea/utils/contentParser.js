@@ -107,6 +107,34 @@ export const parseHtmlContent = (htmlContent) => {
 
   const tempDiv = window.document.createElement('div');
   tempDiv.innerHTML = htmlContent;
+  // Normalize DOCX/paste artifacts that survive into stored HTML and break the
+  // engine↔browser agreement:
+  //   1) Runs of multiple spaces. The height engine COLLAPSES them when
+  //      measuring (counts correct lines), but they survive in the stored
+  //      HTML; once a paragraph is SPLIT into fragments the browser renders
+  //      those extra spaces inside a justified line → big visible gaps and
+  //      the line renderer bails (data-engine-lines skipped), so the page
+  //      measures 96% yet looks half-empty (reported by the user).
+  //   2) Stray/unbalanced inline tags (lone </em>) that inflate DOM height.
+  // Round-tripping each block through a fresh node rebalances tags; a regex
+  // collapses whitespace in the text nodes.
+  const normalizeBlocks = (root) => {
+    const els = root.querySelectorAll('p, h1, h2, h3, h4, h5, h6, blockquote, li, div');
+    for (const el of els) {
+      let html = el.innerHTML;
+      const before = html;
+      // Collapse runs of whitespace (incl. NBSP sequences) to a single space.
+      html = html.replace(/[\t  ]{2,}/g, ' ').replace(/\s{2,}/g, ' ');
+      // Rebalance inline markup if present.
+      if (/<\/?(em|strong|b|i|u|span)[\s>]/i.test(html)) {
+        const tmp = window.document.createElement(el.tagName || 'div');
+        tmp.innerHTML = html;
+        html = tmp.innerHTML;
+      }
+      if (html !== before) el.innerHTML = html;
+    }
+  };
+  normalizeBlocks(tempDiv);
 
   const isSubtitle = (el) => {
     const tag = el.tagName?.toLowerCase();
