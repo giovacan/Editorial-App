@@ -229,9 +229,10 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
       // lines are welcome (maximum fill). Line rendering phase 1 covers plain
       // <p> only — blocks with inline runs or quotes stay native and keep the
       // ceiling.
+      // Line rendering now covers plain P, runs (<strong>/<em>) and quotes;
+      // only entities and styled <span> remain native (renderer bails there).
       const wrapSafe = canvasCtx?.engineLinesRender === true
-        && !isBlockquote
-        && !/<(strong|b|em|i|span)[\s>]/i.test(remainingHtml);
+        && !/&|<span[^>]*style=/i.test(remainingHtml);
       const lawOk = (s) => {
         if (!s || s.pos <= 0) return false;
         const ratio = s.lastLineWidth / splitAvailW;

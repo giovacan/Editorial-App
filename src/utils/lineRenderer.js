@@ -54,16 +54,101 @@ const _lineCache = new Map();
 const MAX_LINE_CACHE = 3000;
 
 /**
+ * Parse inline bold/italic runs from a block's inner HTML.
+ * Supported: <strong>/<b>, <em>/<i>, style-less <span>. Anything else
+ * (entities, nested blocks, styled spans) → null (block renders natively).
+ * Returns { text, charStyles } where charStyles[i] ∈ {0,1,2,3} = bold|italic bits.
+ */
+const parseInlineRuns = (inner) => {
+  if (inner.indexOf('&') !== -1) return null; // entities shift char offsets
+  let bold = 0, italic = 0;
+  let text = '';
+  const charStyles = [];
+  let i = 0;
+  while (i < inner.length) {
+    const c = inner[i];
+    if (c === '<') {
+      const end = inner.indexOf('>', i);
+      if (end === -1) return null;
+      const tagStr = inner.slice(i, end + 1).toLowerCase();
+      const nm = tagStr.match(/^<\/?\s*([a-z0-9]+)/);
+      const name = nm ? nm[1] : '';
+      const closing = tagStr[1] === '/';
+      if (name === 'strong' || name === 'b') bold += closing ? -1 : 1;
+      else if (name === 'em' || name === 'i') italic += closing ? -1 : 1;
+      else if (name === 'span' && !/style=/.test(tagStr)) { /* estilo-neutral */ }
+      else return null;
+      i = end + 1;
+    } else {
+      text += c;
+      charStyles.push((bold > 0 ? 1 : 0) | (italic > 0 ? 2 : 0));
+      i++;
+    }
+  }
+  return { text, charStyles };
+};
+
+/**
+ * Horizontal box consumption (margins + paddings + left border) parsed from
+ * an inline style string — used to compute a quote's effective column width.
+ */
+const resolveHorizontalBoxPx = (styleStr, fontPx) => {
+  const toPx = (v) => {
+    const m = String(v).trim().match(/^(-?[\d.]+)(em|px|pt)?$/);
+    if (!m) return 0;
+    const n = parseFloat(m[1]);
+    const u = m[2] || 'px';
+    return u === 'em' ? n * fontPx : u === 'pt' ? n * (96 / 72) : n;
+  };
+  const expand = (val) => {
+    const p = val.trim().split(/\s+/).map(toPx);
+    if (p.length === 1) return [p[0], p[0], p[0], p[0]];
+    if (p.length === 2) return [p[0], p[1], p[0], p[1]];
+    if (p.length === 3) return [p[0], p[1], p[2], p[1]];
+    return p; // [t, r, b, l]
+  };
+  let mL = 0, mR = 0, pL = 0, pR = 0, bL = 0;
+  let m = styleStr.match(/(?:^|;)\s*margin:\s*([^;]+)/i);
+  if (m) { const e = expand(m[1]); mR = e[1]; mL = e[3]; }
+  m = styleStr.match(/margin-left:\s*([^;]+)/i);  if (m) mL = toPx(m[1]);
+  m = styleStr.match(/margin-right:\s*([^;]+)/i); if (m) mR = toPx(m[1]);
+  m = styleStr.match(/(?:^|;)\s*padding:\s*([^;]+)/i);
+  if (m) { const e = expand(m[1]); pR = e[1]; pL = e[3]; }
+  m = styleStr.match(/padding-left:\s*([^;]+)/i);  if (m) pL = toPx(m[1]);
+  m = styleStr.match(/padding-right:\s*([^;]+)/i); if (m) pR = toPx(m[1]);
+  m = styleStr.match(/border-left:\s*([\d.]+)px/i); if (m) bL = parseFloat(m[1]);
+  return mL + mR + pL + pR + bL;
+};
+
+// Measure a char range with per-char styles (segments measured in their font).
+const measureStyled = (ctx2d, str, startChar, charStyles, fonts) => {
+  let w = 0, i = 0;
+  while (i < str.length) {
+    const s = charStyles[startChar + i] || 0;
+    let j = i + 1;
+    while (j < str.length && (charStyles[startChar + j] || 0) === s) j++;
+    ctx2d.font = fonts[s];
+    w += ctx2d.measureText(str.slice(i, j)).width;
+    i = j;
+  }
+  return w;
+};
+
+/**
  * Compute the engine's line breaks for a plain text at full column width.
  * Dash-aware greedy walk — identical model to findSplitPos/the browser.
  * Returns an array of { endChar, spaceAfter } line descriptors (collapsed-text
  * char offsets), or null when measurement is unavailable.
  */
-const computeLineBreaks = (collapsed, width, fontStr, indentPx, wordSpacingPx) => {
+const computeLineBreaks = (collapsed, width, fontStr, indentPx, wordSpacingPx, styled = null) => {
   const ctx2d = getCtx2d();
   if (!ctx2d || !collapsed || width <= 0) return null;
   ctx2d.font = fontStr;
   const spaceW = ctx2d.measureText(' ').width + wordSpacingPx;
+  const measureToken = (t) => {
+    if (!styled) { ctx2d.font = fontStr; return ctx2d.measureText(t.text).width; }
+    return measureStyled(ctx2d, t.text, t.end - t.text.length, styled.charStyles, styled.fonts);
+  };
 
   const rawWords = collapsed.split(' ').filter(w => w.length > 0);
   if (rawWords.length === 0) return null;
@@ -86,7 +171,7 @@ const computeLineBreaks = (collapsed, width, fontStr, indentPx, wordSpacingPx) =
   let lineEnd = 0;
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
-    const ww = ctx2d.measureText(t.text).width;
+    const ww = measureToken(t);
     const eff = i === 0 ? 0 : (t.joinsPrev ? 0 : spaceW);
     const needed = lineWidth + eff + ww;
     if (i > 0 && needed > width) {
@@ -111,6 +196,19 @@ const computeLineBreaks = (collapsed, width, fontStr, indentPx, wordSpacingPx) =
     if (line.width / width >= 0.93) continue;       // already full — no gap
     const available = width - line.width - spaceW;
     if (available <= 0) continue;
+    // Set the measuring font for the pulled word (its own style when runs).
+    if (styled) {
+      const start = nt.end - nt.text.length;
+      const s0 = styled.charStyles[start] || 0;
+      let uniform = true;
+      for (let k = 1; k < nt.text.length; k++) {
+        if ((styled.charStyles[start + k] || 0) !== s0) { uniform = false; break; }
+      }
+      if (!uniform) continue; // mixed-style word — skip the pull
+      ctx2d.font = styled.fonts[s0];
+    } else {
+      ctx2d.font = fontStr;
+    }
     const prefix = fittingHyphenPrefix(nt.text, available, ctx2d);
     if (!prefix) continue;
     // Never leave the paragraph's final line empty: if the next line is the
@@ -130,13 +228,16 @@ const computeLineBreaks = (collapsed, width, fontStr, indentPx, wordSpacingPx) =
 const renderBlockAsLines = (block, layoutCtx) => {
   const outer = block.outerHtml || '';
   const tag = (block.tag || '').toUpperCase();
-  if (tag !== 'P') return null;
+  if (tag !== 'P' && tag !== 'BLOCKQUOTE') return null;
   if (/<(br|img|table|div|ul|ol|blockquote|h[1-6])[\s/>]/i.test(block.innerHTML || '')) return null;
 
   const open = (outer.match(/^<[^>]+>/) || [''])[0];
   const styleStr = (open.match(/style="([^"]*)"/) || ['', ''])[1];
 
   const inner = getInnerHtml(outer);
+  // HTML entities count as ONE visible char in the slicer but several in the
+  // measured text — offsets would desync. Those blocks render natively.
+  if (inner.indexOf('&') !== -1) return null;
   const collapsed = collapseWhitespace(htmlToText(inner)).trim();
   if (!collapsed) return null;
 
@@ -146,8 +247,33 @@ const renderBlockAsLines = (block, layoutCtx) => {
   if (fsM) fontPx = fsM[2] === 'pt' ? parseFloat(fsM[1]) * (96 / 72) : parseFloat(fsM[1]);
   const isBold = /font-weight:\s*(bold|[7-9]00)/i.test(styleStr);
   const isItalic = /font-style:\s*italic/i.test(styleStr);
-  // Uniform inline runs only — mixed <strong>/<em> spans measure differently.
-  if (/<(strong|b|em|i|span)[\s>]/i.test(inner)) return null;
+
+  // Inline runs (<strong>/<em>): measured per style segment; anything the run
+  // parser can't guarantee (entities, styled spans) renders natively.
+  let styled = null;
+  if (/<(strong|b|em|i|span)[\s>]/i.test(inner)) {
+    const runs = parseInlineRuns(inner);
+    if (!runs) return null;
+    if (collapseWhitespace(runs.text).trim() !== collapsed) return null;
+    // Align charStyles with the trimmed/collapsed text (leading ws offset).
+    const lead = runs.text.length - runs.text.replace(/^\s+/, '').length;
+    const charStyles = runs.charStyles.slice(lead);
+    styled = {
+      charStyles,
+      fonts: [
+        buildFontString(fontPx, layoutCtx.fontFamily, isBold, isItalic),
+        buildFontString(fontPx, layoutCtx.fontFamily, true, isItalic),
+        buildFontString(fontPx, layoutCtx.fontFamily, isBold, true),
+        buildFontString(fontPx, layoutCtx.fontFamily, true, true),
+      ],
+    };
+  }
+
+  // Effective column width: quotes (and any styled block) consume horizontal
+  // margins/paddings/border — same box math the height engine uses.
+  const horiz = resolveHorizontalBoxPx(styleStr, fontPx);
+  const effWidth = layoutCtx.contentWidth - horiz;
+  if (effWidth < fontPx * 4) return null;
 
   const fontStr = buildFontString(fontPx, layoutCtx.fontFamily, isBold, isItalic);
   const wsM = styleStr.match(/word-spacing:\s*(-?[\d.]+)px/i);
@@ -155,11 +281,11 @@ const renderBlockAsLines = (block, layoutCtx) => {
   const indentM = styleStr.match(/text-indent:\s*([\d.]+)em/i);
   const indentPx = indentM ? parseFloat(indentM[1]) * fontPx : 0;
 
-  const cacheKey = `${collapsed.length}|${collapsed.slice(0, 32)}|${fontStr}|${layoutCtx.contentWidth}|${indentPx}|${wordSpacingPx}|${styleStr.length}`;
+  const cacheKey = `${collapsed.length}|${collapsed.slice(0, 32)}|${fontStr}|${effWidth}|${indentPx}|${wordSpacingPx}|${styleStr.length}|${styled ? 'r' : 'p'}`;
   const hit = _lineCache.get(cacheKey);
   if (hit !== undefined) return hit === false ? null : hit;
 
-  const lines = computeLineBreaks(collapsed, layoutCtx.contentWidth, fontStr, indentPx, wordSpacingPx);
+  const lines = computeLineBreaks(collapsed, effWidth, fontStr, indentPx, wordSpacingPx, styled);
   if (!lines || lines.length === 0) { _lineCache.set(cacheKey, false); return null; }
 
   // Slice the inner HTML at the line boundaries (preserves inline tags).

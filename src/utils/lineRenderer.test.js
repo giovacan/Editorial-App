@@ -70,14 +70,44 @@ describe('renderPageAsEngineLines', () => {
 
   it('bloques fuera de alcance pasan intactos', () => {
     const cases = [
-      `<p style="${PSTYLE}">Texto con <strong>negritas</strong> mixtas dentro del párrafo.</p>`,
       `<p style="${PSTYLE}">Verso uno<br>Verso dos<br>Verso tres</p>`,
       `<h2 style="text-align:center;">Un subtítulo</h2>`,
       `<ul style="padding-left:1.5em;"><li>item uno</li><li>item dos</li></ul>`,
+      `<p style="${PSTYLE}">Con entidad &amp; especial dentro del texto largo que sigue y sigue.</p>`,
     ];
     for (const c of cases) {
       expect(renderPageAsEngineLines(c, CTX)).toBe(c);
     }
+  });
+
+  it('párrafos con negritas/cursivas se transforman preservando los tags', () => {
+    const withRuns = `<p style="${PSTYLE}">${LONG_TEXT.slice(0, 120)} <strong>una frase en negritas dentro del texto</strong> ${LONG_TEXT.slice(120)}</p>`;
+    const out = renderPageAsEngineLines(withRuns, CTX);
+    expect(out).not.toBe(withRuns);
+    expect(out).toContain('data-engine-lines');
+    expect(out).toContain('<strong>');
+    // texto preservado
+    const spans = (out.match(/<span class="el-line"[^>]*>[\s\S]*?<\/span>/g) || [])
+      .map(s => htmlToText(s).replace(/\s+/g, ' ').trim());
+    let joined = '';
+    for (const lt of spans) {
+      if (!joined) { joined = lt; continue; }
+      if (/-$/.test(joined)) joined = joined.slice(0, -1) + lt;
+      else if (/[—–]$/.test(joined)) joined += lt;
+      else joined += ' ' + lt;
+    }
+    expect(joined).toBe(collapseWhitespace(htmlToText(withRuns)).trim());
+  });
+
+  it('citas (blockquote) se transforman con su ancho reducido', () => {
+    const quote = `<blockquote class="quote classic" style="margin:1em 2em 1em 2em;padding:0.5em 1em;border-left:3px solid #444;font-size:11pt;text-align:justify;text-align-last:left;">${LONG_TEXT}</blockquote>`;
+    const out = renderPageAsEngineLines(quote, CTX);
+    expect(out).not.toBe(quote);
+    expect(out).toContain('data-engine-lines');
+    const plainOut = renderPageAsEngineLines(`<p style="${PSTYLE}">${LONG_TEXT}</p>`, CTX);
+    const qSpans = (out.match(/<span class="el-line"/g) || []).length;
+    const pSpans = (plainOut.match(/<span class="el-line"/g) || []).length;
+    expect(qSpans).toBeGreaterThan(pSpans); // columna más angosta → más líneas
   });
 
   it('es determinista', () => {

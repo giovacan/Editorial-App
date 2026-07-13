@@ -246,7 +246,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     (layoutHints?.global?.keepWithNextTags || []).join(','),
     safeConfig?.pagination?.engineMode || 'optimal',
     safeConfig?.render?.engineLines !== false ? 'el1' : 'el0',
-    'v64-dp' // bump to force cache invalidation after algorithm changes
+    'v65-dp' // bump to force cache invalidation after algorithm changes
   ].join('|'));
 
   // 'optimal' (default): global DP pagination per chapter — no fill-pass needed.
@@ -823,7 +823,7 @@ const snapChunkToSentenceBoundary = (chunk, rest, canvasCtx, lineHeightPx, maxTa
       // ceiling only matters when the browser re-breaks lines — i.e. for
       // blocks the line renderer does not draw (runs/quotes).
       const snapWrapSafe = canvasCtx.engineLinesRender === true
-        && !/<(strong|b|em|i|span)[\s>]/i.test(newInnerHead);
+        && !/&|<span[^>]*style=/i.test(newInnerHead);
       const snapCeilingOk = snapWrapSafe || ratio <= 0.93;
       if (!snapCeilingOk || !((lineWords >= 6 && ratio >= 0.68) || ratio >= 0.85)) return { chunk, rest };
     }
@@ -947,9 +947,10 @@ const enforceCutLineAlignment = (pages, canvasCtx) => {
       // does not apply — but only for blocks the line renderer actually draws
       // (plain <p>, no inline runs); the rest stay native and keep the ceiling.
       const ratio = lineW / W;
+      const btag = (b.tag || '').toUpperCase();
       const wrapSafe = canvasCtx.engineLinesRender === true
-        && (b.tag || '').toUpperCase() === 'P'
-        && !/<(strong|b|em|i|span)[\s>]/i.test(b.innerHTML || '');
+        && (btag === 'P' || btag === 'BLOCKQUOTE')
+        && !/&|<span[^>]*style=/i.test(b.innerHTML || '');
       const lawOk = wrapSafe
         ? ((lineWords >= 6 && ratio >= 0.68) || ratio >= 0.85)
         : (ratio <= 0.93 && ((lineWords >= 6 && ratio >= 0.68) || ratio >= 0.85));
