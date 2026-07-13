@@ -260,22 +260,30 @@ export const parseHtmlContent = (htmlContent) => {
       .trim();
     const NUM_PREFIX_RE = /^(lección|leccion|lesson|sección|seccion|section|unidad|unit|módulo|modulo|module|tema|sesión|sesion|session|día|dia|day|capítulo|capitulo|chapter|parte|part)\s*#?\d+\s*/i;
     const tocKeys = new Set();
+    const tocNames = []; // per-entry name (sin prefijo) for token matching
     for (const i of skipIndices) {
       if (i === tocStart) continue;
       const raw = topChildren[i]?.textContent?.trim() || '';
       if (raw.length < 4) continue;
       tocKeys.add(norm(raw));
       const namePart = raw.replace(NUM_PREFIX_RE, '').trim();
-      if (namePart.length >= 4) tocKeys.add(norm(namePart));
+      if (namePart.length >= 4) { tocKeys.add(norm(namePart)); tocNames.push(namePart); }
+      else tocNames.push(raw);
     }
-    // Token sets per TOC entry — body titles often differ from the index by
-    // an article/word ("Las Actitudes Y Excusas" vs "LAS ACTITUDES Y LAS
-    // EXCUSAS"), so match by high token overlap, not exact equality.
     // Stopwords include possessives (mi/su/tu…): the index may say "Mi
     // Propósito" while the body titles it "Su Propósito".
     const STOP = new Set(['el','la','los','las','un','una','de','del','y','o','a','en','para','por','con','al','su','mi','tu','sus','mis','tus','nuestro','nuestra','the','of','and','to','for','my','your','his','her']);
     const contentTokens = (s) => norm(s).split(' ').filter(w => w.length > 1 && !STOP.has(w));
-    const tocTokenSets = [...tocKeys].map(k => new Set(contentTokens(k))).filter(s => s.size >= 2);
+    // One token set per TOC ENTRY so each chapter matches at most once.
+    const tocEntries = tocNames
+      .map(n => ({ toks: new Set(contentTokens(n)), norm: norm(n), used: false }))
+      .filter(e => e.toks.size >= 2);
+
+    const jaccard = (a, b) => {
+      let inter = 0;
+      for (const w of a) if (b.has(w)) inter++;
+      return inter / (a.size + b.size - inter);
+    };
 
     const tocEnd = Math.max(...skipIndices);
     for (let i = tocEnd + 1; i < topChildren.length; i++) {
@@ -283,16 +291,29 @@ export const parseHtmlContent = (htmlContent) => {
       const t = topChildren[i].textContent?.trim() || '';
       if (!t || t.length > 90) continue;
       const nt = norm(t);
-      if (tocKeys.has(nt)) { approvedHeadings.add(i); continue; }
-      // Fuzzy: a body line whose content words are (almost) a superset of a
-      // TOC entry's content words is that chapter's title.
       const lineToks = new Set(contentTokens(t));
       if (lineToks.size < 2) continue;
-      for (const toc of tocTokenSets) {
-        let hit = 0;
-        for (const w of toc) if (lineToks.has(w)) hit++;
-        if (hit / toc.size >= 0.75) { approvedHeadings.add(i); break; }
+
+      // Exact normalized match first.
+      let matched = tocEntries.find(e => !e.used && e.norm === nt);
+
+      // Fuzzy: SYMMETRIC similarity (Jaccard ≥ 0.6). Both directions must
+      // agree, which rejects a subtitle that is only a FRAGMENT of the index
+      // entry ("Excusas frente al llamado" vs the full "Las Actitudes Y
+      // Excusas Frente Al Llamado De Dios" — the fragment drops too many index
+      // words to reach 0.6). Each entry is consumed once (the first line that
+      // matches it wins), so later subtitles can't re-trigger it.
+      if (!matched) {
+        let best = null, bestSim = 0;
+        for (const e of tocEntries) {
+          if (e.used) continue;
+          const sim = jaccard(lineToks, e.toks);
+          if (sim > bestSim) { bestSim = sim; best = e; }
+        }
+        if (best && bestSim >= 0.6) matched = best;
       }
+
+      if (matched) { matched.used = true; approvedHeadings.add(i); }
     }
   }
 

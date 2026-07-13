@@ -82,6 +82,32 @@ describe('parseHtmlContent con tabla de contenidos propia', () => {
     expect(chapters.map(c => c.title).some(t => /DESCUBRIR SU PROPÓSITO/i.test(t))).toBe(true);
   });
 
+  it('un subtítulo que es fragmento de una entrada del índice NO abre capítulo', () => {
+    const html7 = [
+      '<p>CONTENIDO</p>',
+      '<p>LECCIÓN 2\tLas Actitudes Y Excusas Frente Al Llamado De Dios</p>',
+      '<p>LECCIÓN 4\tViviendo Para Un Propósito</p>',
+      '<p>INTRODUCCIÓN</p>',
+      `<p>${CUERPO}</p>`,
+      '<p>LAS ACTITUDES Y LAS EXCUSAS FRENTE AL LLAMADO DE DIOS</p>', // título real L2
+      `<p>${CUERPO}</p>`,
+      '<p>Excusas frente al llamado de Dios</p>',   // subtítulo interno (fragmento) → NO
+      `<p>${CUERPO}</p>`,
+      '<p>VIVIENDO PARA UN PROPÓSITO</p>',           // título real L4
+      `<p>${CUERPO}</p>`,
+      '<p>4. Una vida viviendo para un propósito</p>', // subtítulo interno → NO
+      `<p>${CUERPO}</p>`,
+    ].join('');
+    const { chapters } = parseHtmlContent(html7);
+    const titles = chapters.map(c => c.title);
+    // Exactamente: INTRODUCCIÓN, L2 real, L4 real (los 2 fragmentos NO)
+    expect(titles.some(t => /^INTRODUCCIÓN$/i.test(t))).toBe(true);
+    expect(titles.filter(t => /ACTITUDES/i.test(t)).length).toBe(1);
+    expect(titles.filter(t => /VIVIENDO PARA UN PROPÓSITO/i.test(t)).length).toBe(1);
+    expect(titles.some(t => /^Excusas frente/i.test(t))).toBe(false);
+    expect(titles.some(t => /Una vida viviendo/i.test(t))).toBe(false);
+  });
+
   it('no descarta contenido que aparece antes del primer capítulo', () => {
     const html5 = [
       '<p>CONTENIDO</p>',
