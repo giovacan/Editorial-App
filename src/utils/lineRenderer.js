@@ -228,10 +228,12 @@ const computeLineBreaks = (collapsed, width, fontStr, indentPx, wordSpacingPx, s
 };
 
 /**
- * Transform ONE block into engine-line markup. Returns the transformed outer
- * HTML, or null when the block is out of scope (rendered natively).
+ * Derive the exact line-breaking inputs for a block (font, runs, effective
+ * width, indent, word-spacing) — the single source of truth shared by the
+ * renderer and by any consumer that needs to know how the renderer will wrap
+ * a block. Returns null when the block is out of scope (rendered natively).
  */
-const renderBlockAsLines = (block, layoutCtx) => {
+const deriveBlockGeometry = (block, layoutCtx) => {
   const outer = block.outerHtml || '';
   const tag = (block.tag || '').toUpperCase();
   if (tag !== 'P' && tag !== 'BLOCKQUOTE') return null;
@@ -286,6 +288,47 @@ const renderBlockAsLines = (block, layoutCtx) => {
   const wordSpacingPx = wsM ? parseFloat(wsM[1]) : 0;
   const indentM = styleStr.match(/text-indent:\s*([\d.]+)em/i);
   const indentPx = indentM ? parseFloat(indentM[1]) * fontPx : 0;
+
+  return { outer, open, styleStr, inner, collapsed, fontPx, fontStr, styled, effWidth, indentPx, wordSpacingPx };
+};
+
+/**
+ * Line metrics of a block under the EXACT model the renderer draws with.
+ * Returns { lines, effWidth, collapsed, fontStr, lastLine: { text, words,
+ * ratio }, lineCount } or null when the block renders natively (the caller
+ * must fall back to its own model).
+ */
+export const computeBlockLineMetrics = (block, layoutCtx) => {
+  const g = deriveBlockGeometry(block, layoutCtx);
+  if (!g) return null;
+  // skipPull: metrics are used to decide WHERE content boundaries fall; the
+  // hyphen pull is presentation-only and never changes line count.
+  const lines = computeLineBreaks(g.collapsed, g.effWidth, g.fontStr, g.indentPx, g.wordSpacingPx, g.styled, true);
+  if (!lines || lines.length === 0) return null;
+  const last = lines[lines.length - 1];
+  const prevEnd = lines.length > 1 ? lines[lines.length - 2].endChar : 0;
+  const text = g.collapsed.slice(prevEnd).trim();
+  return {
+    ...g,
+    lines,
+    lineCount: lines.length,
+    lastLine: {
+      text,
+      words: text.split(/\s+/).filter(Boolean).length,
+      ratio: g.effWidth > 0 ? last.width / g.effWidth : 0,
+      startChar: prevEnd,
+    },
+  };
+};
+
+/**
+ * Transform ONE block into engine-line markup. Returns the transformed outer
+ * HTML, or null when the block is out of scope (rendered natively).
+ */
+const renderBlockAsLines = (block, layoutCtx) => {
+  const g = deriveBlockGeometry(block, layoutCtx);
+  if (!g) return null;
+  const { outer, open, styleStr, inner, collapsed, fontStr, styled, effWidth, indentPx, wordSpacingPx } = g;
 
   const cacheKey = `${collapsed.length}|${collapsed.slice(0, 32)}|${fontStr}|${effWidth}|${indentPx}|${wordSpacingPx}|${styleStr.length}|${styled ? 'r' : 'p'}`;
   const hit = _lineCache.get(cacheKey);

@@ -50,6 +50,8 @@ import {
 
 import { createPaginationLogger, assignBlockId, deriveFragmentId, injectBlockIdAttrs, resetBlockCounter } from '../paginationLogger.js';
 
+import { computeBlockLineMetrics } from '../lineRenderer.js';
+
 // ── New sub-modules ───────────────────────────────────────────────────────────
 import {
   getDomSlack,
@@ -246,7 +248,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     (layoutHints?.global?.keepWithNextTags || []).join(','),
     safeConfig?.pagination?.engineMode || 'optimal',
     safeConfig?.render?.engineLines !== false ? 'el1' : 'el0',
-    'v71-dp' // bump to force cache invalidation after algorithm changes
+    'v72-dp' // bump to force cache invalidation after algorithm changes
   ].join('|'));
 
   // 'optimal' (default): global DP pagination per chapter — no fill-pass needed.
@@ -935,7 +937,7 @@ const snapSplitPagesToSentenceBoundaries = (pages, canvasCtx, lineHeightPx, maxT
  * it can never stretch 1-4 words across the column.
  * @private
  */
-const enforceCutLineAlignment = (pages, canvasCtx) => {
+export const enforceCutLineAlignment = (pages, canvasCtx) => {
   const ctx2d = canvasCtx?.ctx2d;
   const W = canvasCtx?.contentWidth || 0;
   if (!ctx2d || !W) return;
@@ -986,7 +988,15 @@ const enforceCutLineAlignment = (pages, canvasCtx) => {
         && (btag === 'P' || btag === 'BLOCKQUOTE')
         && !/&|<span[^>]*style=/i.test(b.innerHTML || '');
 
-      const m = lastLineMetrics(b.innerHTML, open);
+      // Measure the last line with the SAME walker the line renderer draws
+      // with (indent, per-run fonts, dash-aware). The flat greedy model wraps
+      // at different points for indented/styled blocks, so it can bless a
+      // line the renderer will actually draw as a 2-word stretched orphan
+      // ("Es la" de extremo a extremo, folio 35).
+      const wm = wrapSafe ? computeBlockLineMetrics(b, canvasCtx) : null;
+      const m = wm
+        ? { ratio: wm.lastLine.ratio, words: wm.lastLine.words, fontStr: wm.fontStr, walker: wm }
+        : lastLineMetrics(b.innerHTML, open);
       if (lawHolds(m, wrapSafe)) return outer;
 
       // The paragraph CONTINUES (split-head): its last visible line is an
@@ -1002,9 +1012,14 @@ const enforceCutLineAlignment = (pages, canvasCtx) => {
           const nextBlocks = getPageBlocks(nextPage);
           const cont = nextBlocks[0];
           if (cont && /data-continuation/.test(cont.outerHtml)) {
-            const pulled = pullToFillCutLine(b, cont, m, canvasCtx, W);
+            const pulled = pullToFillCutLine(b, cont, m, canvasCtx, W)
+              // Pull can't fill the line (continuation words too long/short).
+              // PUSH instead: send the short last line down to the
+              // continuation — the former interior line above it is full and
+              // justified by construction, so the law holds again.
+              || (m.walker ? pushCutLineToCont(b, cont, m.walker, canvasCtx) : null);
             if (pulled) {
-              // Rewrite the continuation block on the next page (shorter now).
+              // Rewrite the continuation block on the next page.
               const nextRebuilt = [pulled.contHtml, ...nextBlocks.slice(1).map(x => x.outerHtml)].join('');
               Object.assign(pages[nextIdx], setPageHtml(nextPage, nextRebuilt));
               changed = true;
@@ -1054,22 +1069,82 @@ const pullToFillCutLine = (headBlock, contBlock, headMetrics, canvasCtx, W) => {
   }
   if (take === 0 || lineW / W < 0.68) return null;
 
-  // Move `take` words (by char length) from cont inner to head inner.
-  let chars = 0;
-  for (let i = 0; i < take; i++) chars += (i > 0 ? 1 : 0) + contWords[i].length;
-  const { headHtml: moved, tailHtml: remaining } =
-    splitHtmlByCharsPreservingTags(contInner, chars, { trimLeadingSpace: false });
-  const movedText = htmlToText(moved).trim();
-  const remainingText = htmlToText(remaining).trim();
-  if (!movedText || !remainingText) return null; // never empty the continuation
+  const headOpen = (headBlock.outerHtml.match(/^<[^>]+>/) || [''])[0];
+  const headClose = (headBlock.outerHtml.match(/<\/[a-zA-Z]+>\s*$/) || ['</p>'])[0];
+  const contOpen = (contBlock.outerHtml.match(/^<[^>]+>/) || [''])[0];
+  const contClose = (contBlock.outerHtml.match(/<\/[a-zA-Z]+>\s*$/) || ['</p>'])[0];
+
+  // Walker verification when the renderer draws this block: the flat model
+  // above only estimates; the real wrap (indent, runs) may push the pulled
+  // words onto a NEW line — a stretched orphan. Accept the largest `take`
+  // whose walker-drawn result keeps the line count AND satisfies the law.
+  const wm0 = headMetrics.walker || null;
+  for (let t = take; t >= 1; t--) {
+    let chars = 0;
+    for (let i = 0; i < t; i++) chars += (i > 0 ? 1 : 0) + contWords[i].length;
+    const { headHtml: moved, tailHtml: remaining } =
+      splitHtmlByCharsPreservingTags(contInner, chars, { trimLeadingSpace: false });
+    const movedText = htmlToText(moved).trim();
+    const remainingText = htmlToText(remaining).trim();
+    if (!movedText || !remainingText) return null; // never empty the continuation
+
+    const newHead = headOpen + headInner + ' ' + moved.trim() + headClose;
+    const newCont = contOpen + remaining.replace(/^\s+/, '') + contClose;
+
+    if (wm0) {
+      const check = computeBlockLineMetrics(
+        { outerHtml: newHead, tag: headBlock.tag, innerHTML: headInner + ' ' + moved.trim() },
+        canvasCtx
+      );
+      const ok = check
+        && check.lineCount === wm0.lineCount
+        && ((check.lastLine.words >= 6 && check.lastLine.ratio >= 0.68) || check.lastLine.ratio >= 0.85);
+      if (!ok) continue; // try fewer words
+    }
+    return { headHtml: newHead, contHtml: newCont };
+  }
+  return null;
+};
+
+/**
+ * Inverse of the pull: when the head's short last line cannot be filled from
+ * the continuation, move that whole line DOWN to the continuation block. The
+ * new last visible line is a former interior line — full and justified by
+ * construction. Walker-verified; returns { headHtml, contHtml } or null.
+ * @private
+ */
+const pushCutLineToCont = (headBlock, contBlock, walkerMetrics, canvasCtx) => {
+  if (!walkerMetrics || walkerMetrics.lineCount < 3) return null; // keep ≥2 lines on the donor page
+  const headInner = getInnerHtml(headBlock.outerHtml);
+  const contInner = getInnerHtml(contBlock.outerHtml);
+
+  // Split the head at the start of its last line (collapsed-text coords —
+  // same coordinate space splitHtmlByCharsPreservingTags slices in).
+  const cut = walkerMetrics.lastLine.startChar;
+  if (!cut || cut <= 0) return null;
+  const { headHtml: keep, tailHtml: pushed } =
+    splitHtmlByCharsPreservingTags(headInner, cut, { trimLeadingSpace: false });
+  const keepText = htmlToText(keep).trim();
+  const pushedText = htmlToText(pushed).trim();
+  if (!keepText || !pushedText) return null;
 
   const headOpen = (headBlock.outerHtml.match(/^<[^>]+>/) || [''])[0];
   const headClose = (headBlock.outerHtml.match(/<\/[a-zA-Z]+>\s*$/) || ['</p>'])[0];
   const contOpen = (contBlock.outerHtml.match(/^<[^>]+>/) || [''])[0];
   const contClose = (contBlock.outerHtml.match(/<\/[a-zA-Z]+>\s*$/) || ['</p>'])[0];
 
-  const newHead = headOpen + headInner + ' ' + moved.trim() + headClose;
-  const newCont = contOpen + remaining.replace(/^\s+/, '') + contClose;
+  const newHeadInner = keep.replace(/\s+$/, '');
+  const newHead = headOpen + newHeadInner + headClose;
+  const check = computeBlockLineMetrics(
+    { outerHtml: newHead, tag: headBlock.tag, innerHTML: newHeadInner },
+    canvasCtx
+  );
+  const ok = check
+    && check.lineCount === walkerMetrics.lineCount - 1
+    && ((check.lastLine.words >= 6 && check.lastLine.ratio >= 0.68) || check.lastLine.ratio >= 0.85);
+  if (!ok) return null;
+
+  const newCont = contOpen + pushed.replace(/^\s+/, '') + ' ' + contInner + contClose;
   return { headHtml: newHead, contHtml: newCont };
 };
 
