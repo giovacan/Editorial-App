@@ -248,12 +248,33 @@ export const parseHtmlContent = (htmlContent) => {
   });
   const candidateSet = new Set(headingCandidates);
   const headingLabels = new Map(); // elementIndex → structural label ("LECCIÓN 1")
-  const approvedHeadings = filterIndexListings(headingCandidates, (idx) => {
+  // A bare structural label ("CAPÍTULO 1", possibly duplicated by Word) is a
+  // real chapter start, NOT a TOC entry — even when adjacent to another label.
+  const isBareLabel = (idx) => {
+    const t = topChildren[idx]?.textContent?.trim() || '';
+    if (t.length > 40) return false;
+    return /^\s*(lección|leccion|lesson|sección|seccion|section|unidad|unit|módulo|modulo|module|tema|sesión|sesion|session|día|dia|day|capítulo|capitulo|chapter|parte|part)\s*#?\d+\s*$/i.test(t);
+  };
+  // Bare labels ("CAPÍTULO 1") never belong to a TOC listing — exclude them
+  // from the adjacency filter (they'd otherwise be seen as a "run" with their
+  // Word-duplicated twin). The first bare-label of each duplicate pair is the
+  // real chapter start; approve it and skip its duplicates in the main loop.
+  const bareLabelIdx = headingCandidates.filter(isBareLabel);
+  const nonBare = headingCandidates.filter(i => !isBareLabel(i));
+  const approvedHeadings = filterIndexListings(nonBare, (idx) => {
     // Run tail is a REAL heading when followed by body text (long, non-heading).
     const next = topChildren[idx + 1];
     const t = next?.textContent?.trim() || '';
     return t.length >= 120 && !candidateSet.has(idx + 1);
   });
+  // Approve the FIRST label of each consecutive bare-label run (Word dup).
+  for (let k = 0; k < bareLabelIdx.length; k++) {
+    const prevAdjacentSameText = k > 0
+      && bareLabelIdx[k] - bareLabelIdx[k - 1] <= 1
+      && (topChildren[bareLabelIdx[k]].textContent || '').trim().toUpperCase()
+         === (topChildren[bareLabelIdx[k - 1]].textContent || '').trim().toUpperCase();
+    if (!prevAdjacentSameText) approvedHeadings.add(bareLabelIdx[k]);
+  }
 
   // Document's own table of contents: OMIT it entirely — the app generates
   // its own TOC. Region = the CONTENIDO/ÍNDICE marker + the short/listing
@@ -359,16 +380,29 @@ export const parseHtmlContent = (htmlContent) => {
   const isFrontMatter = (name) => FRONT_MATTER_RE.test((name || '').trim());
   const AUTO_LABEL_WORD = 'LECCIÓN'; // matches this document's family; generic enough
 
+  // Compose the display title from label + name, never duplicating when the
+  // name is empty or equals the label ("CAPÍTULO 1" alone → no "CAPÍTULO 1
+  // CAPÍTULO 1"). The name may come from a following line (see nameHint).
+  const composeTitle = (label, name) => {
+    const l = (label || '').trim();
+    const n = (name || '').trim();
+    if (l && n && n.toUpperCase() !== l.toUpperCase()) return `${l}  ${n}`;
+    return l || n;
+  };
+
   let autoCounter = 0;
-  const makeChapterFields = (rawText, tocLabel) => {
+  const makeChapterFields = (rawText, tocLabel, nameHint) => {
     const raw = (rawText || '').trim();
     // 1) Label already inside the body title text? Split & respect it.
     const inTextM = raw.match(LABEL_IN_TEXT_RE);
     if (inTextM) {
       const label = inTextM[0].replace(/[-–—:.\t ]+$/, '').replace(/\s+/g, ' ').trim().toUpperCase();
-      const name = raw.slice(inTextM[0].length).trim() || raw;
+      // Name from the remainder; if the label consumed the whole line, take
+      // the hint (the next line, e.g. "UNA ANTORCHA EN LA OSCURIDAD").
+      let name = raw.slice(inTextM[0].length).trim();
+      if (!name) name = (nameHint || '').trim();
       autoCounter++;
-      return { label, name, title: `${label}  ${name}` };
+      return { label, name, title: composeTitle(label, name) };
     }
     // 2) Front matter — never numbered.
     if (isFrontMatter(raw)) {
@@ -377,12 +411,22 @@ export const parseHtmlContent = (htmlContent) => {
     // 3) Label known from the TOC entry — respect it.
     if (tocLabel) {
       autoCounter++;
-      return { label: tocLabel, name: raw, title: `${tocLabel}  ${raw}` };
+      return { label: tocLabel, name: raw, title: composeTitle(tocLabel, raw) };
     }
     // 4) Auto-generate a sequential label.
     autoCounter++;
     const label = `${AUTO_LABEL_WORD} ${autoCounter}`;
-    return { label, name: raw, title: `${label}  ${raw}` };
+    return { label, name: raw, title: composeTitle(label, raw) };
+  };
+
+  // Is this top-level child a standalone structural label ("CAPÍTULO 1")
+  // whose real name sits on the NEXT line? Returns true for a short line that
+  // is ONLY the label pattern.
+  const isLabelOnlyLine = (txt) => {
+    const t = (txt || '').trim();
+    if (t.length > 40) return false;
+    const m = t.match(LABEL_IN_TEXT_RE);
+    return !!m && t.slice(m[0].length).trim().length === 0;
   };
 
   let bookTitleConsumed = false;
@@ -407,7 +451,23 @@ export const parseHtmlContent = (htmlContent) => {
         }
         chapters.push(currentChapter);
       }
-      const fields = makeChapterFields(text, headingLabels.get(index));
+      // If the heading is a bare label ("CAPÍTULO 1"), pull its real name from
+      // the next line(s): the immediate next child, skipping a repeated label
+      // line (Word sometimes emits the label twice).
+      let nameHint = '';
+      if (isLabelOnlyLine(text)) {
+        for (let j = index + 1; j < topChildren.length && j <= index + 2; j++) {
+          const nx = topChildren[j].textContent?.trim() || '';
+          if (!nx) continue;
+          if (isLabelOnlyLine(nx) || nx.toUpperCase() === text.toUpperCase()) {
+            skipIndices.add(j); // duplicate label line — drop from body
+            continue;
+          }
+          if (nx.length <= 70 && !/[.!?]$/.test(nx)) { nameHint = nx; skipIndices.add(j); }
+          break;
+        }
+      }
+      const fields = makeChapterFields(text, headingLabels.get(index), nameHint);
       currentChapter = {
         id: makeChapterId(chapters.length), type: 'chapter',
         title: fields.title, chapterLabel: fields.label, chapterName: fields.name,

@@ -165,6 +165,28 @@ describe('parseHtmlContent con tabla de contenidos propia', () => {
     expect(ch.chapterName).toMatch(/Virtud Del Pudor/i);
   });
 
+  it('rótulo solo ("CAPÍTULO 1") toma el nombre de la línea siguiente, sin duplicar', () => {
+    const html = [
+      '<p>CAPÍTULO 1</p>',
+      '<p>CAPÍTULO 1</p>',                       // Word duplica el rótulo
+      '<p>UNA ANTORCHA EN LA OSCURIDAD</p>',     // el nombre real
+      `<p>${CUERPO}</p>`,
+      '<p>CAPÍTULO 2</p>',
+      '<p>EL SEGUNDO NOMBRE</p>',
+      `<p>${CUERPO}</p>`,
+    ].join('');
+    const { chapters } = parseHtmlContent(html);
+    expect(chapters.length).toBe(2);
+    const c1 = chapters[0];
+    expect(c1.chapterLabel).toBe('CAPÍTULO 1');
+    expect(c1.chapterName).toBe('UNA ANTORCHA EN LA OSCURIDAD');
+    expect(c1.title).toBe('CAPÍTULO 1  UNA ANTORCHA EN LA OSCURIDAD');
+    expect(c1.title).not.toMatch(/CAPÍTULO 1\s+CAPÍTULO 1/);
+    // el nombre no debe quedar como párrafo del cuerpo
+    expect(c1.html).not.toContain('UNA ANTORCHA EN LA OSCURIDAD');
+    expect(chapters[1].chapterName).toBe('EL SEGUNDO NOMBRE');
+  });
+
   it('auto-numera capítulos sin rótulo (y sin índice que consultar)', () => {
     const html = [
       '<p>CAPÍTULO 1 Primero</p>',      // trae rótulo → respeta y avanza contador
