@@ -246,7 +246,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     (layoutHints?.global?.keepWithNextTags || []).join(','),
     safeConfig?.pagination?.engineMode || 'optimal',
     safeConfig?.render?.engineLines !== false ? 'el1' : 'el0',
-    'v68-dp' // bump to force cache invalidation after algorithm changes
+    'v69-dp' // bump to force cache invalidation after algorithm changes
   ].join('|'));
 
   // 'optimal' (default): global DP pagination per chapter — no fill-pass needed.
@@ -334,8 +334,15 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     applyFillPass(allPages, layoutCtx, canvasCtx, measureDiv, safeConfig, log);
   }
 
-  // Snap split-head pages to sentence boundaries (covers cuts from both greedyPaginate and fill-pass)
-  snapSplitPagesToSentenceBoundaries(allPages, canvasCtx, lineHeightPx, 2, layoutCtx);
+  // Snap split-head pages to sentence boundaries — LEGACY render only. With
+  // deterministic line rendering the cut line is drawn full and justified
+  // (hyphenated when needed); re-cutting to sentence ends only shortens it
+  // below the law and the alignment guard then strips its justify (the "85
+  // líneas sin justificar" report). Mid-sentence page cuts are standard
+  // typography.
+  if (safeConfig?.render?.engineLines === false) {
+    snapSplitPagesToSentenceBoundaries(allPages, canvasCtx, lineHeightPx, 2, layoutCtx);
+  }
 
   // Cleanup nearly-empty pages
   cleanupNearlyEmptyPages(allPages, layoutCtx, canvasCtx);
