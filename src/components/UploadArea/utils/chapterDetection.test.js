@@ -1,7 +1,7 @@
 /**
  * chapterDetection.test.js — patrones de títulos de capítulo.
  */
-import { isChapterHeading } from './chapterDetection';
+import { isChapterHeading, filterIndexListings } from './chapterDetection';
 
 const p = (text) => {
   const el = document.createElement('p');
@@ -25,6 +25,16 @@ describe('isChapterHeading', () => {
     expect(isChapterHeading(p('TEMA 5'))).toBe(true);
     expect(isChapterHeading(p('DÍA 7'))).toBe(true);
     expect(isChapterHeading(p('Session 2'))).toBe(true);
+  });
+
+  it('listados de índice (títulos consecutivos) no son capítulos', () => {
+    // INTRODUCCIÓN (0), párrafo (1..2), listado consecutivo (3,4,5), LECCIÓN real (9)
+    const approved = filterIndexListings([0, 3, 4, 5, 9]);
+    expect(approved.has(0)).toBe(true);   // intro real
+    expect(approved.has(3)).toBe(false);  // listado
+    expect(approved.has(4)).toBe(false);
+    expect(approved.has(5)).toBe(false);
+    expect(approved.has(9)).toBe(true);   // lección real con cuerpo
   });
 
   it('no confunde párrafos narrativos', () => {

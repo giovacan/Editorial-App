@@ -1,4 +1,4 @@
-import { isChapterHeading, detectChaptersInRawHtml } from './chapterDetection';
+import { isChapterHeading, detectChaptersInRawHtml, filterIndexListings } from './chapterDetection';
 
 const SPECIAL_CHAPTERS = [
   'prólogo', 'prologo', 'epílogo', 'epilogo', 'introducción', 'introduccion',
@@ -212,11 +212,22 @@ export const parseHtmlContent = (htmlContent) => {
     if (pendingBoldOpener) { addToChapter(`<p>${pendingBoldOpener.boldContent}</p>`); pendingBoldOpener = null; }
   };
 
-  Array.from(tempDiv.children).forEach((el, index) => {
+  // Pre-pass: real chapter headings only. Consecutive heading-like lines are
+  // an index/lesson listing inside front matter — a listing entry must never
+  // open a chapter (the whole prologue was being shredded into "chapters").
+  const topChildren = Array.from(tempDiv.children);
+  const headingCandidates = [];
+  topChildren.forEach((el, i) => {
+    const t = el.textContent?.trim() || '';
+    if (t && t.length >= 2 && isChapterHeading(el)) headingCandidates.push(i);
+  });
+  const approvedHeadings = filterIndexListings(headingCandidates);
+
+  topChildren.forEach((el, index) => {
     const text = el.textContent?.trim() || '';
     if (!text || text.length < 2) return;
 
-    if (isChapterHeading(el)) {
+    if (approvedHeadings.has(index)) {
       flushAll();
       if (currentChapter) {
         if (currentSection) {

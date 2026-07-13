@@ -43,21 +43,41 @@ export const isChapterHeading = (el) => {
 };
 
 /**
+ * Index-listing filter: CONSECUTIVE heading-like lines are a table of
+ * contents / lesson listing inside the front matter (e.g. a prologue that
+ * lists "LECCIÓN 1 …, LECCIÓN 2 …"), NOT real chapter starts — a real
+ * chapter always has body content before the next one.
+ *
+ * @param {number[]} indices - ascending element indices of heading candidates
+ * @returns {Set<number>} indices approved as real chapter headings
+ */
+export const filterIndexListings = (indices) => {
+  const approved = new Set();
+  for (let k = 0; k < indices.length; k++) {
+    const prevAdjacent = k > 0 && indices[k] - indices[k - 1] <= 1;
+    const nextAdjacent = k < indices.length - 1 && indices[k + 1] - indices[k] <= 1;
+    if (!prevAdjacent && !nextAdjacent) approved.add(indices[k]);
+  }
+  return approved;
+};
+
+/**
  * Detects chapter headings in raw HTML before processing.
  */
 export const detectChaptersInRawHtml = (htmlContent) => {
   const temp = document.createElement('div');
   temp.innerHTML = htmlContent;
-  const detected = [];
 
   const allElements = Array.from(temp.querySelectorAll('p, h1, h2, h3, h4, h5, h6, div'));
+  const candidates = [];
   allElements.forEach((el, index) => {
     if (isChapterHeading(el)) {
-      detected.push({ detectedTitle: el.textContent?.trim() || '', elementIndex: index });
+      candidates.push({ detectedTitle: el.textContent?.trim() || '', elementIndex: index });
     }
   });
 
-  return detected;
+  const approved = filterIndexListings(candidates.map(c => c.elementIndex));
+  return candidates.filter(c => approved.has(c.elementIndex));
 };
 
 /**
