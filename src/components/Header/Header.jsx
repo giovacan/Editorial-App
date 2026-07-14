@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { UserMenu } from '../Auth/UserMenu';
+import QualityBadge from '../QualityBadge/QualityBadge';
 import useEditorStore from '../../store/useEditorStore';
 import './Header.css';
 
@@ -175,6 +176,7 @@ function Header({
         )}
 
         <div className="header-actions">
+          <QualityBadge />
           {user ? (
             <UserMenu user={user} isAdmin={isAdmin} onSignOut={logOut} />
           ) : (

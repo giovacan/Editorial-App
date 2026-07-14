@@ -480,6 +480,22 @@ export const splitParagraphByLines = (html, /* unused */ measureDiv, maxHeight, 
     }
   }
 
+  // ── Guard de conservación de texto ─────────────────────────────────────
+  // Un split JAMÁS puede perder contenido. Con HTML mal anidado (tablas o
+  // etiquetas sin cerrar dentro de un párrafo) el slicer puede devolver una
+  // cola truncada y las palabras restantes se esfuman silenciosamente
+  // (detectado por el corpus: 10.018 palabras → 202). Si las palabras de
+  // salida no cuadran con las de entrada, rechazar el split — el bloque
+  // viaja entero y el clamp/DP lo acomodan sin pérdida.
+  if (lines.length >= 2) {
+    const wcOf = (s) => ((htmlToText(s) || '').match(/\S+/g) || []).length;
+    const inWords = wcOf(html);
+    const outWords = lines.reduce((a, l) => a + wcOf(l), 0);
+    if (Math.abs(outWords - inWords) > Math.max(1, inWords * 0.005)) {
+      return [html];
+    }
+  }
+
   return lines;
 };
 

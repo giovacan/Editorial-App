@@ -51,6 +51,7 @@ import {
 import { createPaginationLogger, assignBlockId, deriveFragmentId, injectBlockIdAttrs, resetBlockCounter } from '../paginationLogger.js';
 
 import { computeBlockLineMetrics } from '../lineRenderer.js';
+import { computeQualityReport } from './qualityReport.js';
 
 // ── New sub-modules ───────────────────────────────────────────────────────────
 import {
@@ -221,7 +222,11 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
         workerPath: typeof WorkerGlobalScope !== 'undefined' ? 'worker' : 'main-thread'
       },
       chapterCount: chapters.length,
-      totalContentLength: manuscriptHash
+      totalContentLength: manuscriptHash,
+      // Exact manuscript input (dev only): lets any problem book become a
+      // regression fixture via scripts/addBookToCorpus.mjs without having to
+      // reconstruct chapters from paginated output.
+      chapters: chapters.map(ch => ({ title: ch.title || '', chapterLabel: ch.chapterLabel || '', chapterName: ch.chapterName || '', html: ch.html || '' }))
     });
   }
 
@@ -631,6 +636,17 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
   const resultChStartExtra = Math.max(0, (layoutCtx.headerSpaceEstimate || 0) - (layoutCtx.chapterStartBottomClearance || 0))
     + (layoutCtx.chapterStartExtraLines || 0) * lineHeightPx;
 
+  // Puntaje editorial automático — mismas reglas que el gate del corpus de
+  // regresión. Nunca puede tumbar la paginación (try/catch).
+  let qualityReport = null;
+  try {
+    qualityReport = computeQualityReport(allPages, canvasCtx, layoutCtx);
+  } catch (err) {
+    if (process.env.NODE_ENV === 'development') {
+      log.record('quality', 'error', 0, { error: String(err?.message || err) });
+    }
+  }
+
   return {
     pages: allPages,
     log: log.getLog(),
@@ -639,6 +655,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     chapterPageSlices,
     chStartExtra: resultChStartExtra,
     headerSpaceEstimate: layoutCtx.headerSpaceEstimate || 0,
+    qualityReport,
   };
 };
 

@@ -447,6 +447,7 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
             chapterPageSlices: paginationResult.chapterPageSlices ?? null
           };
         }
+        useEditorStore.getState().setQualityReport(paginationResult.qualityReport ?? null);
         if (paginationLog) {
           useEditorStore.getState().setPaginationLog(paginationLog);
           // Dev only: persist the log to pagination-log.json via the Vite

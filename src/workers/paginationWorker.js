@@ -72,6 +72,7 @@ self.onmessage = ({ data }) => {
       chapterPageSlices: result.chapterPageSlices ?? [],
       chStartExtra: result.chStartExtra ?? 0,
       headerSpaceEstimate: result.headerSpaceEstimate ?? 0,
+      qualityReport: result.qualityReport ?? null,
     });
   } catch (e) {
     self.postMessage({ type: 'ERROR', message: e?.message || String(e) });
