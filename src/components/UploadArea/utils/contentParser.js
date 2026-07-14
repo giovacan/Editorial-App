@@ -136,6 +136,29 @@ export const parseHtmlContent = (htmlContent) => {
   };
   normalizeBlocks(tempDiv);
 
+  // Linearize tables: narrative book layouts (A5/6x9) can't paginate table
+  // grids — the engine treats a <table> as one atomic element, leaving big
+  // holes before it and force-splitting it afterwards (folios 88-89 report).
+  // Reading-order linearization (each cell's blocks become top-level
+  // paragraphs) is the standard editorial treatment for comparison tables.
+  const linearizeTables = (root) => {
+    for (const tbl of Array.from(root.querySelectorAll('table'))) {
+      const frag = window.document.createDocumentFragment();
+      for (const cell of Array.from(tbl.querySelectorAll('td, th'))) {
+        const blocks = Array.from(cell.querySelectorAll('p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote'));
+        if (blocks.length > 0) {
+          for (const b of blocks) frag.appendChild(b.cloneNode(true));
+        } else if (cell.textContent.trim()) {
+          const p = window.document.createElement('p');
+          p.innerHTML = cell.innerHTML;
+          frag.appendChild(p);
+        }
+      }
+      tbl.replaceWith(frag);
+    }
+  };
+  linearizeTables(tempDiv);
+
   const isSubtitle = (el) => {
     const tag = el.tagName?.toLowerCase();
     const text = el.textContent?.trim() || '';

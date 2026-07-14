@@ -694,9 +694,31 @@ export const flattenChapterElements = (chapter, layoutCtx, canvasCtx, measureDiv
       break;
     }
   }
-  const children = allChildren.filter(
+  const filtered = allChildren.filter(
     el => el.textContent.trim() || el.tag === 'HR'
   );
+
+  // Tables can't paginate as a grid — the engine would treat the whole
+  // <table> as one atomic oversized element (holes before it + forced split
+  // after). Linearize in reading order: each cell's blocks become normal
+  // elements. Import does this too; this covers already-imported books.
+  const children = [];
+  for (const el of filtered) {
+    if (el.tag === 'TABLE') {
+      const cells = el.outerHtml.match(/<t[dh][\s>][\s\S]*?<\/t[dh]>/gi) || [];
+      let linearHtml = '';
+      for (const c of cells) {
+        const inner = c.replace(/^<t[dh][^>]*>/i, '').replace(/<\/t[dh]>$/i, '');
+        const cellBlocks = inner.match(/<(p|h[1-6]|ul|ol|blockquote)[^>]*>[\s\S]*?<\/\1>/gi);
+        if (cellBlocks) linearHtml += cellBlocks.join('');
+        else if (inner.replace(/<[^>]+>/g, '').trim()) linearHtml += `<p>${inner}</p>`;
+      }
+      const linearEls = parseHtmlElements(linearHtml).filter(x => x.textContent.trim());
+      children.push(...linearEls);
+    } else {
+      children.push(el);
+    }
+  }
 
   let paragraphCount = 0;
   for (const el of children) {
