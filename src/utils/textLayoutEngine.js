@@ -52,6 +52,7 @@ import {
   countHyphenationMetrics,
 } from './lineBreaking.js';
 import { countEngineLines } from './lineRenderer.js';
+import { measureTableHeight } from './tableLayoutEngine.js';
 
 // Re-export getLineBreakPositionsKP for consumers that import it from textLayoutEngine
 export { getLineBreakPositionsKP } from './lineBreaking.js';
@@ -89,9 +90,14 @@ const calculateElementHeight = (parsed, layoutCtx) => {
     return marginTopPx + paddingV + lineCount * lineHeightPx + marginBottomPx;
   }
 
-  // --- Table: estimate based on row count ---
+  // --- Table: real deterministic grid layout (tableLayoutEngine) ---
   if (tag === 'TABLE') {
     const tableHtml = parsed.innerHTML || '';
+    // Native measurement (cell wrapping at fixed col widths); includes the
+    // table's own vertical margins — return as-is, like the estimate did.
+    const native = measureTableHeight(tableHtml, layoutCtx);
+    if (native != null) return native;
+    // Fallback estimate for tables the grid engine rejects.
     const rows = (tableHtml.match(/<tr[\s>]/gi) || []).length || 1;
     const lineHeightPx = baseFontSizePx * baseLineHeight;
     const marginTopPx = resolveSize(styles.marginTop, styles.marginTopUnit, baseFontSizePx);

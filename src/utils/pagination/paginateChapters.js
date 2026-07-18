@@ -103,6 +103,7 @@ import {
 } from './breakpoints.js';
 
 import { optimalPaginate } from './optimalPaginate.js';
+import { buildNativeTableElement, splitTableByRows } from '../tableLayoutEngine.js';
 
 import {
   repairMissingIndents,
@@ -253,7 +254,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     (layoutHints?.global?.keepWithNextTags || []).join(','),
     safeConfig?.pagination?.engineMode || 'optimal',
     safeConfig?.render?.engineLines !== false ? 'el1' : 'el0',
-    'v72-dp' // bump to force cache invalidation after algorithm changes
+    'v73-tables' // bump to force cache invalidation after algorithm changes
   ].join('|'));
 
   // 'optimal' (default): global DP pagination per chapter — no fill-pass needed.
@@ -522,10 +523,15 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
       // Single-element page that still overflows — split the paragraph itself.
       if (overflow.length === 0 && blocks.length === 1 && pageH > budget) {
         const singleHtml = blocks[0].outerHtml || blocks[0].html || page.html;
-        const chunks = splitParagraphByLines(
-          singleHtml, null, budget, canvasCtx.textAlign || 'justify',
-          false, 1.5, false, canvasCtx
-        );
+        // Oversized native table alone on a page: last-resort row split
+        // (1-row minimums beat a clipped overflow at this point).
+        const singleTag = (blocks[0].tag || '').toUpperCase();
+        const chunks = singleTag === 'TABLE'
+          ? splitTableByRows(singleHtml, budget, canvasCtx, { minOrphanRows: 1, minWidowRows: 1 })
+          : splitParagraphByLines(
+              singleHtml, null, budget, canvasCtx.textAlign || 'justify',
+              false, 1.5, false, canvasCtx
+            );
         if (chunks && chunks.length >= 2) {
           const headHtml = chunks[0];
           const restHtml = chunks.slice(1).join('');
@@ -698,13 +704,19 @@ export const flattenChapterElements = (chapter, layoutCtx, canvasCtx, measureDiv
     el => el.textContent.trim() || el.tag === 'HR'
   );
 
-  // Tables can't paginate as a grid — the engine would treat the whole
-  // <table> as one atomic oversized element (holes before it + forced split
-  // after). Linearize in reading order: each cell's blocks become normal
-  // elements. Import does this too; this covers already-imported books.
+  // Tables: try NATIVE grid layout first (tableLayoutEngine measures cell
+  // wrapping at fixed column widths and lets the DP split by rows with the
+  // header repeated). Only when the grid engine rejects the markup (nested
+  // tables, too many columns, unfittable min-content...) fall back to the
+  // legacy reading-order linearization, so the worst case is the old behavior.
   const children = [];
   for (const el of filtered) {
     if (el.tag === 'TABLE') {
+      const native = buildNativeTableElement(el.outerHtml, canvasCtx);
+      if (native) {
+        children.push({ tag: 'TABLE', textContent: el.textContent || '', __native: native });
+        continue;
+      }
       const cells = el.outerHtml.match(/<t[dh][\s>][\s\S]*?<\/t[dh]>/gi) || [];
       let linearHtml = '';
       for (const c of cells) {
@@ -722,6 +734,20 @@ export const flattenChapterElements = (chapter, layoutCtx, canvasCtx, measureDiv
 
   let paragraphCount = 0;
   for (const el of children) {
+    // Native table: engine-owned styled HTML + deterministic height. Bypasses
+    // buildParagraphHtml (whose fallback would wrap the table in a <p>).
+    if (el.__native) {
+      elements.push({
+        html: el.__native.html,
+        height: el.__native.height,
+        isTitle: false,
+        tag: 'TABLE',
+        textContent: el.textContent || '',
+        isBold: false
+      });
+      assignBlockId(elements[elements.length - 1], chapterId, elements.length - 1);
+      continue;
+    }
     const originalIdx = allChildren.indexOf(el);
     const isFirstParagraph = originalIdx === firstParagraphIdx;
     if (el.tag === 'P' || el.tag === 'DIV') paragraphCount++;

@@ -1,4 +1,5 @@
 import { isChapterHeading, detectChaptersInRawHtml, filterIndexListings } from './chapterDetection';
+import { isTableMarkupSane } from '../../../utils/tableLayoutEngine';
 
 const SPECIAL_CHAPTERS = [
   'prólogo', 'prologo', 'epílogo', 'epilogo', 'introducción', 'introduccion',
@@ -136,13 +137,15 @@ export const parseHtmlContent = (htmlContent) => {
   };
   normalizeBlocks(tempDiv);
 
-  // Linearize tables: narrative book layouts (A5/6x9) can't paginate table
-  // grids — the engine treats a <table> as one atomic element, leaving big
-  // holes before it and force-splitting it afterwards (folios 88-89 report).
-  // Reading-order linearization (each cell's blocks become top-level
-  // paragraphs) is the standard editorial treatment for comparison tables.
+  // Tables: keep STRUCTURALLY SANE tables intact — the pagination engine now
+  // lays them out natively (tableLayoutEngine: fixed col widths, row splits
+  // with repeated header, drawn borders). Only tables its grid parser rejects
+  // (nested tables, captions, images, >6 cols, header-only...) are linearized
+  // in reading order as before. Width-dependent sanity (min-content vs page)
+  // is re-checked at pagination time, where the engine falls back the same way.
   const linearizeTables = (root) => {
     for (const tbl of Array.from(root.querySelectorAll('table'))) {
+      if (isTableMarkupSane(tbl.outerHTML)) continue;
       const frag = window.document.createDocumentFragment();
       for (const cell of Array.from(tbl.querySelectorAll('td, th'))) {
         const blocks = Array.from(cell.querySelectorAll('p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote'));
