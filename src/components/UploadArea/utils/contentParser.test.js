@@ -246,3 +246,88 @@ describe('parseHtmlContent con tabla de contenidos propia', () => {
     expect(allHtml).toContain('Rey, y él mismo nos salvará');
   });
 });
+
+describe('títulos multilínea con PARTE N (libro El Traslado)', () => {
+  it('funde el PARTE N apilado al título en vez de abrir capítulo fantasma', () => {
+    const html = [
+      '<p>CAPÍTULO 7</p>',
+      '<p>EVENTOS DE LA SEMANA SETENTA O</p>',
+      '<p>LA TRIBULACIÓN</p>',
+      '<p>PARTE 1</p>',
+      `<p>${CUERPO}</p><p>${CUERPO}</p>`,
+      '<p>CAPÍTULO 8</p>',
+      '<p>EVENTOS SEMANA SETENTA DE DANIEL</p>',
+      '<p>LA TRIBULACIÓN</p>',
+      '<p>PARTE 2</p>',
+      `<p>${CUERPO}</p>`,
+    ].join('');
+    const { chapters } = parseHtmlContent(html);
+    expect(chapters.length).toBe(2);
+    // Título completo reconstruido, sin capítulos "PARTE N"
+    expect(chapters[0].title).toContain('CAPÍTULO 7');
+    expect(chapters[0].title).toContain('LA TRIBULACIÓN');
+    expect(chapters[0].title).toContain('PARTE 1');
+    expect(chapters[1].title).toContain('PARTE 2');
+    expect(chapters.some(c => /^PARTE\s+\d+$/i.test(c.title))).toBe(false);
+    // El contenido real quedó en su capítulo (no en uno fantasma)
+    expect(chapters[0].html).toContain('Tarde o temprano');
+    expect(chapters[0].html).not.toContain('<p>LA TRIBULACIÓN</p>');
+    expect(chapters[1].html).toContain('Tarde o temprano');
+  });
+
+  it('una PARTE real (capítulo anterior con cuerpo) queda como divisoria fullPage', () => {
+    const html = [
+      '<p>PARTE 1</p>',
+      '<p>CAPÍTULO 1</p>',
+      '<p>El Principio</p>',
+      `<p>${CUERPO}</p><p>${CUERPO}</p>`,
+      '<p>PARTE 2</p>',
+      '<p>CAPÍTULO 2</p>',
+      '<p>El Final</p>',
+      `<p>${CUERPO}</p><p>${CUERPO}</p>`,
+    ].join('');
+    const { chapters } = parseHtmlContent(html);
+    const parts = chapters.filter(c => c.type === 'part');
+    expect(parts.length).toBe(2);
+    expect(parts[0].titleLayout).toBe('fullPage');
+    expect(parts[1].titleLayout).toBe('fullPage');
+    // Los capítulos numerados conservan su contenido
+    const caps = chapters.filter(c => c.type === 'chapter' && c.chapterLabel);
+    expect(caps.length).toBe(2);
+    expect(caps[0].html).toContain('Tarde o temprano');
+  });
+});
+
+describe('reorden canónico de front/back matter', () => {
+  it('mueve intro/dedicatoria/agradecimientos al inicio y epílogo al final, sin importar el orden del documento', () => {
+    const html = [
+      '<p>CAPÍTULO 1</p>',
+      '<p>El Principio</p>',
+      `<p>${CUERPO}</p><p>${CUERPO}</p>`,
+      '<p>EPÍLOGO</p>',
+      `<p>${CUERPO}</p>`,
+      '<p>CAPÍTULO 2</p>',
+      '<p>El Final</p>',
+      `<p>${CUERPO}</p><p>${CUERPO}</p>`,
+      '<p>INTRODUCCIÓN</p>',
+      `<p>${CUERPO}</p>`,
+      '<p>DEDICATORIA</p>',
+      '<p>Para mi familia, con amor y gratitud eterna por su apoyo en este proyecto de vida y de fe.</p>',
+      '<p>AGRADECIMIENTOS</p>',
+      `<p>${CUERPO}</p>`,
+    ].join('');
+    const { chapters } = parseHtmlContent(html);
+    const names = chapters.map(c => (c.chapterName || c.title).toUpperCase());
+    const idx = (re) => names.findIndex(n => re.test(n));
+    // Front matter en orden canónico, antes del cuerpo
+    expect(idx(/DEDICATORIA/)).toBeLessThan(idx(/AGRADECIMIENTOS/));
+    expect(idx(/AGRADECIMIENTOS/)).toBeLessThan(idx(/INTRODUCCIÓN/));
+    expect(idx(/INTRODUCCIÓN/)).toBeLessThan(idx(/PRINCIPIO/));
+    // Cuerpo mantiene orden relativo
+    expect(idx(/PRINCIPIO/)).toBeLessThan(idx(/FINAL/));
+    // Back matter al final
+    expect(idx(/EPÍLOGO/)).toBeGreaterThan(idx(/FINAL/));
+    // Nada se perdió
+    expect(chapters.length).toBe(6);
+  });
+});

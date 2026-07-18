@@ -676,9 +676,14 @@ export const flattenChapterElements = (chapter, layoutCtx, canvasCtx, measureDiv
   const elements = [];
   const chapterId = `ch_${(chapter.title || 'unknown').substring(0, 20).replace(/\s+/g, '_')}`;
 
-  // Chapter title
+  // Chapter title. A chapter may carry its own layout override (e.g. part
+  // dividers imported as titleLayout:'fullPage' get a dedicated page even
+  // when the book-wide chapterTitle layout is continuous/spaced).
+  const titleConfig = chapter.titleLayout
+    ? { ...safeConfig, chapterTitle: { ...(safeConfig.chapterTitle || {}), layout: chapter.titleLayout } }
+    : safeConfig;
   const { titleHtml, ctConfig } = buildChapterTitleHtml(
-    chapter, safeConfig, baseFontSize, lineHeightPx, contentHeight
+    chapter, titleConfig, baseFontSize, lineHeightPx, contentHeight
   );
   const titleHeight = measureHtmlHeight(titleHtml, canvasCtx);
   elements.push({

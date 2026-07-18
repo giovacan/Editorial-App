@@ -3,8 +3,10 @@ import { isTableMarkupSane } from '../../../utils/tableLayoutEngine';
 
 const SPECIAL_CHAPTERS = [
   'prólogo', 'prologo', 'epílogo', 'epilogo', 'introducción', 'introduccion',
-  'conclusión', 'conclusion', 'dedicatoria', 'agradecimientos',
-  'bibliografía', 'bibliografia', 'prefacio'
+  'conclusión', 'conclusion', 'dedicatoria', 'agradecimientos', 'agradecimiento',
+  'bibliografía', 'bibliografia', 'prefacio', 'colofón', 'colofon',
+  'presentación', 'presentacion', 'apéndice', 'apendice', 'anexo', 'anexos',
+  'glosario', 'nota del autor', 'sobre el autor', 'acerca del autor'
 ];
 
 const makeChapterId = (index) => `chapter-${Date.now()}-${index}`;
@@ -430,7 +432,7 @@ export const parseHtmlContent = (htmlContent) => {
   //   title  — display composite: `${label}  ${name}` (or just name/label)
   // Rule (user): respect the document's label if present; else auto-generate.
   const LABEL_IN_TEXT_RE = /^\s*(lección|leccion|lesson|sección|seccion|section|unidad|unit|módulo|modulo|module|tema|sesión|sesion|session|día|dia|day|capítulo|capitulo|chapter|parte|part)\s*#?\d+\s*[-–—:.\t ]*/i;
-  const FRONT_MATTER_RE = /^(introducción|introduccion|introduction|prólogo|prologo|prologue|prefacio|preface|epílogo|epilogo|epilogue|dedicatoria|agradecimientos|acknowledgements|conclusión|conclusion|colofón|colofon|bibliografía|bibliografia|foreword)\b/i;
+  const FRONT_MATTER_RE = /^(introducción|introduccion|introduction|prólogo|prologo|prologue|prefacio|preface|epílogo|epilogo|epilogue|dedicatoria|agradecimientos?|acknowledgements|conclusión|conclusion|colofón|colofon|bibliografía|bibliografia|foreword|presentación|presentacion|apéndice|apendice|anexos?|glosario|nota del autor|sobre el autor|acerca del autor)\b/i;
   const isFrontMatter = (name) => FRONT_MATTER_RE.test((name || '').trim());
   const AUTO_LABEL_WORD = 'LECCIÓN'; // matches this document's family; generic enough
 
@@ -483,6 +485,48 @@ export const parseHtmlContent = (htmlContent) => {
     return !!m && t.slice(m[0].length).trim().length === 0;
   };
 
+  // ── Multiline-title fusion ────────────────────────────────────────────────
+  // Authors often stack a chapter title over several lines:
+  //     CAPÍTULO 7
+  //     EVENTOS DE LA SEMANA SETENTA O
+  //     LA TRIBULACIÓN
+  //     PARTE 1
+  // The "PARTE 1" line matches the part-heading pattern and used to open a
+  // ghost chapter that swallowed the real chapter's content (folios report:
+  // cap 7/8 left with 2 words, "PARTE 1"/"PARTE 2" with 5,800/18,300).
+  // Detection: a bare "PARTE N" arriving while the current NUMBERED chapter
+  // has almost no content (< 40 words) is a title continuation, not a part.
+  const PART_ONLY_RE = /^\s*(parte|part)\s*#?\s*(\d+|[ivxlcdm]+|primera|segunda|tercera|cuarta|quinta|first|second|third)\s*$/i;
+  const MERGE_MAX_WORDS = 40;
+
+  // Short ALL-CAPS unpunctuated <p>s at the START of the chapter body are the
+  // middle lines of the stacked title ("LA TRIBULACIÓN") — lift them into the
+  // name; anything else stays as content.
+  const liftTitleLinesFromHtml = (html) => {
+    const lifted = [];
+    let rest = html || '';
+    const pRe = /^\s*<p\b[^>]*>([\s\S]*?)<\/p>/i;
+    let m;
+    while ((m = pRe.exec(rest)) !== null) {
+      const t = m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      const isTitleLine = t && t.length <= 60
+        && t === t.toUpperCase() && /[A-ZÁÉÍÓÚÜÑ]/.test(t)
+        && t.split(/\s+/).length <= 6 && !/[.!?…;:]$/.test(t);
+      if (!isTitleLine) break;
+      lifted.push(t);
+      rest = rest.slice(m.index + m[0].length);
+    }
+    return { lifted, rest: rest.trim() };
+  };
+
+  const absorbPartIntoCurrentTitle = (partText) => {
+    const { lifted, rest } = liftTitleLinesFromHtml(currentChapter.html);
+    currentChapter.html = rest;
+    const extra = [...lifted, partText.trim().toUpperCase()].join(' ');
+    currentChapter.chapterName = `${(currentChapter.chapterName || '').trim()} ${extra}`.trim();
+    currentChapter.title = composeTitle(currentChapter.chapterLabel, currentChapter.chapterName);
+  };
+
   let bookTitleConsumed = false;
   topChildren.forEach((el, index) => {
     if (skipIndices.has(index)) return; // documento's own TOC — omitted
@@ -498,6 +542,18 @@ export const parseHtmlContent = (htmlContent) => {
 
     if (approvedHeadings.has(index)) {
       flushAll();
+      // Bare "PARTE N" while the current numbered chapter is still (nearly)
+      // empty → it's the tail of a stacked multiline title. Absorb and stay
+      // in the same chapter instead of opening a ghost one.
+      if (
+        currentChapter && !currentSection
+        && PART_ONLY_RE.test(text)
+        && currentChapter.chapterLabel
+        && calcWordCount(currentChapter.html) < MERGE_MAX_WORDS
+      ) {
+        absorbPartIntoCurrentTitle(text);
+        return;
+      }
       if (currentChapter) {
         if (currentSection) {
           currentChapter.html += `<h3>${currentSection.title}</h3>${currentSection.html}`;
@@ -513,10 +569,14 @@ export const parseHtmlContent = (htmlContent) => {
         for (let j = index + 1; j < topChildren.length && j <= index + 2; j++) {
           const nx = topChildren[j].textContent?.trim() || '';
           if (!nx) continue;
-          if (isLabelOnlyLine(nx) || nx.toUpperCase() === text.toUpperCase()) {
+          // Skip ONLY exact duplicates of THIS label (Word emits them twice).
+          // A DIFFERENT structural label ("PARTE 1" followed by "CAPÍTULO 1")
+          // is the next chapter's own heading — never steal or drop it.
+          if (nx.toUpperCase() === text.toUpperCase()) {
             skipIndices.add(j); // duplicate label line — drop from body
             continue;
           }
+          if (approvedHeadings.has(j) || isLabelOnlyLine(nx)) break;
           if (nx.length <= 70 && !/[.!?]$/.test(nx)) { nameHint = nx; skipIndices.add(j); }
           break;
         }
@@ -527,6 +587,14 @@ export const parseHtmlContent = (htmlContent) => {
         title: fields.title, chapterLabel: fields.label, chapterName: fields.name,
         html: '', wordCount: 0
       };
+      // A REAL part heading (previous chapter had substance, so it wasn't
+      // absorbed) is a book division → dedicated divider page: the title gets
+      // a full page of its own (fullPage layout, honored per-chapter by the
+      // pagination engine).
+      if (/^\s*(parte|part)\s*#?\s*(\d+|[ivxlcdm]+|primera|segunda|tercera|cuarta|quinta|first|second|third)\b/i.test(text)) {
+        currentChapter.type = 'part';
+        currentChapter.titleLayout = 'fullPage';
+      }
       currentSection = null;
     } else if (isSubtitle(el)) {
       flushAll();
@@ -586,5 +654,38 @@ export const parseHtmlContent = (htmlContent) => {
   }
 
   chapters.forEach(ch => { ch.wordCount = calcWordCount(ch.html); });
-  return { chapters, detectedHeadings, bookTitle };
+
+  // ── Canonical front/back-matter ordering ──────────────────────────────────
+  // Authors frequently write chapters first and the opening pieces last, so
+  // the document's physical order is NOT the book's order. Recognized
+  // front-matter chapters (unnumbered: no chapterLabel) are moved before the
+  // body in canonical editorial order; back matter moves after it. Body
+  // chapters keep their relative order. A well-ordered document is a no-op.
+  const normName = (s) => (s || '').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+  const FRONT_ORDER = ['dedicatoria', 'agradecimiento', 'prologo', 'prefacio', 'presentacion', 'introduccion'];
+  const BACK_ORDER = ['epilogo', 'conclusion', 'apendice', 'anexo', 'glosario', 'bibliografia', 'nota del autor', 'sobre el autor', 'acerca del autor', 'colofon'];
+  const matterRank = (ch, order) => {
+    if (ch.chapterLabel) return -1;               // numbered = body, always
+    const n = normName(ch.chapterName || ch.title);
+    return n ? order.findIndex(k => n.startsWith(k)) : -1;
+  };
+  const front = [];
+  const body = [];
+  const back = [];
+  for (const ch of chapters) {
+    const fr = matterRank(ch, FRONT_ORDER);
+    const br = matterRank(ch, BACK_ORDER);
+    if (fr !== -1) front.push({ ch, rank: fr });
+    else if (br !== -1) back.push({ ch, rank: br });
+    else body.push(ch);
+  }
+  const byRank = (a, b) => a.rank - b.rank;      // stable sort keeps doc order on ties
+  const ordered = [
+    ...front.sort(byRank).map(x => x.ch),
+    ...body,
+    ...back.sort(byRank).map(x => x.ch),
+  ];
+
+  return { chapters: ordered, detectedHeadings, bookTitle };
 };
