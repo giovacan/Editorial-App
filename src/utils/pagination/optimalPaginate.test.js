@@ -149,6 +149,16 @@ describe('optimalPaginate (global DP engine)', () => {
     expect(optimalPages.length).toBeGreaterThan(5);
   });
 
+  it('every chapter start lands on a right (odd) page after ALL passes', () => {
+    // Parity must survive the page-inserting passes (heading fixes, safety
+    // clamp) — the folios 128/129 report: chapter 7 opened on a left page.
+    optimalPages.forEach((p, i) => {
+      if (p.isFirstChapterPage) {
+        expect((i + 1) % 2, `chapter start at physical position ${i + 1}`).toBe(1);
+      }
+    });
+  });
+
   it('never overflows the page budget (canvas measurement)', () => {
     for (const p of contentPages(optimalPages)) {
       const h = measureHtmlHeight(p.html, canvasCtx);

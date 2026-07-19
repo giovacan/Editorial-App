@@ -617,6 +617,21 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     }
   }
 
+  // Re-enforce chapter-start parity LAST: the heading fixes and the safety
+  // clamp above can INSERT pages (splice), shifting every later chapter onto
+  // the wrong side (folios 128/129 report: chapter 7 opened on a LEFT page).
+  // enforceChapterStartParity is idempotent — it strips its stale parity
+  // blanks and re-pads. The passes below (cut-line alignment, vertical
+  // justification) never change the page count, so parity is final here.
+  enforceChapterStartParity(allPages, safeConfig);
+  {
+    let pn = 1;
+    for (const p of allPages) {
+      if (!p.isBlank) p.pageNumber = pn;
+      pn++;
+    }
+  }
+
   // Final cut-line alignment guard (catch-all): whatever pass produced a
   // split-head block, if its LAST LINE is sparse (under 5 words and 55% of
   // the column) it must NOT stretch — flip to left alignment. The cut-line
