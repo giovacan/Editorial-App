@@ -90,11 +90,13 @@ export function computeFrontMatter({
   if (fmOffset > 0) {
     const rawLog = useEditorStore.getState().paginationLog;
     if (rawLog) {
+      // Production logs may omit entries/summary — never throw here (a crash
+      // in this cosmetic remap used to strand the UI after pagination).
       useEditorStore.getState().setPaginationLog({
         ...rawLog,
         config: { ...(rawLog.config || {}), fmOffset },
-        entries: rawLog.entries.map(e => ({ ...e, page: e.page + fmOffset })),
-        summary: rawLog.summary.map(s => ({ ...s, page: s.page + fmOffset }))
+        entries: (rawLog.entries || []).map(e => ({ ...e, page: e.page + fmOffset })),
+        summary: (rawLog.summary || []).map(s => ({ ...s, page: s.page + fmOffset }))
       });
     }
   }

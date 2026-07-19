@@ -509,18 +509,26 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
         setPages(validatedPages);
         useEditorStore.getState().setPaginatedPages(validatedPages);
         
+        // TOC/front matter is cosmetic relative to the pages themselves: a
+        // failure here must NEVER strand the UI mid-pagination (the pages are
+        // already in the store — reported as "the bar finishes and nothing
+        // shows" after re-importing a book). Log and continue.
         if (ENABLE_TOC) {
-          computeFrontMatter({
-            chapters: safeBookData.chapters,
-            pages: validatedPages,
-            title: safeBookData.title,
-            author: safeBookData.author,
-            contentHeight,
-            lineHeightPx,
-            contentWidth,
-            baseFontSizePx,
-            fontFamily: targetFontFamily,
-          });
+          try {
+            computeFrontMatter({
+              chapters: safeBookData.chapters,
+              pages: validatedPages,
+              title: safeBookData.title,
+              author: safeBookData.author,
+              contentHeight,
+              lineHeightPx,
+              contentWidth,
+              baseFontSizePx,
+              fontFamily: targetFontFamily,
+            });
+          } catch (e) {
+            console.error('[TOC] computeFrontMatter falló — se muestran las páginas sin TOC:', e, e?.stack);
+          }
         }
         
         useEditorStore.getState().setLayoutDims({
