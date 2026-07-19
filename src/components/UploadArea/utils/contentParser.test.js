@@ -298,6 +298,63 @@ describe('títulos multilínea con PARTE N (libro El Traslado)', () => {
   });
 });
 
+describe('documento con TDC + rótulos bare + secciones libres (escenario El Traslado)', () => {
+  it('sin duplicados, sin fantasmas del fuzzy, secciones all-caps separadas y acomodadas', () => {
+    const html = [
+      '<p>EL TRASLADO DE LA IGLESIA</p>',
+      '<p>CONTENIDO</p>',
+      '<p>INTRODUCCIÓN</p>',
+      '<p>CAPÍTULO 1 UNA ANTORCHA EN LA OSCURIDAD</p>',
+      '<p>CAPÍTULO 2 EVENTOS SEMANA SETENTA DE DANIEL</p>',
+      '<p>CAPÍTULO 3 EL REINO ETERNO PROMETIDO</p>',
+      // cuerpo
+      '<p>CAPÍTULO 1</p>',
+      '<p>UNA ANTORCHA EN LA OSCURIDAD</p>',
+      `<p>${CUERPO}</p>`,
+      // subtítulo interno MUY parecido a la entrada TDC del cap 2 (fuzzy bait)
+      '<p>LA SEMANA SETENTA DE DANIEL</p>',
+      `<p>${CUERPO}</p>`,
+      '<p>CAPÍTULO 2</p>',
+      '<p>EVENTOS SEMANA SETENTA DE DANIEL</p>',
+      `<p>${CUERPO}</p>`,
+      '<p>CAPÍTULO 3</p>',
+      '<p>EL REINO ETERNO PROMETIDO</p>',
+      `<p>${CUERPO}</p>`,
+      // bloque final no numerado con secciones embebidas
+      '<p>INTRODUCCIÓN</p>',
+      `<p>${CUERPO}</p>`,
+      '<p>LA INMINENCIA DEL TRASLADO</p>',
+      `<p>${CUERPO}</p>`,
+      // rótulos de comparación (NO secciones: siguen líneas cortas)
+      '<p>TRASLADO</p>',
+      '<p>SEGUNDA VENIDA</p>',
+      '<p>Una línea corta.</p>',
+      '<p>REFERENCIAS BIBLIOGRÁFICAS</p>',
+      '<p>AUTOR UNO. (1989). OBRA DE REFERENCIA COMPLETA. PAÍS. EDITORIAL.</p>',
+    ].join('');
+    const { chapters, bookTitle } = parseHtmlContent(html);
+    expect(bookTitle).toBe('EL TRASLADO DE LA IGLESIA');
+    const labels = chapters.map(c => `${c.chapterLabel}|${c.chapterName}`);
+    // Sin capítulos duplicados vacíos (bare label + nombre aprobado por TDC)
+    const cap1 = chapters.filter(c => c.chapterLabel === 'CAPÍTULO 1');
+    expect(cap1.length).toBe(1);
+    expect(cap1[0].chapterName).toBe('UNA ANTORCHA EN LA OSCURIDAD');
+    expect(cap1[0].html).toContain('Tarde o temprano');
+    // El subtítulo interno NO abrió capítulo fantasma (fuzzy desactivado con bare labels)
+    expect(labels.some(l => /LA SEMANA SETENTA DE DANIEL/.test(l) && /CAPÍTULO/.test(l))).toBe(false);
+    expect(cap1[0].html).toContain('LA SEMANA SETENTA DE DANIEL');
+    // Secciones libres separadas; rótulos de comparación NO
+    expect(chapters.some(c => c.chapterName === 'LA INMINENCIA DEL TRASLADO')).toBe(true);
+    expect(chapters.some(c => /^TRASLADO/.test(c.chapterName || ''))).toBe(false);
+    // REFERENCIAS al final (back matter), INTRODUCCIÓN al frente
+    const names = chapters.map(c => (c.chapterName || c.title).toUpperCase());
+    const iIntro = names.findIndex(n => /INTRODUCCIÓN/.test(n));
+    const iRef = names.findIndex(n => /REFERENCIAS/.test(n));
+    expect(iIntro).toBe(0);
+    expect(iRef).toBe(chapters.length - 1);
+  });
+});
+
 describe('reorden canónico de front/back matter', () => {
   it('mueve intro/dedicatoria/agradecimientos al inicio y epílogo al final, sin importar el orden del documento', () => {
     const html = [

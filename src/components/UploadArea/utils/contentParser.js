@@ -6,7 +6,9 @@ const SPECIAL_CHAPTERS = [
   'conclusión', 'conclusion', 'dedicatoria', 'agradecimientos', 'agradecimiento',
   'bibliografía', 'bibliografia', 'prefacio', 'colofón', 'colofon',
   'presentación', 'presentacion', 'apéndice', 'apendice', 'anexo', 'anexos',
-  'glosario', 'nota del autor', 'sobre el autor', 'acerca del autor'
+  'glosario', 'nota del autor', 'sobre el autor', 'acerca del autor',
+  'referencias', 'referencias bibliográficas', 'referencias bibliograficas',
+  'reconocimientos'
 ];
 
 const makeChapterId = (index) => `chapter-${Date.now()}-${index}`;
@@ -408,7 +410,12 @@ export const parseHtmlContent = (htmlContent) => {
       // Excusas Frente Al Llamado De Dios" — the fragment drops too many index
       // words to reach 0.6). Each entry is consumed once (the first line that
       // matches it wins), so later subtitles can't re-trigger it.
-      if (!matched) {
+      // DISABLED when the document carries its own bare structural labels
+      // ("CAPÍTULO N" lines): chapters are already found by label, and fuzzy
+      // matching can only mint ghosts — in El Traslado an inner subtitle
+      // "LA SEMANA SETENTA DE DANIEL" hit 0.75 against the index entry
+      // "EVENTOS SEMANA SETENTA DE DANIEL" and split chapter 6 in half.
+      if (!matched && bareLabelIdx.length < 3) {
         let best = null, bestSim = 0;
         for (const e of tocEntries) {
           if (e.used) continue;
@@ -432,7 +439,7 @@ export const parseHtmlContent = (htmlContent) => {
   //   title  — display composite: `${label}  ${name}` (or just name/label)
   // Rule (user): respect the document's label if present; else auto-generate.
   const LABEL_IN_TEXT_RE = /^\s*(lección|leccion|lesson|sección|seccion|section|unidad|unit|módulo|modulo|module|tema|sesión|sesion|session|día|dia|day|capítulo|capitulo|chapter|parte|part)\s*#?\d+\s*[-–—:.\t ]*/i;
-  const FRONT_MATTER_RE = /^(introducción|introduccion|introduction|prólogo|prologo|prologue|prefacio|preface|epílogo|epilogo|epilogue|dedicatoria|agradecimientos?|acknowledgements|conclusión|conclusion|colofón|colofon|bibliografía|bibliografia|foreword|presentación|presentacion|apéndice|apendice|anexos?|glosario|nota del autor|sobre el autor|acerca del autor)\b/i;
+  const FRONT_MATTER_RE = /^(introducción|introduccion|introduction|prólogo|prologo|prologue|prefacio|preface|epílogo|epilogo|epilogue|dedicatoria|agradecimientos?|acknowledgements|conclusión|conclusion|colofón|colofon|bibliografía|bibliografia|foreword|presentación|presentacion|apéndice|apendice|anexos?|glosario|nota del autor|sobre el autor|acerca del autor|referencias|reconocimientos)\b/i;
   const isFrontMatter = (name) => FRONT_MATTER_RE.test((name || '').trim());
   const AUTO_LABEL_WORD = 'LECCIÓN'; // matches this document's family; generic enough
 
@@ -527,6 +534,37 @@ export const parseHtmlContent = (htmlContent) => {
     currentChapter.title = composeTitle(currentChapter.chapterLabel, currentChapter.chapterName);
   };
 
+  // ── Free-standing section headings (inside unnumbered chapters only) ──────
+  // Front/back-matter blocks often contain inner sections written as short
+  // ALL-CAPS lines ("RESUMEN DE LOS EVENTOS PROFÉTICOS", "LA INMINENCIA DEL
+  // TRASLADO", or stacked "PANORAMA / DE / EVENTOS / PROFÉTICOS"). Promote
+  // them to chapters ONLY when substantial body follows (≥150 chars) —
+  // comparison labels ("TRASLADO" / "SEGUNDA VENIDA" followed by one-liners)
+  // and a trailing author signature stay as plain text.
+  const isAllCapsShort = (t) =>
+    !!t && t.length <= 60 && t === t.toUpperCase()
+    && /[A-ZÁÉÍÓÚÜÑ]/.test(t) && !/[.!?…;:]$/.test(t);
+
+  const tryFreeSection = (index) => {
+    const first = topChildren[index].textContent?.trim() || '';
+    if (!isAllCapsShort(first)) return null;
+    const lines = [first];
+    let j = index + 1;
+    for (; j < topChildren.length; j++) {
+      if (skipIndices.has(j) || approvedHeadings.has(j)) break;
+      const t = topChildren[j].textContent?.trim() || '';
+      if (!t) continue;
+      if (!isAllCapsShort(t)) break;
+      lines.push(t); // stacked title line
+    }
+    if (j >= topChildren.length || approvedHeadings.has(j)) return null;
+    const after = topChildren[j]?.textContent?.trim() || '';
+    if (after.length < 150) return null;
+    const title = lines.join(' ');
+    if (title.split(/\s+/).length < 2) return null;
+    return { title, lastIdx: j - 1 };
+  };
+
   let bookTitleConsumed = false;
   topChildren.forEach((el, index) => {
     if (skipIndices.has(index)) return; // documento's own TOC — omitted
@@ -571,12 +609,15 @@ export const parseHtmlContent = (htmlContent) => {
           if (!nx) continue;
           // Skip ONLY exact duplicates of THIS label (Word emits them twice).
           // A DIFFERENT structural label ("PARTE 1" followed by "CAPÍTULO 1")
-          // is the next chapter's own heading — never steal or drop it.
+          // is the next chapter's own heading — never steal or drop it. But a
+          // plain NAME line stays consumable even when the TOC matcher already
+          // approved it (it IS this chapter's name — consuming it here avoids
+          // a duplicate empty chapter).
           if (nx.toUpperCase() === text.toUpperCase()) {
             skipIndices.add(j); // duplicate label line — drop from body
             continue;
           }
-          if (approvedHeadings.has(j) || isLabelOnlyLine(nx)) break;
+          if (isLabelOnlyLine(nx)) break;
           if (nx.length <= 70 && !/[.!?]$/.test(nx)) { nameHint = nx; skipIndices.add(j); }
           break;
         }
@@ -608,6 +649,25 @@ export const parseHtmlContent = (htmlContent) => {
       // front-matter chapter so nothing is dropped.
       if (!currentChapter) {
         currentChapter = { id: makeChapterId(chapters.length), type: 'chapter', title: '', html: '', wordCount: 0 };
+      }
+      // Free ALL-CAPS section start inside an unnumbered block → own chapter.
+      if (!currentChapter.chapterLabel) {
+        const sec = tryFreeSection(index);
+        if (sec) {
+          flushAll();
+          if (currentSection) {
+            currentChapter.html += `<h3>${currentSection.title}</h3>${currentSection.html}`;
+            currentSection = null;
+          }
+          if (currentChapter.html.trim() || currentChapter.title) chapters.push(currentChapter);
+          currentChapter = {
+            id: makeChapterId(chapters.length), type: 'chapter',
+            title: sec.title, chapterLabel: '', chapterName: sec.title,
+            html: '', wordCount: 0
+          };
+          for (let k = index + 1; k <= sec.lastIdx; k++) skipIndices.add(k);
+          return;
+        }
       }
       if (isBoldInlineOpener(el, text)) {
         // Buffer bold opener; keep pendingParagraph (will merge all three later)
@@ -664,7 +724,7 @@ export const parseHtmlContent = (htmlContent) => {
   const normName = (s) => (s || '').toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
   const FRONT_ORDER = ['dedicatoria', 'agradecimiento', 'prologo', 'prefacio', 'presentacion', 'introduccion'];
-  const BACK_ORDER = ['epilogo', 'conclusion', 'apendice', 'anexo', 'glosario', 'bibliografia', 'nota del autor', 'sobre el autor', 'acerca del autor', 'colofon'];
+  const BACK_ORDER = ['epilogo', 'conclusion', 'apendice', 'anexo', 'glosario', 'referencias', 'bibliografia', 'nota del autor', 'sobre el autor', 'acerca del autor', 'colofon'];
   const matterRank = (ch, order) => {
     if (ch.chapterLabel) return -1;               // numbered = body, always
     const n = normName(ch.chapterName || ch.title);
