@@ -715,6 +715,32 @@ export const parseHtmlContent = (htmlContent) => {
 
   chapters.forEach(ch => { ch.wordCount = calcWordCount(ch.html); });
 
+  // ── Empty unnumbered pieces ───────────────────────────────────────────────
+  // a) A canonical piece heading left EMPTY because the free-section detector
+  //    captured its body right after it ("APÉNDICE" followed by the stacked
+  //    section "MATEO 24 UN CAPÍTULO MAL ENTENDIDO") prefixes its name onto
+  //    that section and is dropped — the piece keeps its canonical identity
+  //    (and its front/back-matter slot) with the content it owns.
+  // b) Remaining empty unnumbered chapters are artifacts — e.g. the lone
+  //    "INTRODUCCIÓN" line that merely TITLES the document's own index page
+  //    (Panorama: the index lists an introduction the author never wrote).
+  //    Part dividers (type 'part') are empty BY DESIGN and stay.
+  for (let i = chapters.length - 1; i >= 0; i--) {
+    const ch = chapters[i];
+    if (ch.chapterLabel || ch.type === 'part') continue;
+    if (ch.wordCount > 0) continue;
+    const next = chapters[i + 1];
+    const chName = (ch.chapterName || ch.title || '').trim();
+    if (
+      next && chName && !next.chapterLabel && next.type !== 'part'
+      && !FRONT_MATTER_RE.test((next.chapterName || next.title || '').trim())
+    ) {
+      next.chapterName = `${chName} — ${(next.chapterName || next.title || '').trim()}`;
+      next.title = next.chapterName;
+    }
+    chapters.splice(i, 1);
+  }
+
   // ── Canonical front/back-matter ordering ──────────────────────────────────
   // Authors frequently write chapters first and the opening pieces last, so
   // the document's physical order is NOT the book's order. Recognized

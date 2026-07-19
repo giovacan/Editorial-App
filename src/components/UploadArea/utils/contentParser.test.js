@@ -355,6 +355,37 @@ describe('documento con TDC + rótulos bare + secciones libres (escenario El Tra
   });
 });
 
+describe('piezas vacías del final del documento (Panorama)', () => {
+  it('descarta el heading huérfano del índice y fusiona APÉNDICE con su sección libre', () => {
+    const html = [
+      '<p>CAPÍTULO 1</p>',
+      '<p>El Principio</p>',
+      `<p>${CUERPO}</p><p>${CUERPO}</p>`,
+      '<p>INTRODUCCIÓN</p>',      // título de la página del índice — sin contenido propio
+      '<p>INDICE</p>',
+      '<p>INTRODUCCIÓN ………… 5</p>',
+      '<p>1. UNA ANTORCHA EN LA OSCURIDAD .. 7</p>',
+      '<p>APENDICE …. 249</p>',
+      '<p>APÉNDICE</p>',           // heading real, cuerpo capturado por la sección libre
+      '<p>MATEO 24 UN CAPÍTULO</p>',
+      '<p>MAL ENTENDIDO</p>',
+      `<p>${CUERPO}</p><p>${CUERPO}</p>`,
+    ].join('');
+    const { chapters } = parseHtmlContent(html);
+    const names = chapters.map(c => (c.chapterName || c.title).toUpperCase());
+    // Sin INTRODUCCIÓN fantasma (el doc no tiene texto de intro)
+    expect(names.some(n => /^INTRODUCCIÓN$/.test(n))).toBe(false);
+    // APÉNDICE fusionado con su sección y con el cuerpo
+    const ap = chapters.find(c => /^APÉNDICE — MATEO 24/.test(c.chapterName || c.title || ''));
+    expect(ap).toBeTruthy();
+    expect(ap.html).toContain('Tarde o temprano');
+    // El listado del índice no contaminó nada
+    const allHtml = chapters.map(c => c.html).join('');
+    expect(allHtml).not.toContain('UNA ANTORCHA EN LA OSCURIDAD ..');
+    expect(chapters.length).toBe(2);
+  });
+});
+
 describe('reorden canónico de front/back matter', () => {
   it('mueve intro/dedicatoria/agradecimientos al inicio y epílogo al final, sin importar el orden del documento', () => {
     const html = [
