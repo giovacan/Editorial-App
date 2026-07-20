@@ -254,7 +254,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     (layoutHints?.global?.keepWithNextTags || []).join(','),
     safeConfig?.pagination?.engineMode || 'optimal',
     safeConfig?.render?.engineLines !== false ? 'el1' : 'el0',
-    'v73-tables' // bump to force cache invalidation after algorithm changes
+    'v74-polish' // bump to force cache invalidation after algorithm changes
   ].join('|'));
 
   // 'optimal' (default): global DP pagination per chapter — no fill-pass needed.
@@ -617,6 +617,62 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     }
   }
 
+  // ── Widow kill ─────────────────────────────────────────────────────────────
+  // A page that OPENS with the ≤1-line tail of a paragraph split from the
+  // previous page is the classic widow. When the previous page has room for
+  // that line, pull it back and REALLY merge it into its head (mergeIntoOne),
+  // so the reunited paragraph re-justifies naturally. Pull-only (never pushes
+  // content forward), budget-verified, word-conservation-guarded. Runs before
+  // the final parity pass because removing an emptied page changes the count.
+  {
+    const chStartExtraWk = Math.max(0, (layoutCtx.headerSpaceEstimate || 0) - (layoutCtx.chapterStartBottomClearance || 0))
+      + (layoutCtx.chapterStartExtraLines || 0) * lineHeightPx;
+    const wordsOf = (h) => (h || '').replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+    for (let i = allPages.length - 1; i >= 1; i--) {
+      const page = allPages[i];
+      if (!page?.html || page.isBlank || page.isTitleOnlyPage) continue;
+      let prevIdx = i - 1;
+      while (prevIdx >= 0 && allPages[prevIdx]?.isBlank) prevIdx--;
+      const prev = allPages[prevIdx];
+      if (!prev?.html || prev.isBlank || prev.isTitleOnlyPage) continue;
+      if (prev.chapterTitle !== page.chapterTitle) continue;
+
+      const blocks = getPageBlocks(page);
+      if (blocks.length === 0) continue;
+      const first = blocks[0];
+      if (!/data-continuation/.test(first.outerHtml || '')) continue;
+      const fragH = measureHtmlHeight(first.outerHtml, canvasCtx);
+      if (fragH > lineHeightPx * 1.6) continue; // only ≤1 rendered line
+
+      const prevBlocks = getPageBlocks(prev);
+      const last = prevBlocks[prevBlocks.length - 1];
+      if (!last || !/data-split-head/.test(last.outerHtml || '')) continue;
+
+      const merged = mergeIntoOne(last.outerHtml, first.outerHtml)
+        .replace(/\s*data-split-head="[^"]*"/i, '');
+      // Conservation: the merge must keep every word of both fragments.
+      if (wordsOf(merged) !== wordsOf(last.outerHtml) + wordsOf(first.outerHtml)) continue;
+
+      const newPrevHtml = prevBlocks.slice(0, -1).map(b => b.outerHtml).join('') + merged;
+      const budget = contentHeight - getDomSlack() + (prev.isFirstChapterPage ? chStartExtraWk : 0);
+      if (measureHtmlHeight(newPrevHtml, canvasCtx) > budget) continue;
+
+      Object.assign(prev, setPageHtml(prev, newPrevHtml));
+      const restHtml = blocks.slice(1).map(b => b.outerHtml).join('');
+      if (restHtml.trim()) {
+        Object.assign(page, setPageHtml(page, restHtml));
+      } else {
+        allPages.splice(i, 1); // widow was alone → page dissolves
+      }
+      if (process.env.NODE_ENV === 'development') {
+        log.record('widow-kill', 'pull-back', (prev.pageNumber || prevIdx + 1), {
+          fragH: +fragH.toFixed(0),
+          dissolved: !restHtml.trim(),
+        });
+      }
+    }
+  }
+
   // Re-enforce chapter-start parity LAST: the heading fixes and the safety
   // clamp above can INSERT pages (splice), shifting every later chapter onto
   // the wrong side (folios 128/129 report: chapter 7 opened on a LEFT page).
@@ -772,10 +828,10 @@ export const flattenChapterElements = (chapter, layoutCtx, canvasCtx, measureDiv
     const isFirstParagraph = originalIdx === firstParagraphIdx;
     if (el.tag === 'P' || el.tag === 'DIV') paragraphCount++;
 
-    const html = buildParagraphHtml(
+    let html = buildParagraphHtml(
       el, safeConfig, baseFontSize, baseLineHeight, textAlign, isFirstParagraph
     );
-    const height = measureHtmlHeight(html, canvasCtx);
+    let height = measureHtmlHeight(html, canvasCtx);
 
     // Detect bold from the ORIGINAL element (before buildParagraphHtml strips it).
     let origIsBold = false;
@@ -785,6 +841,33 @@ export const flattenChapterElements = (chapter, layoutCtx, canvasCtx, measureDiv
       } else if (/^<p[^>]*>\s*<(?:strong|b)\b/i.test(el.outerHtml)) {
         const { boldLen, totalLen } = getBoldTextRatio(el.outerHtml);
         origIsBold = totalLen > 0 && (boldLen / totalLen) >= 0.8;
+      }
+    }
+
+    // Runt absorption: a paragraph whose LAST line is a single word gets a
+    // subtle negative word-spacing so the word pulls up (one line less, no
+    // runt). Print practice caps tracking around ±1.5% — on ~4px spaces the
+    // -0.3/-0.7px range is invisible. Deterministic and render-consistent:
+    // the value travels inline and every measurer (KP, greedy, lineRenderer)
+    // honors word-spacing, so DP heights and drawn lines agree. Only accepted
+    // when the measured height actually drops a full line.
+    if (
+      el.tag === 'P' && !origIsBold
+      && height >= lineHeightPx * 2
+      && !/<br[\s/>]/i.test(html)
+      && !/word-spacing/.test(html)
+    ) {
+      const m = getLastLineMetrics((el.textContent || '').trim(), canvasCtx);
+      if (m && m.lastLineWords === 1) {
+        for (const ws of [-0.3, -0.5, -0.7]) {
+          const tuned = html.replace('style="', `style="word-spacing:${ws}px;`);
+          const h2 = measureHtmlHeight(tuned, canvasCtx);
+          if (h2 <= height - lineHeightPx * 0.9) {
+            html = tuned;
+            height = h2;
+            break;
+          }
+        }
       }
     }
 
