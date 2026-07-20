@@ -188,7 +188,16 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
 
   const { contentHeight, lineHeightPx, baseFontSize: baseFontSizeTop, baseLineHeight: baseLineHeightTop, minOrphanLines: minOrphanLinesTop } = layoutCtx;
 
-  setDomSlack(Math.round(lineHeightPx * 1.0));
+  // Canvas↔DOM height reserve. A full line was over-conservative: on real
+  // books the browser render exceeds the Canvas measurement by only ~4-8px
+  // (worst observed: p412 +8px = 0.8 line at that size), so a whole line of
+  // reserve left a visible band of unused space at every page foot (user came
+  // from InDesign, where measure == render and the box fills to the last
+  // point). Half a line still scales with font size AND clears the worst
+  // observed delta with headroom; the post-render DOM audit
+  // (useLayoutVerification) catches any residual overflow by re-measuring in
+  // the real browser and carrying it forward.
+  setDomSlack(Math.round(lineHeightPx * 0.5));
 
   const pageFormat = safeConfig?.pageFormat || layoutCtx.pageFormat || 'unknown';
   log.setConfig({ pageFormat, fontSize: baseFontSizeTop, lineHeight: baseLineHeightTop, contentHeight, contentWidth: layoutCtx.contentWidth, minOrphanLines: minOrphanLinesTop, lineHeightPx });
@@ -254,7 +263,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     (layoutHints?.global?.keepWithNextTags || []).join(','),
     safeConfig?.pagination?.engineMode || 'optimal',
     safeConfig?.render?.engineLines !== false ? 'el1' : 'el0',
-    'v75-tablesplit' // bump to force cache invalidation after algorithm changes
+    'v76-halfslack' // bump to force cache invalidation after algorithm changes
   ].join('|'));
 
   // 'optimal' (default): global DP pagination per chapter — no fill-pass needed.
