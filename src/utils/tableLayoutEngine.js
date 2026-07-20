@@ -158,6 +158,34 @@ export const parseTableGrid = (html = '') => {
   if (headerRowCount >= rows.length) return null; // header-only table
   if (headerRowCount > MAX_HEADER_ROWS) headerRowCount = 0; // present but not repeatable
 
+  // Header inference: Word rarely exports <thead>/<th>, so a comparison table's
+  // label row ("ISRAEL | IGLESIA", "BESTIA | IMPERIO") arrives as a plain <td>
+  // row and would never repeat across a page break — the reader loses which
+  // column is which (user request). Infer it: the first row is a header when
+  // it spans the full column count with SHORT label cells (no sentences) AND
+  // the data rows below are clearly longer. Only for tables that split (worth
+  // repeating) — a 2-3 row table stays as-is.
+  if (headerRowCount === 0 && rows.length >= 4) {
+    const first = rows[0];
+    const spansAll = first.cells.reduce((a, c) => a + c.colSpan, 0) >= colCount
+      && first.cells.length >= 2;
+    const cellLen = (row) => row.cells.reduce((a, c) =>
+      a + c.blocks.reduce((s, b) => s + b.text.length, 0), 0) / Math.max(1, row.cells.length);
+    const firstLen = cellLen(first);
+    const isLabelRow = spansAll
+      && first.cells.every(c => {
+        const t = c.blocks.map(b => b.text).join(' ').trim();
+        return t.length > 0 && t.length <= 30 && !/[.!?]$/.test(t); // short, no sentence
+      });
+    // The following data rows must be meaningfully longer (real content).
+    const dataLen = (cellLen(rows[1]) + cellLen(rows[2])) / 2;
+    if (isLabelRow && dataLen > firstLen * 1.6) {
+      rows[0].isHeaderRow = true;
+      rows[0].inferredHeader = true; // marks emitted <th> so re-parse re-detects
+      headerRowCount = 1;
+    }
+  }
+
   // Engine-emitted tables carry a <colgroup> with the widths that were used
   // for measurement. Honoring them (instead of recomputing from a partial row
   // range) keeps head/tail sub-tables column-aligned with the original AND

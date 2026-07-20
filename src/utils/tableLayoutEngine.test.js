@@ -102,6 +102,29 @@ describe('parseTableGrid', () => {
     expect(isTableMarkupSane('<table><tr><td>x</td></tr></table>')).toBe(false);
   });
 
+  it('infers the header row of a Word comparison table (no thead/th)', () => {
+    // Long comparison table with a plain-<td> label row — infer & repeat it.
+    const rows = ['<tr><td><p>ISRAEL</p></td><td><p>IGLESIA</p></td></tr>'];
+    for (let i = 0; i < 6; i++) {
+      rows.push(`<tr><td><p>Israel recibe promesas terrenales concretas en el pacto número ${i}.</p></td><td><p>La iglesia recibe promesas celestiales en el evangelio, punto ${i}.</p></td></tr>`);
+    }
+    const g = parseTableGrid(`<table>${rows.join('')}</table>`);
+    expect(g).not.toBeNull();
+    expect(g.headerRowCount).toBe(1);
+    expect(g.rows[0].isHeaderRow).toBe(true);
+  });
+
+  it('does NOT infer a header when the first row is not a short label row', () => {
+    // First row is a full sentence like the rest → no header inference.
+    const rows = [];
+    for (let i = 0; i < 6; i++) {
+      rows.push(`<tr><td><p>Frase larga de datos en la primera columna número ${i} con texto.</p></td><td><p>Otra frase larga en la segunda columna, dato ${i} con contenido.</p></td></tr>`);
+    }
+    const g = parseTableGrid(`<table>${rows.join('')}</table>`);
+    expect(g).not.toBeNull();
+    expect(g.headerRowCount).toBe(0);
+  });
+
   it('normalizes Word filler-colspans (inconsistent 5 / 3+2 / 2+2 → clean 2 cols)', () => {
     // Real 2-column comparison table exported from Word, sitting on an inflated
     // 5-column grid with inconsistent colspans (folio 27 report). Full-width
