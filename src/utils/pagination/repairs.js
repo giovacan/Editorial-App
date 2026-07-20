@@ -720,7 +720,11 @@ export const cleanupNearlyEmptyPages = (pages, layoutCtx, canvasCtx) => {
       }
 
       pages[i - 1] = setPageHtml(prevPage, mergedHtml);
-      Object.assign(page, setPageHtml(page, '', { isBlank: true }));
+      // Remove the now-empty page entirely instead of leaving it as a blank —
+      // a merged-away page stranded mid-chapter renders as a spurious white
+      // page (folio 121 report: empty page, next page has text). Parity is
+      // re-enforced afterwards, so dropping a page here is safe.
+      pages.splice(i, 1);
     }
   }
 };

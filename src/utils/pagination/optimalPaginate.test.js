@@ -179,6 +179,33 @@ describe('optimalPaginate (global DP engine)', () => {
     }
   });
 
+  it('no blank page sits mid-chapter (only allowed before a chapter start)', () => {
+    // A blank page is legal ONLY as a parity blank right before a chapter
+    // start. A blank surrounded by same-chapter content is a spurious white
+    // page (folio 121 report: merged-away page left as a blank mid-chapter).
+    for (let i = 1; i < optimalPages.length - 1; i++) {
+      const p = optimalPages[i];
+      if (!p?.isBlank) continue;
+      // Find the next non-blank page.
+      let n = i + 1;
+      while (n < optimalPages.length && optimalPages[n]?.isBlank) n++;
+      const next = optimalPages[n];
+      if (!next) continue;
+      // Legal if the next page starts a chapter (parity blank). Otherwise the
+      // previous non-blank must be a different chapter (end-of-chapter slack).
+      if (next.isFirstChapterPage) continue;
+      let pr = i - 1;
+      while (pr >= 0 && optimalPages[pr]?.isBlank) pr--;
+      const prev = optimalPages[pr];
+      if (prev && !prev.isBlank) {
+        expect(
+          prev.chapterTitle !== next.chapterTitle,
+          `blank page at index ${i} sits mid-chapter "${next.chapterTitle}"`
+        ).toBe(true);
+      }
+    }
+  });
+
   it('every chapter start lands on a right (odd) page after ALL passes', () => {
     // Parity must survive the page-inserting passes (heading fixes, safety
     // clamp) — the folios 128/129 report: chapter 7 opened on a left page.

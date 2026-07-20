@@ -463,9 +463,15 @@ export const buildNativeTableElement = (html, ctx) => {
  * duplicated (beyond the repeated header) rejects the split.
  *
  * opts: { minOrphanRows = 2, minWidowRows = 2 } — counted in DATA row groups.
+ *
+ * Short tables with tall rows: a comparison table with only 2-3 data rows,
+ * each several lines high, can never satisfy 2+2 and would jump WHOLE to the
+ * next page leaving a half-empty hole (folio 90/91 report). When the caller's
+ * floors can't be met, we retry with 1+1 as long as the head still fills the
+ * offered space well (≥60%) — one row above, one below beats a big hole.
  */
 export const splitTableByRows = (html, maxHeight, ctx, opts = {}) => {
-  const { minOrphanRows = 2, minWidowRows = 2 } = opts;
+  let { minOrphanRows = 2, minWidowRows = 2 } = opts;
   if (!html || maxHeight <= 0) return null;
   const e = getLayout(html, ctx);
   if (!e) return null;
@@ -475,7 +481,16 @@ export const splitTableByRows = (html, maxHeight, ctx, opts = {}) => {
 
   // Data groups = groups past the header prefix.
   const dataGroups = groups.filter(g => g.start >= hdrRows);
-  if (dataGroups.length < minOrphanRows + minWidowRows) return null;
+  if (dataGroups.length < minOrphanRows + minWidowRows) {
+    // Relax to 1+1 for short/tall tables so they can still start on the
+    // current page instead of leaving a hole (only if 1+1 is now satisfiable).
+    if (dataGroups.length >= 2 && (minOrphanRows > 1 || minWidowRows > 1)) {
+      minOrphanRows = 1;
+      minWidowRows = 1;
+    } else {
+      return null;
+    }
+  }
 
   // Head height = top margin + top border + header + first k data groups
   // (+ bottom margin: the sub-table keeps the same block margins).

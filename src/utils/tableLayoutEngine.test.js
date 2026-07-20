@@ -195,10 +195,34 @@ describe('splitTableByRows', () => {
     expect(splitTableByRows(native.html, 20, ctx)).toBeNull();
   });
 
-  it('returns null for tables with too few data rows', () => {
+  it('returns null when even 1+1 is impossible (single data row)', () => {
     const ctx = makeCtx();
-    const native = buildNativeTableElement(makeBigTable(3), ctx);
-    expect(splitTableByRows(native.html, 100, ctx, { minOrphanRows: 2, minWidowRows: 2 })).toBeNull();
+    const one = '<table><thead><tr><th>A</th><th>B</th></tr></thead><tbody>'
+      + '<tr><td>solo</td><td>una fila de datos</td></tr></tbody></table>';
+    const native = buildNativeTableElement(one, ctx);
+    if (native) expect(splitTableByRows(native.html, 200, ctx, { minOrphanRows: 2, minWidowRows: 2 })).toBeNull();
+  });
+
+  it('short table with tall rows relaxes 2+2 → 1+1 so it can start on the current page', () => {
+    const ctx = makeCtx();
+    // 2 data rows, each many lines high (the folio 90/91 comparison table).
+    const tall = (n) => Array.from({ length: n }, (_, i) => `celda muy larga número ${i} con bastante texto para envolver en varias líneas dentro de su columna estrecha`).join(' ');
+    const html = '<table><thead><tr><th>Bestia</th><th>Imperio</th></tr></thead><tbody>'
+      + `<tr><td>EL LEÓN CON ALAS</td><td>${tall(8)}</td></tr>`
+      + `<tr><td>EL OSO DEVORADOR</td><td>${tall(8)}</td></tr>`
+      + '</tbody></table>';
+    const native = buildNativeTableElement(html, ctx);
+    expect(native).not.toBeNull();
+    // Half a page of room: 2+2 would fail (only 2 data rows) — 1+1 must split.
+    const half = Math.round(measureHtmlHeight(native.html, ctx) * 0.6);
+    const split = splitTableByRows(native.html, half, ctx, { minOrphanRows: 2, minWidowRows: 2 });
+    expect(split).not.toBeNull();
+    const [head, tail] = split;
+    expect(measureHtmlHeight(head, ctx)).toBeLessThanOrEqual(half);
+    expect(head).toContain('Bestia');   // header on head
+    expect(tail).toContain('Bestia');   // header repeated on tail
+    expect(head).toContain('EL LEÓN CON ALAS');
+    expect(tail).toContain('EL OSO DEVORADOR');
   });
 
   it('never cuts inside a rowspan group', () => {
