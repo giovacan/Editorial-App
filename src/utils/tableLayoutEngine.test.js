@@ -101,6 +101,30 @@ describe('parseTableGrid', () => {
     expect(isTableMarkupSane(simpleTable)).toBe(true);
     expect(isTableMarkupSane('<table><tr><td>x</td></tr></table>')).toBe(false);
   });
+
+  it('normalizes Word filler-colspans (inconsistent 5 / 3+2 / 2+2 → clean 2 cols)', () => {
+    // Real 2-column comparison table exported from Word, sitting on an inflated
+    // 5-column grid with inconsistent colspans (folio 27 report). Full-width
+    // rows carry colspan=5; data rows carry 3+2 or 2+2. Must normalize to 2.
+    const html = '<table>'
+      + '<tr><td colspan="5"><p>SECCIÓN COMÚN</p></td></tr>'
+      + '<tr><td colspan="3"><p>ISRAEL</p></td><td colspan="2"><p>IGLESIA</p></td></tr>'
+      + '<tr><td colspan="3"><p>Terrenal</p></td><td colspan="2"><p>Celestial</p></td></tr>'
+      + '<tr><td colspan="2"><p>Pactos</p></td><td colspan="2"><p>Evangelio</p></td></tr>'
+      + '</table>';
+    const g = parseTableGrid(html);
+    expect(g).not.toBeNull();
+    expect(g.colCount).toBe(2);
+    // Full-width row spans both columns; comparison rows split 1+1.
+    expect(g.rows[0].cells[0].colSpan).toBe(2);
+    expect(g.rows[1].cells.length).toBe(2);
+    expect(g.rows[1].cells[1].colStart).toBe(1);
+    // Content preserved
+    const txt = g.rows.flatMap(r => r.cells.flatMap(c => c.blocks.map(b => b.text))).join(' ');
+    expect(txt).toContain('ISRAEL');
+    expect(txt).toContain('IGLESIA');
+    expect(txt).toContain('SECCIÓN COMÚN');
+  });
 });
 
 // ─── Layout / measurement ────────────────────────────────────────────────────

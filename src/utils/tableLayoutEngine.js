@@ -94,20 +94,42 @@ export const parseTableGrid = (html = '') => {
   }
   if (rawRows.length < 2) return null;
 
+  // Word "filler" colspans: comparison tables exported from Word often sit on
+  // an inflated column grid (e.g. a 2-column ISRAEL|IGLESIA table whose rows
+  // carry colspan 5, 3+2, 2+2 inconsistently). The colspans encode column
+  // WIDTH in Word's internal grid, not real spanning — every data row still
+  // has the same small number of content cells. When no rowspan is present and
+  // the max content-cells-per-row is small, ignore the numeric colspans and
+  // lay cells out on a clean per-content-cell grid (a full-width row of 1 cell
+  // becomes a spanning header). This rescues tables that would otherwise be
+  // rejected and linearized (folio 27 report).
+  const hasRowspan = /rowspan\s*=\s*["']?[2-9]/i.test(html);
+  const cellCounts = rawRows.map(r => (r.inner.match(/<t[dh][\s>]/gi) || []).length);
+  const maxContentCells = Math.max(...cellCounts, 0);
+  const spanValues = [...html.matchAll(/colspan\s*=\s*["']?(\d+)/gi)].map(m => +m[1]);
+  const colspanInflated = spanValues.some(v => v > 1);
+  const normalizeSpans = !hasRowspan && colspanInflated
+    && maxContentCells >= 2 && maxContentCells <= MAX_COLS;
+
   // Occupancy matrix for colspan/rowspan → colStart per cell.
   const rows = [];
   const pending = []; // pending[col] = remaining rows the rowspan still covers
   for (const raw of rawRows) {
     const cells = [];
     let col = 0;
+    const rowCells = (raw.inner.match(/<t[dh][\s>]/gi) || []).length;
     const cellRe = /<t([dh])\b([^>]*)>([\s\S]*?)<\/t\1>/gi;
     let cm;
     while ((cm = cellRe.exec(raw.inner)) !== null) {
       while (pending[col] > 0) col++;             // skip columns covered from above
       const isHeader = cm[1].toLowerCase() === 'h';
-      const colSpan = Math.min(intAttr(cm[2], 'colspan'), MAX_COLS);
+      let colSpan = Math.min(intAttr(cm[2], 'colspan'), MAX_COLS);
       const rowSpan = intAttr(cm[2], 'rowspan');
       const blocks = parseCellBlocks(cm[3]);
+      if (normalizeSpans) {
+        // A lone cell spans the whole (normalized) table; otherwise 1 col each.
+        colSpan = rowCells === 1 ? maxContentCells : 1;
+      }
       cells.push({ blocks, colStart: col, colSpan, rowSpan, isHeader });
       for (let c = col; c < col + colSpan; c++) {
         if (rowSpan > 1) pending[c] = rowSpan;    // will be decremented below
