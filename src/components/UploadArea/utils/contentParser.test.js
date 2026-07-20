@@ -373,8 +373,10 @@ describe('piezas vacías del final del documento (Panorama)', () => {
     ].join('');
     const { chapters } = parseHtmlContent(html);
     const names = chapters.map(c => (c.chapterName || c.title).toUpperCase());
-    // Sin INTRODUCCIÓN fantasma (el doc no tiene texto de intro)
-    expect(names.some(n => /^INTRODUCCIÓN$/.test(n))).toBe(false);
+    // La INTRODUCCIÓN sin contenido se CONSERVA como placeholder AL INICIO
+    // (decisión del usuario: el autor la escribe en la app)
+    expect(names[0]).toBe('INTRODUCCIÓN');
+    expect(chapters[0].wordCount).toBe(0);
     // APÉNDICE fusionado con su sección y con el cuerpo
     const ap = chapters.find(c => /^APÉNDICE — MATEO 24/.test(c.chapterName || c.title || ''));
     expect(ap).toBeTruthy();
@@ -382,7 +384,7 @@ describe('piezas vacías del final del documento (Panorama)', () => {
     // El listado del índice no contaminó nada
     const allHtml = chapters.map(c => c.html).join('');
     expect(allHtml).not.toContain('UNA ANTORCHA EN LA OSCURIDAD ..');
-    expect(chapters.length).toBe(2);
+    expect(chapters.length).toBe(3);
   });
 });
 

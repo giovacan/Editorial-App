@@ -721,10 +721,12 @@ export const parseHtmlContent = (htmlContent) => {
   //    section "MATEO 24 UN CAPÍTULO MAL ENTENDIDO") prefixes its name onto
   //    that section and is dropped — the piece keeps its canonical identity
   //    (and its front/back-matter slot) with the content it owns.
-  // b) Remaining empty unnumbered chapters are artifacts — e.g. the lone
-  //    "INTRODUCCIÓN" line that merely TITLES the document's own index page
-  //    (Panorama: the index lists an introduction the author never wrote).
-  //    Part dividers (type 'part') are empty BY DESIGN and stay.
+  // b) A canonical piece with no content anywhere (Panorama: the index lists
+  //    an INTRODUCCIÓN the author never wrote) is KEPT as an empty chapter —
+  //    the reorder puts it in its canonical slot and the author fills it in
+  //    the app (user decision: placeholder beats silent removal).
+  // c) Empty unnumbered chapters with a non-canonical name are artifacts —
+  //    dropped. Part dividers (type 'part') are empty BY DESIGN and stay.
   for (let i = chapters.length - 1; i >= 0; i--) {
     const ch = chapters[i];
     if (ch.chapterLabel || ch.type === 'part') continue;
@@ -737,8 +739,11 @@ export const parseHtmlContent = (htmlContent) => {
     ) {
       next.chapterName = `${chName} — ${(next.chapterName || next.title || '').trim()}`;
       next.title = next.chapterName;
+      chapters.splice(i, 1);
+    } else if (!FRONT_MATTER_RE.test(chName)) {
+      chapters.splice(i, 1);
     }
-    chapters.splice(i, 1);
+    // canonical piece, nothing to merge with → keep as empty placeholder
   }
 
   // ── Canonical front/back-matter ordering ──────────────────────────────────
