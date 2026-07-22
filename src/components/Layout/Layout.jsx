@@ -11,6 +11,7 @@ import SidebarLeft from '../SidebarLeft/SidebarLeft';
 import SidebarRight from '../SidebarRight/SidebarRight';
 import UploadArea from '../UploadArea/UploadArea';
 import Editor from '../Editor/Editor';
+import CentralSearchBar from './CentralSearchBar';
 import './Layout.css';
 
 function Layout() {
@@ -168,6 +169,26 @@ function Layout() {
   const handleExportEpub = () => setExportModal({ open: true, format: 'epub' });
   const handleExportHtml = () => setExportModal({ open: true, format: 'html' });
 
+  // Search result → open that chapter's editor and select the term. Leaving the
+  // upload screen mounts the Editor, which exposes window.editorGoToMatch; a
+  // short retry covers the mount/setContent delay when we had to switch views.
+  const handleSearchGoToMatch = useCallback((match, query) => {
+    if (!match) return;
+    const st = useEditorStore.getState();
+    const wasUpload = st.ui?.showUpload ?? true;
+    if (wasUpload) {
+      useEditorStore.setState((s) => ({ ui: { ...s.ui, showUpload: false } }));
+    }
+    const run = (tries) => {
+      if (typeof window.editorGoToMatch === 'function') {
+        window.editorGoToMatch(match, query);
+      } else if (tries > 0) {
+        setTimeout(() => run(tries - 1), 60);
+      }
+    };
+    run(wasUpload ? 8 : 2);
+  }, []);
+
   const safeUi = ui || { showUpload: true };
   const showUpload = safeUi?.showUpload ?? true;
 
@@ -190,11 +211,17 @@ function Layout() {
       <main className="app-main">
         <SidebarLeft />
 
-        {showUpload ? (
-          <UploadArea onContentLoaded={handleContentLoaded} />
-        ) : (
-          <Editor pushChange={pushChange} onContentChange={(time) => setLastSaveTime(time)} />
-        )}
+        <div className="central-column">
+          <CentralSearchBar
+            chapters={chapters}
+            onGoToMatch={handleSearchGoToMatch}
+          />
+          {showUpload ? (
+            <UploadArea onContentLoaded={handleContentLoaded} />
+          ) : (
+            <Editor pushChange={pushChange} onContentChange={(time) => setLastSaveTime(time)} />
+          )}
+        </div>
 
         <SidebarRight
           onExportPdf={handleExportPdf}
