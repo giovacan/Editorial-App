@@ -8,12 +8,25 @@ import PageBreakMarkers from './PageBreakMarkers';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import { calculateContentDimensions } from '../../utils/textMeasurer';
 import PageLayoutView from '../PageLayoutView/PageLayoutView';
+import { findNthMatchInDoc } from '../../utils/editorSearch';
 import './Editor.css';
 
 function Editor({ pushChange, onContentChange }) {
   const activeChapterId = useEditorStore((s) => s.editing.activeChapterId);
   const chapters = useEditorStore((s) => s.bookData?.chapters);
-  
+  const setActiveChapter = useEditorStore((s) => s.setActiveChapter);
+
+  // ── In-book search: apply a match coming from the central search bar ─────────
+  // A pending match to select once the target chapter's content is loaded into
+  // the editor (switching chapters resets content via setContent, which is why
+  // the selection is applied in an effect keyed on activeChapterId, not inline).
+  const pendingMatchRef = useRef(null);
+  // True while we programmatically load a chapter's HTML into the editor, so the
+  // onUpdate save-handler ignores that change. Loading content must NEVER write
+  // back tiptap's re-serialized HTML (it drops importer classes/attrs and made
+  // the book re-paginate to a different, longer layout just from navigating).
+  const isLoadingContentRef = useRef(false);
+
   const updateChapter = useEditorStore((s) => s.updateChapter);
   const config = useEditorStore((s) => s.config);
   const ui = useEditorStore((s) => s.ui);
@@ -78,6 +91,9 @@ function Editor({ pushChange, onContentChange }) {
     ],
     content: activeChapter?.html || '',
     onUpdate: ({ editor: ed }) => {
+      // Ignore updates caused by programmatic content loading (chapter switch /
+      // search jump) — those must not overwrite the stored chapter HTML.
+      if (isLoadingContentRef.current) return;
       if (activeChapter) {
         const html = ed.getHTML();
         const text = ed.getText();
@@ -195,13 +211,56 @@ function Editor({ pushChange, onContentChange }) {
 
   useEffect(() => {
     if (editor && activeChapter) {
-      editor.commands.setContent(activeChapter.html || '');
+      // Guard the save-handler AND tell tiptap not to emit an update: loading a
+      // chapter must not trigger a write-back of re-serialized HTML.
+      isLoadingContentRef.current = true;
+      editor.commands.setContent(activeChapter.html || '', { emitUpdate: false });
+      // Release the guard after this tick (setContent is synchronous; any
+      // trailing update from it has already been swallowed).
+      Promise.resolve().then(() => { isLoadingContentRef.current = false; });
     }
     // Only reload content when the active chapter ID changes, not when html changes.
     // Including activeChapter.html would cause the editor to overwrite user edits
     // during the 1-second debounce window before the store is updated.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChapterId, editor]);
+
+  // Apply a pending search match after the chapter's content is loaded: find the
+  // Nth occurrence in the tiptap doc, select it, scroll it into view and focus.
+  useEffect(() => {
+    const pending = pendingMatchRef.current;
+    if (!editor || !pending || pending.chapterId !== activeChapterId) return;
+    pendingMatchRef.current = null;
+    // Defer to the next frame so setContent has committed the new doc.
+    requestAnimationFrame(() => {
+      const range = findNthMatchInDoc(editor.state.doc, pending.query, pending.wordIndex);
+      if (!range) { editor.commands.focus(); return; }
+      editor.chain().focus().setTextSelection(range).scrollIntoView().run();
+    });
+  }, [activeChapterId, editor]);
+
+  // Jump to a search result: switch chapter (if needed) and select the term.
+  // `query` is the raw search text (from the bar) — used to locate the Nth
+  // occurrence in the tiptap doc.
+  const handleGoToMatch = useCallback((match, query) => {
+    if (!match || !query) return;
+    if (match.chapterId === activeChapterId && editor) {
+      const range = findNthMatchInDoc(editor.state.doc, query, match.wordIndex);
+      if (range) editor.chain().focus().setTextSelection(range).scrollIntoView().run();
+    } else {
+      // Different chapter — stash and switch; the effect above applies it.
+      pendingMatchRef.current = { chapterId: match.chapterId, wordIndex: match.wordIndex, query };
+      setActiveChapter(match.chapterId);
+    }
+  }, [activeChapterId, editor, setActiveChapter]);
+
+  // Expose the jump-to-match command so the central search bar (in Layout) can
+  // drive the editor without prop drilling — same window-command pattern as
+  // window.editorUndo/editorRedo below.
+  useEffect(() => {
+    window.editorGoToMatch = (match, query) => handleGoToMatch(match, query);
+    return () => { delete window.editorGoToMatch; };
+  }, [handleGoToMatch]);
 
   const wordCount = activeChapter?.wordCount || 0;
 
@@ -240,9 +299,9 @@ function Editor({ pushChange, onContentChange }) {
     <section className="editor-section" role="main" aria-label="Editor de contenido">
       <div className="editor-toolbar" role="toolbar" aria-label="Herramientas de edición">
         <div className="toolbar-group">
-          <button 
+          <button
             className={`btn btn-icon ${editor.isActive('bold') ? 'active' : ''}`}
-            title="Negrita (Ctrl+B)" 
+            title="Negrita (Ctrl+B)"
             onClick={() => editor.chain().focus().toggleBold().run()}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

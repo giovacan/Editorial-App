@@ -1,0 +1,116 @@
+.central-search-bar {
+  position: relative;
+  z-index: 20;
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+
+.cs-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  max-width: 820px;
+  margin: 0 auto;
+}
+
+.cs-icon { color: #9ca3af; flex-shrink: 0; }
+
+.cs-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  outline: none;
+  font-size: 14px;
+  background: transparent;
+  color: #111827;
+}
+.cs-input::placeholder { color: #9ca3af; }
+
+.cs-count {
+  font-size: 12px;
+  color: #9ca3af;
+  white-space: nowrap;
+  min-width: 34px;
+  text-align: right;
+}
+
+.cs-nav, .cs-clear, .cs-toggle {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #6b7280;
+  border-radius: 5px;
+  width: 26px;
+  height: 26px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cs-nav:hover:not(:disabled),
+.cs-toggle:hover:not(:disabled),
+.cs-clear:hover { background: #f3f4f6; }
+.cs-nav:disabled, .cs-toggle:disabled { opacity: 0.35; cursor: default; }
+.cs-clear { color: #9ca3af; }
+
+/* Chevron: points down when list is closed, flips up when open. */
+.cs-toggle svg { transition: transform 0.15s ease; }
+.cs-toggle.open svg { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) {
+  .cs-toggle svg { transition: none; }
+}
+
+.cs-results {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  background: #fff;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.12);
+  border-bottom: 1px solid #e5e7eb;
+  max-height: min(340px, 45vh);
+  overflow-y: auto;
+}
+
+.cs-empty {
+  padding: 16px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.cs-result {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 8px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid #f3f4f6;
+}
+.cs-result:hover { background: #f9fafb; }
+.cs-result.active { background: #eef4ff; }
+
+.cs-result-chapter {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4b5563;
+  margin-bottom: 2px;
+}
+.cs-result-snippet {
+  display: block;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #374151;
+}
+.cs-result-snippet mark {
+  background: #ffe58a;
+  color: inherit;
+  padding: 0 1px;
+  border-radius: 2px;
+}
