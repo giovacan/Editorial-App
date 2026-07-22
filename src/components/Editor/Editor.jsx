@@ -21,6 +21,11 @@ function Editor({ pushChange, onContentChange }) {
   // the editor (switching chapters resets content via setContent, which is why
   // the selection is applied in an effect keyed on activeChapterId, not inline).
   const pendingMatchRef = useRef(null);
+  // True while we programmatically load a chapter's HTML into the editor, so the
+  // onUpdate save-handler ignores that change. Loading content must NEVER write
+  // back tiptap's re-serialized HTML (it drops importer classes/attrs and made
+  // the book re-paginate to a different, longer layout just from navigating).
+  const isLoadingContentRef = useRef(false);
 
   const updateChapter = useEditorStore((s) => s.updateChapter);
   const config = useEditorStore((s) => s.config);
@@ -86,6 +91,9 @@ function Editor({ pushChange, onContentChange }) {
     ],
     content: activeChapter?.html || '',
     onUpdate: ({ editor: ed }) => {
+      // Ignore updates caused by programmatic content loading (chapter switch /
+      // search jump) — those must not overwrite the stored chapter HTML.
+      if (isLoadingContentRef.current) return;
       if (activeChapter) {
         const html = ed.getHTML();
         const text = ed.getText();
@@ -203,7 +211,13 @@ function Editor({ pushChange, onContentChange }) {
 
   useEffect(() => {
     if (editor && activeChapter) {
-      editor.commands.setContent(activeChapter.html || '');
+      // Guard the save-handler AND tell tiptap not to emit an update: loading a
+      // chapter must not trigger a write-back of re-serialized HTML.
+      isLoadingContentRef.current = true;
+      editor.commands.setContent(activeChapter.html || '', { emitUpdate: false });
+      // Release the guard after this tick (setContent is synchronous; any
+      // trailing update from it has already been swallowed).
+      Promise.resolve().then(() => { isLoadingContentRef.current = false; });
     }
     // Only reload content when the active chapter ID changes, not when html changes.
     // Including activeChapter.html would cause the editor to overwrite user edits
