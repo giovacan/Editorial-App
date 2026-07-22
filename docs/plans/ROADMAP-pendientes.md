@@ -54,12 +54,17 @@ Estado bueno consolidado (base de todo): tag `toc-sin-huecos-ok-2026-07-21` — 
 - **Alcance:** auditar `SidebarRight.jsx` y demás paneles de config; verificar que cada control esté conectado a su lógica y produzca el efecto esperado. Incluye deuda técnica conocida: checkboxes de export no conectados (`SidebarRight.jsx`), footer links `href="#"`, `flushWrites` retornado pero no usado (`useBookSync.js`). Es revisión + fixes puntuales, no una feature grande.
 
 ### 9. Corrector ortográfico con contexto  🔲 falta diseño + implementación
-- **Petición del usuario:** corrector ortográfico basado en palabras Y frases, con **contexto** — que entienda cómo debería funcionar la frase, no solo palabra por palabra (ej. distinguir "haber/a ver", "tuvo/tubo", concordancia, tildes según sentido).
+- **Petición del usuario:** corrector basado en palabras Y frases, con **contexto** — que entienda cómo debería funcionar la frase, no solo palabra por palabra (ej. distinguir "haber/a ver", "tuvo/tubo", concordancia, tildes según sentido).
+- **Flujo de revisión (requisito del usuario, clave):**
+  - **Mostrar todas las deficiencias/errores posibles** en una lista (panel de hallazgos) — el usuario ve el panorama completo antes de decidir.
+  - **Aplicar uno por uno** (revisar cada sugerencia individualmente: aceptar / ignorar / editar a mano) **o todas de un jalón** (aplicar todas las de alta confianza en bloque).
+  - **Manejo de dudas — NO auto-corregir cuando hay ambigüedad:** cuando el corrector no está seguro (baja confianza / varias opciones válidas según contexto), **deja el error marcado sin cambiarlo** para que el usuario lo corrija a mano. Nunca "corregir a la fuerza". → Implica un **nivel de confianza** por hallazgo: alta = candidata a "aplicar todo"; baja/ambigua = solo se marca, requiere decisión manual.
+- **Modelo de hallazgo:** `{ rango, textoOriginal, sugerencias[], confianza: 'alta'|'baja'|'ambigua', tipo: ortografía|gramática|tilde|concordancia, autoAplicable: boolean }`.
 - **Alcance a diseñar:**
-  - Motor: diccionario español (ortografía léxica) + capa contextual. Opciones a evaluar: (a) LanguageTool (reglas gramaticales + contexto, self-host o API), (b) modelo LLM para sugerencias contextuales sobre fragmentos, (c) híbrido (diccionario local rápido + LLM para dudas de contexto).
-  - UI: subrayado de errores en el editor (`Editor.jsx`/tiptap tiene extensiones para esto), panel de sugerencias, aceptar/ignorar, ignorar-en-libro.
+  - Motor: diccionario español (ortografía léxica) + capa contextual. Opciones a evaluar: (a) LanguageTool (reglas gramaticales + contexto, self-host o API), (b) LLM para sugerencias contextuales sobre fragmentos, (c) híbrido (diccionario local rápido para lo léxico + LLM/reglas para contexto y confianza). La confianza es la que decide auto-aplicable vs manual.
+  - UI: subrayado de errores en el editor (`Editor.jsx`/tiptap tiene extensiones para esto) con color según confianza; panel de hallazgos con acciones (aceptar / ignorar / ignorar-en-libro / editar); botón "aplicar todas las de alta confianza"; las ambiguas quedan resaltadas para corrección manual.
   - Alcance de análisis: por capítulo/selección (no todo el libro de golpe si usa LLM, por costo/latencia).
-  - Config: idioma, reglas activas, diccionario personal (nombres propios del libro).
+  - Config: idioma, reglas activas, umbral de confianza para auto-aplicar, diccionario personal (nombres propios del libro).
 - **Nota:** decidir temprano si va con API externa (LanguageTool/LLM) o local; afecta privacidad, costo y offline.
 
 ---
