@@ -67,6 +67,35 @@ Estado bueno consolidado (base de todo): tag `toc-sin-huecos-ok-2026-07-21` — 
   - Config: idioma, reglas activas, umbral de confianza para auto-aplicar, diccionario personal (nombres propios del libro).
 - **Nota:** decidir temprano si va con API externa (LanguageTool/LLM) o local; afecta privacidad, costo y offline.
 
+### 10. Validaciones pre-publicación KDP  🔲 falta diseño + implementación
+- **Por qué:** es el valor central de una herramienta de self-publishing — evitar que un libro sea rechazado por la imprenta.
+- **Alcance:** márgenes mínimos según nº de páginas (KDP exige interior más ancho a mayor grosor — ya hay `getDynamicGutter`), sangrado (bleed) para imágenes a borde, resolución mínima de imágenes (≥300 dpi), cálculo de **lomo/spine width** (para la portada completa), campos ISBN/editorial/fecha. Panel de "chequeo pre-publicación" que liste problemas antes de exportar.
+
+### 11. Gestión de capítulos  🔲 falta implementación
+- **Alcance:** reordenar (drag), mover, **dividir** y **fusionar** capítulos manualmente desde la app (hoy la detección es automática al importar). Afecta `SidebarLeft`/`StructureTab` y el store de `chapters`. Re-numeración y re-paginación consecuentes.
+
+### 12. Separadores de escena / narrativa  🔲 falta implementación
+- **Alcance:** guiones/separadores de escena (`* * *`, `⁂`, línea centrada), saltos de sección dentro del capítulo — comunes en novela. Estilo configurable; el motor los trata como bloque no divisible.
+
+### 13. Sistema de notificaciones (toasts) + estados carga/error/vacío  🔲 falta implementación
+- **Estado:** hay ~20 `alert()` crudos (export, upload, paginación). 
+- **Alcance:** reemplazar por un sistema de notificaciones (toasts) no bloqueante; estados de carga (paginando libro grande), error y vacío consistentes. Mejora percibida de calidad grande y de bajo riesgo.
+
+### 14. Versiones / historial del libro  🔲 falta diseño + implementación
+- **Alcance:** snapshots del libro (contenido + config) para deshacer cambios grandes (borrado de capítulo, cambio masivo de config) o volver a una versión anterior. Va más allá del undo/redo interno de tiptap. Decidir almacenamiento (Firestore subcolección vs local).
+
+### 15. Accesibilidad (a11y)  🔲 revisión + fixes
+- **Estado:** muy pocos `aria-`/`role` en los paneles; navegación por teclado y contraste sin auditar.
+- **Alcance:** añadir roles/labels ARIA a los paneles y modales, foco por teclado, contraste. Idealmente se hace **junto con el rediseño (#16)** para no trabajar dos veces sobre la UI clásica.
+
+### 16. Rediseño de interfaz (UI nueva) — AL FINAL  🔲 gran feature, cierre del roadmap
+- **Decisión del usuario:** la interfaz ACTUAL queda como **"interfaz clásica"** (se mantiene para quien la quiera usar, sin problema). Se construye **una interfaz nueva**, mejor diseñada y pensada:
+  - **Minimalista** y con **animaciones** (transiciones suaves).
+  - **Mobile-first** — pensada para dispositivos móviles desde el diseño (aquí se resuelve el responsive, NO parcheando la clásica).
+  - **Configuración por pasos (wizard/onboarding)** para no abrumar — no mostrar todos los controles a la vez.
+- **Se hace AL FINAL:** después de que las features (footnotes, imágenes, corrector, KDP, etc.) estén completas, para rediseñar sobre funcionalidad estable. Coexiste con la clásica (selector de interfaz).
+- **Implica:** la a11y (#15) y el responsive se abordan aquí de raíz; posible design system / tokens; framer-motion para animaciones.
+
 ---
 
 ## Cómo retomar
