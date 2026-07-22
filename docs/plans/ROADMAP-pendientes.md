@@ -29,6 +29,39 @@ Estado bueno consolidado (base de todo): tag `toc-sin-huecos-ok-2026-07-21` — 
   - Config: `config.images = { maxWidth, align, caption, ... }`.
   - CRUD en la app: insertar/reemplazar/eliminar/redimensionar, pie de imagen.
 
+### 3. Portada + front/back matter visual  🔲 falta diseño + implementación
+- **Estado (verificado):** la portada (`isTitlePage`) **cae al fallback plano** en el PDF vectorial (texto arriba-izquierda), sin layout dedicado centrado. Front matter tiene orden canónico pero no plantillas visuales ricas.
+- **Alcance:** `drawTitlePage` dedicado (título/autor centrados, jerarquía), página de copyright, colofón, dedicatoria/epígrafe con formato. Preview + PDF vectorial. (Nota: el TÍTULO del TOC ya replica el estilo de inicio de capítulo — reutilizar ese patrón.)
+
+### 4. Listas y verso/poesía  🔲 falta pulido
+- **Estado (verificado):** `<ul>`/`<ol>` y verso (`<br>`) van al **fallback de texto plano** en el PDF vectorial (`pdfVectorRenderer.js`), fuera del alcance de `layoutPageToLines`.
+- **Alcance:** dibujar listas con marcador + sangría e interlineado real; verso respetando saltos de línea. Medición ya la maneja `textLayoutEngine` — es render del PDF lo que falta.
+
+### 5. EPUB completo  🔲 falta implementación
+- **Estado (verificado):** `exportEpub` (`exporters.js:295`) genera un EPUB 3 **válido pero plano**: sin CSS/estilos, sin imágenes, sin portada, metadata mínima, TOC básico. `exportHtml` igual de básico.
+- **Alcance:** aplicar los estilos del libro (CSS embebido), incluir imágenes en el manifest, portada, metadata rica (ISBN, editorial, fecha), TOC navegable con niveles. Los checkboxes de export de `SidebarRight.jsx` (hoy no conectados) deberían controlar qué se exporta.
+
+### 6. Editor visual página-por-página (WYSIWYG paginado)  🔲 falta diseño + implementación
+- **Petición del usuario:** un editor que **muestre los saltos de página** y permita editar el contenido **reflejando la maquetación** (ver y modificar página por página desde el editor, no solo el flujo continuo del Editor tiptap actual).
+- **Alcance a diseñar:** cómo enlazar el editor (`Editor.jsx`, tiptap) con el resultado paginado (`paginatedPages`); edición que re-pagina en vivo; marcadores visuales de fin de página; posiblemente edición directa sobre el preview. Es el punto más grande — requiere su propio diseño.
+
+### 7. Buscador dentro del libro  🔲 falta implementación
+- **Petición del usuario:** buscar texto dentro del libro (encontrar y saltar a resultados).
+- **Alcance:** índice de búsqueda sobre el texto de capítulos/páginas; UI de búsqueda con navegación de resultados (resaltado + ir a página). Relativamente acotado.
+
+### 8. Auditoría de botones del panel (sección por sección)  🔲 revisión
+- **Petición del usuario:** revisar que **todos los botones del panel hagan lo que deben**, sección por sección.
+- **Alcance:** auditar `SidebarRight.jsx` y demás paneles de config; verificar que cada control esté conectado a su lógica y produzca el efecto esperado. Incluye deuda técnica conocida: checkboxes de export no conectados (`SidebarRight.jsx`), footer links `href="#"`, `flushWrites` retornado pero no usado (`useBookSync.js`). Es revisión + fixes puntuales, no una feature grande.
+
+### 9. Corrector ortográfico con contexto  🔲 falta diseño + implementación
+- **Petición del usuario:** corrector ortográfico basado en palabras Y frases, con **contexto** — que entienda cómo debería funcionar la frase, no solo palabra por palabra (ej. distinguir "haber/a ver", "tuvo/tubo", concordancia, tildes según sentido).
+- **Alcance a diseñar:**
+  - Motor: diccionario español (ortografía léxica) + capa contextual. Opciones a evaluar: (a) LanguageTool (reglas gramaticales + contexto, self-host o API), (b) modelo LLM para sugerencias contextuales sobre fragmentos, (c) híbrido (diccionario local rápido + LLM para dudas de contexto).
+  - UI: subrayado de errores en el editor (`Editor.jsx`/tiptap tiene extensiones para esto), panel de sugerencias, aceptar/ignorar, ignorar-en-libro.
+  - Alcance de análisis: por capítulo/selección (no todo el libro de golpe si usa LLM, por costo/latencia).
+  - Config: idioma, reglas activas, diccionario personal (nombres propios del libro).
+- **Nota:** decidir temprano si va con API externa (LanguageTool/LLM) o local; afecta privacidad, costo y offline.
+
 ---
 
 ## Cómo retomar
