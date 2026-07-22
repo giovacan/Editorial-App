@@ -14,6 +14,7 @@
 
 import { KDP_STANDARDS } from '../../../utils/kdpStandards';
 import { buildHeaderHtmlPure } from '../../../hooks/useHeaderFooter';
+import { toast } from '../../../utils/toast';
 
 // ── Font mapping ────────────────────────────────────────────────────────────
 // Maps common CSS font-family names to jsPDF built-in fonts.
@@ -308,7 +309,7 @@ function renderJustifiedLines(doc, lines, xMm, yMm, widthMm, lineHeightMm, basel
  */
 export const exportPdfNative = async (bookData, config, paginatedPages, dims, onProgress) => {
   if (!paginatedPages?.length || !dims) {
-    alert('No hay páginas para exportar. Abre la Vista previa primero.');
+    toast.error('No hay páginas para exportar. Abre la Vista previa primero.');
     return;
   }
 
@@ -317,7 +318,7 @@ export const exportPdfNative = async (bookData, config, paginatedPages, dims, on
   const pageFormat = KDP_STANDARDS.getPageFormat(formatId);
 
   if (!pageFormat) {
-    alert('Formato de página no reconocido: ' + formatId);
+    toast.error('Formato de página no reconocido: ' + formatId);
     return;
   }
 

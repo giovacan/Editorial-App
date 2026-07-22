@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { toast } from '../../utils/toast';
 import { useShallow } from 'zustand/react/shallow';
 import useEditorStore from '../../store/useEditorStore';
 import { KDP_STANDARDS } from '../../utils/kdpStandards';
@@ -263,6 +264,7 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
         if (pdfEngine === 'vector') {
           await exportPdfVector(safeBookData, renderConfig, allPages, pdfDims,
             (cur, tot) => setExportProgress({ current: cur, total: tot }));
+          toast.success('PDF vectorial descargado.');
           return;
         }
 
@@ -308,8 +310,9 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
       }
       if (format === 'epub') exportEpub(safeBookData);
       if (format === 'html') exportHtml(safeBookData);
+      toast.success(`Exportación ${format.toUpperCase()} completada.`);
     } catch (err) {
-      alert('Error al exportar: ' + err.message);
+      toast.error('Error al exportar: ' + err.message);
     } finally {
       setIsExporting(false);
       setExportProgress({ current: 0, total: 0 });

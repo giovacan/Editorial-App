@@ -33,6 +33,7 @@ import { parseTocPage } from './tocPdfParser';
 import { parseTableGrid, layoutTableGrid } from '../../../utils/tableLayoutEngine';
 import { htmlToText } from '../../../utils/layoutIr';
 import { collapseWhitespace } from '../../../utils/textPreprocess';
+import { toast } from '../../../utils/toast';
 
 // Gelasio static faces (Vite resolves ?url to a served asset URL).
 import gelasioRegularUrl    from '../../../assets/fonts/Gelasio-Regular.ttf?url';
@@ -346,18 +347,18 @@ const drawTable = (doc, tableHtml, engineCtx, xMm, yMm, mmPerPx) => {
  */
 export const exportPdfVector = async (bookData, config, paginatedPages, dims, onProgress) => {
   if (!paginatedPages?.length || !dims) {
-    alert('No hay páginas para exportar. Abre la Vista previa primero.');
+    toast.error('No hay páginas para exportar. Abre la Vista previa primero.');
     return;
   }
   if (!dims.contentWidth || !dims.baseFontSizePx) {
-    alert('Faltan medidas del motor (layoutDims). Reabre la Vista previa e intenta de nuevo.');
+    toast.error('Faltan medidas del motor (layoutDims). Reabre la Vista previa e intenta de nuevo.');
     return;
   }
 
   const bookConfig = KDP_STANDARDS.getBookTypeConfig(bookData?.bookType || 'novela');
   const formatId   = config?.pageFormat || bookConfig?.recommendedFormat || '6x9';
   const pageFormat = KDP_STANDARDS.getPageFormat(formatId);
-  if (!pageFormat) { alert('Formato de página no reconocido: ' + formatId); return; }
+  if (!pageFormat) { toast.error('Formato de página no reconocido: ' + formatId); return; }
 
   const { jsPDF } = await import('jspdf');
   const vfs = await loadFontVfs();

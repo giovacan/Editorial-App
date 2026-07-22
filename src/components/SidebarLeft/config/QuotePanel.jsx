@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import useEditorStore from '../../../store/useEditorStore';
+import { toast } from '../../../utils/toast';
 
 function QuotePanel({ safeConfig, config, chapters, setConfig }) {
   const updateQuote = useCallback((key, value) => {
@@ -55,7 +56,7 @@ function QuotePanel({ safeConfig, config, chapters, setConfig }) {
           disabled={chapters?.some(ch => ch.html?.includes('blockquote class="quote'))}
           onClick={() => {
             if (chapters?.some(ch => ch.html?.includes('blockquote class="quote'))) {
-              alert('Las citas ya han sido aplicadas. Recarga la página o modifica el contenido manualmente.');
+              toast.warning('Las citas ya han sido aplicadas. Recarga la página o modifica el contenido manualmente.');
               return;
             }
             if (confirm('¿Aplicar estilo de cita a todo el documento?')) {
@@ -65,7 +66,7 @@ function QuotePanel({ safeConfig, config, chapters, setConfig }) {
                 if (applyToAll) applyToAll(template);
               } catch (error) {
                 console.error('Error applying quote template:', error);
-                alert('Error al aplicar estilos de cita: ' + error.message);
+                toast.error('Error al aplicar estilos de cita: ' + error.message);
               }
             }
           }}

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { toast } from '../../utils/toast';
 import ChapterDetectionDialog from '../ChapterDetectionDialog/ChapterDetectionDialog';
 import useEditorStore from '../../store/useEditorStore';
 import { detectChaptersLocal } from './utils/chapterDetection';
@@ -25,7 +26,7 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
     const script = window.document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js';
     script.onload = () => setMammothReady(true);
-    script.onerror = () => alert('Error al cargar la librería DOCX. Por favor intenta de nuevo.');
+    script.onerror = () => toast.error('Error al cargar la librería DOCX. Por favor intenta de nuevo.');
     document.head.appendChild(script);
   }, [mammothReady]);
 
@@ -46,16 +47,16 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
 
     if (ext === 'docx') {
       if (!mammothReady || !window.mammoth) {
-        alert('Cargando librería para DOCX... intenta de nuevo en un momento.');
+        toast.info('Cargando librería para DOCX… intenta de nuevo en un momento.');
         return;
       }
       try {
         const arrayBuffer = await file.arrayBuffer();
         const result = await window.mammoth.convertToHtml({ arrayBuffer });
-        if (!result.value?.trim()) { alert('El documento DOCX está vacío o no se pudo leer.'); return; }
+        if (!result.value?.trim()) { toast.error('El documento DOCX está vacío o no se pudo leer.'); return; }
         handleHtmlContent(result.value);
       } catch (error) {
-        alert('Error al leer el archivo DOCX: ' + error.message);
+        toast.error('Error al leer el archivo DOCX: ' + error.message);
       }
       return;
     }
@@ -64,7 +65,7 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
     reader.onload = (e) => {
       if (typeof e.target?.result === 'string') handleTextContent(e.target.result);
     };
-    reader.onerror = () => alert('Error al leer el archivo');
+    reader.onerror = () => toast.error('Error al leer el archivo');
     reader.readAsText(file, 'UTF-8');
   };
 
@@ -114,7 +115,7 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
   }, [paginationActive, chapterDetectionConfirmed, showChapterDetection]);
 
   const handleProcessText = () => {
-    if (!pasteText.trim()) { alert('Ingresa contenido antes de procesar'); return; }
+    if (!pasteText.trim()) { toast.error('Ingresa contenido antes de procesar'); return; }
     handleTextContent(pasteText);
   };
 
