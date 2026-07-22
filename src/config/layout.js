@@ -54,6 +54,8 @@ export const DEFAULT_CONFIG = {
   paragraph: { firstLineIndent: 1.5, align: 'justify', spacingBetween: 0 },
   quote: { enabled: true, indentLeft: 2, indentRight: 2, showLine: true, italic: true, sizeMultiplier: 0.95, marginTop: 1, marginBottom: 1, template: 'classic', autoDetect: true },
   pagination: { minOrphanLines: 2, minWidowLines: 2, splitLongParagraphs: true, targetFillPct: 0.92 },
+  // Footnotes (roadmap B1). OFF by default → engine identical to before.
+  footnotes: { enabled: false, fontScale: 0.72, lineHeight: 1.4, separator: 'partial', numbering: 'per-chapter' },
   header: {
     enabled: false,
     template: 'classic',

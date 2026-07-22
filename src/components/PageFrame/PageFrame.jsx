@@ -15,6 +15,7 @@ import { buildHeaderHtmlPure } from '../../hooks/useHeaderFooter';
 import { computeFolioStyle, computeShowFolio, computeFolioFromEdge } from '../../hooks/usePageRenderLayout';
 import { getScaledSize } from '../../utils/transformes';
 import { renderPageAsEngineLines } from '../../utils/lineRenderer';
+import { buildFootnoteBlockHtml } from '../../utils/footnotes';
 // applyKpRendering removed — KP word-spacing now applied by the engine
 import './PageFrame.css';
 
@@ -224,6 +225,26 @@ export default function PageFrame({
         style={{ height: `${contentBoxHeight + Math.round(lineHeightPx * 0.25)}px`, overflow: 'hidden' }}
         dangerouslySetInnerHTML={{ __html: html }}
       />
+
+      {/* Footnotes — the note block sits just above the folio, on the page that
+          holds each marker. The engine already reserved this height (it fit less
+          body text), so it never collides with the content. */}
+      {page?.footnotes?.length > 0 && (
+        <div
+          className="pf-footnotes"
+          style={{
+            position: 'absolute',
+            left: marginLeft,
+            right: marginRight,
+            bottom: folioFromEdge + fontSize * (config?.footnotes?.fontScale ?? 0.72) * 2,
+            fontSize: `${fontSize * (config?.footnotes?.fontScale ?? 0.72)}px`,
+            lineHeight: (config?.footnotes?.lineHeight ?? 1.4),
+            color: '#000',
+            textAlign: 'left',
+          }}
+          dangerouslySetInnerHTML={{ __html: buildFootnoteBlockHtml(page.footnotes, {}) }}
+        />
+      )}
 
       {/* Page number — suppressed when embedded in header row (folio-at-top) */}
       {showPageNum && !folioEmbeddedInHeader && (

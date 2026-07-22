@@ -1,5 +1,6 @@
 import { isChapterHeading, detectChaptersInRawHtml, filterIndexListings } from './chapterDetection';
 import { isTableMarkupSane } from '../../../utils/tableLayoutEngine';
+import { detectFootnotes } from '../../../utils/footnotes';
 
 const SPECIAL_CHAPTERS = [
   'prólogo', 'prologo', 'epílogo', 'epilogo', 'introducción', 'introduccion',
@@ -777,6 +778,17 @@ export const parseHtmlContent = (htmlContent) => {
     ...body,
     ...back.sort(byRank).map(x => x.ch),
   ];
+
+  // Footnotes (B1): detect Word/mammoth footnotes per chapter, normalize the
+  // body markers to <sup data-fn="…"> and stash the notes on the chapter. The
+  // engine only reserves space when config.footnotes.enabled, but detection is
+  // always safe (no marks → chapter unchanged).
+  for (const ch of ordered) {
+    if (ch.html && /<sup/i.test(ch.html)) {
+      const { cleanHtml, notes } = detectFootnotes(ch.html);
+      if (notes.length) { ch.html = cleanHtml; ch.footnotes = notes; }
+    }
+  }
 
   return { chapters: ordered, detectedHeadings, bookTitle };
 };

@@ -104,6 +104,7 @@ import {
 
 import { optimalPaginate } from './optimalPaginate.js';
 import { buildNativeTableElement, splitTableByRows } from '../tableLayoutEngine.js';
+import { makeFootnoteCtx } from '../footnotes.js';
 
 import {
   repairMissingIndents,
@@ -186,6 +187,13 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
   canvasCtx._computeLineMetricsFn = (plainText, isContinuation, isLastOnPage) =>
     computeParaLineMetrics(plainText, canvasCtx, isContinuation, isLastOnPage);
 
+  // Footnotes (B1): reduced-size measurement ctx, only when enabled. The DP
+  // reads canvasCtx.footnotes to size the per-page footnote block. When
+  // disabled (default) this is null and the engine path is byte-identical.
+  canvasCtx.footnotes = safeConfig?.footnotes?.enabled
+    ? { ctx: makeFootnoteCtx(canvasCtx, safeConfig.footnotes), config: safeConfig.footnotes }
+    : null;
+
   const { contentHeight, lineHeightPx, baseFontSize: baseFontSizeTop, baseLineHeight: baseLineHeightTop, minOrphanLines: minOrphanLinesTop } = layoutCtx;
 
   // Canvas↔DOM height reserve. A full line was over-conservative: on real
@@ -263,7 +271,10 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     (layoutHints?.global?.keepWithNextTags || []).join(','),
     safeConfig?.pagination?.engineMode || 'optimal',
     safeConfig?.render?.engineLines !== false ? 'el1' : 'el0',
-    'v78-tblhdr' // bump to force cache invalidation after algorithm changes
+    // Footnotes: only affects output when enabled; part of the fingerprint so
+    // toggling/retuning notes invalidates the cache and repaginates.
+    safeConfig?.footnotes?.enabled ? `fn1-${safeConfig.footnotes.fontScale}-${safeConfig.footnotes.lineHeight}` : 'fn0',
+    'v79-footnotes' // bump to force cache invalidation after algorithm changes
   ].join('|'));
 
   // 'optimal' (default): global DP pagination per chapter — no fill-pass needed.

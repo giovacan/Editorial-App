@@ -113,6 +113,16 @@ const initialState = {
       whenPaginationSamePosition: 'merge' as const,
       skipFirstChapterPage: true
     },
+    // Footnotes at the page foot (roadmap B1). OFF by default → the engine
+    // behaves EXACTLY as before. When enabled, pages carrying a <sup data-fn>
+    // marker reserve space for their notes (see utils/footnotes.js + the DP).
+    footnotes: {
+      enabled: false,
+      fontScale: 0.72,          // ~8pt over ~11pt body
+      lineHeight: 1.4,
+      separator: 'partial' as const,  // ⅓-column rule above the notes
+      numbering: 'per-chapter' as const,
+    },
     chapterTitle: {
       align: 'center' as const,
       bold: true,
