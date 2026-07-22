@@ -10,6 +10,7 @@ import { paginateChapters } from './paginateChapters';
 import { measureHtmlHeight, createLayoutContext } from '../textLayoutEngine';
 import { parseTopLevelBlocks, JUSTIFY_SLACK_RATIO } from '../layoutIr.js';
 import { evaluatePageQualityCanvas } from './evaluation.js';
+import { mergeIntoOne } from './metrics.js';
 
 // ─── Deterministic synthetic book ────────────────────────────────────────────
 
@@ -147,6 +148,72 @@ describe('optimalPaginate (global DP engine)', () => {
 
   it('produces pages', () => {
     expect(optimalPages.length).toBeGreaterThan(5);
+  });
+
+  it('no page opens with a pullable 1-line widow (widow-kill invariant)', () => {
+    // A ≤1-line data-continuation fragment at the top of a page must only
+    // survive when the previous page genuinely has no room for it.
+    const budget = CONTENT_HEIGHT;
+    for (let i = 1; i < optimalPages.length; i++) {
+      const page = optimalPages[i];
+      if (!page?.html || page.isBlank || page.isTitleOnlyPage) continue;
+      let prevIdx = i - 1;
+      while (prevIdx >= 0 && optimalPages[prevIdx]?.isBlank) prevIdx--;
+      const prev = optimalPages[prevIdx];
+      if (!prev?.html || prev.isTitleOnlyPage || prev.chapterTitle !== page.chapterTitle) continue;
+      const blocks = parseTopLevelBlocks(page.html);
+      const first = blocks[0];
+      if (!first || !/data-continuation/.test(first.outerHtml)) continue;
+      const fragH = measureHtmlHeight(first.outerHtml, canvasCtx);
+      if (fragH > LINE_HEIGHT_PX * 1.6) continue;
+      const prevBlocks = parseTopLevelBlocks(prev.html);
+      const last = prevBlocks[prevBlocks.length - 1];
+      if (!last || !/data-split-head/.test(last.outerHtml)) continue;
+      // Rebuild exactly what widow-kill would have produced: if THAT fits the
+      // budget, the widow should have been pulled — surviving it is a bug.
+      const merged = mergeIntoOne(last.outerHtml, first.outerHtml)
+        .replace(/\s*data-split-head="[^"]*"/i, '');
+      const newPrevHtml = prevBlocks.slice(0, -1).map(b => b.outerHtml).join('') + merged;
+      expect(measureHtmlHeight(newPrevHtml, canvasCtx), `widow at page index ${i} was pullable`)
+        .toBeGreaterThan(budget);
+    }
+  });
+
+  it('no blank page sits mid-chapter (only allowed before a chapter start)', () => {
+    // A blank page is legal ONLY as a parity blank right before a chapter
+    // start. A blank surrounded by same-chapter content is a spurious white
+    // page (folio 121 report: merged-away page left as a blank mid-chapter).
+    for (let i = 1; i < optimalPages.length - 1; i++) {
+      const p = optimalPages[i];
+      if (!p?.isBlank) continue;
+      // Find the next non-blank page.
+      let n = i + 1;
+      while (n < optimalPages.length && optimalPages[n]?.isBlank) n++;
+      const next = optimalPages[n];
+      if (!next) continue;
+      // Legal if the next page starts a chapter (parity blank). Otherwise the
+      // previous non-blank must be a different chapter (end-of-chapter slack).
+      if (next.isFirstChapterPage) continue;
+      let pr = i - 1;
+      while (pr >= 0 && optimalPages[pr]?.isBlank) pr--;
+      const prev = optimalPages[pr];
+      if (prev && !prev.isBlank) {
+        expect(
+          prev.chapterTitle !== next.chapterTitle,
+          `blank page at index ${i} sits mid-chapter "${next.chapterTitle}"`
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('every chapter start lands on a right (odd) page after ALL passes', () => {
+    // Parity must survive the page-inserting passes (heading fixes, safety
+    // clamp) — the folios 128/129 report: chapter 7 opened on a left page.
+    optimalPages.forEach((p, i) => {
+      if (p.isFirstChapterPage) {
+        expect((i + 1) % 2, `chapter start at physical position ${i + 1}`).toBe(1);
+      }
+    });
   });
 
   it('never overflows the page budget (canvas measurement)', () => {

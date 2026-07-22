@@ -10,10 +10,11 @@
  * so Preview and PDF always show the same header content.
  */
 
-// useMemo removed — no longer needed after KP rendering moved to engine
+import { useMemo } from 'react';
 import { buildHeaderHtmlPure } from '../../hooks/useHeaderFooter';
 import { computeFolioStyle, computeShowFolio, computeFolioFromEdge } from '../../hooks/usePageRenderLayout';
 import { getScaledSize } from '../../utils/transformes';
+import { renderPageAsEngineLines } from '../../utils/lineRenderer';
 // applyKpRendering removed — KP word-spacing now applied by the engine
 import './PageFrame.css';
 
@@ -28,6 +29,13 @@ import './PageFrame.css';
  * @param {boolean} [showMargins] - Show dashed margin guide overlay
  * @param {object}  config        - safeConfig (for header template, options, etc.)
  * @param {string}  [bookTitle]   - Book title for header content
+ * @param {object}  [renderCtx]   - Engine-scale layout ctx { contentWidth,
+ *                                  baseFontSizePx, fontFamily }. When present (and
+ *                                  config.render.engineLines !== false), the page
+ *                                  HTML is drawn as the engine's exact line breaks
+ *                                  — the SAME transform Preview.jsx and the vector
+ *                                  PDF export use, so this preview matches both by
+ *                                  construction. Absent → native browser wrapping.
  */
 export default function PageFrame({
   page,
@@ -37,6 +45,7 @@ export default function PageFrame({
   config,
   bookTitle = '',
   tocConfig = null,
+  renderCtx = null,
 }) {
   const {
     pageWidthPx, pageHeightPx,
@@ -51,7 +60,14 @@ export default function PageFrame({
   const rawHtml   = page?.html || '';
   const pageNum   = page?.pageNumber;
   const isBlank   = page?.isBlank;
-  const isFrontMatterPage = !!(page?.isTOCPage || page?.isTitlePage || page?.isFrontMatter);
+  // Front matter = TOC / title / cover. Key off the type field too: post-
+  // processing (renumbering, offsetting, spreads) can drop the boolean flags,
+  // and a TOC page that loses isTOCPage would wrongly show the running header
+  // ("Capítulo" fallback leaked onto the Índice page in the export preview).
+  const isFrontMatterPage = !!(
+    page?.isTOCPage || page?.isTitlePage || page?.isFrontMatter ||
+    page?.type === 'toc' || page?.type === 'title' || page?.type === 'cover'
+  );
   const isTitleOnlyPage   = page?.isTitleOnlyPage === true;
   const isEvenPage        = (pageNum || 1) % 2 === 0;
   const showNums  = config?.showPageNumbers !== false;
@@ -66,7 +82,22 @@ export default function PageFrame({
 
   // KP word-spacing is now applied by the engine — no render-time modification.
   const contentWidth = pageWidthPx - marginLeft - marginRight;
-  const html = rawHtml;
+
+  // Deterministic line rendering — mirror Preview.jsx exactly so this preview
+  // (used by the export modal) draws the SAME line breaks the main Preview tab
+  // and the vector PDF export do. Front-matter pages (flex TOC layout) and
+  // blanks pass through untouched, and it's a no-op without engine layout dims.
+  const engineLinesOn = config?.render?.engineLines !== false;
+  const html = useMemo(() => {
+    if (!engineLinesOn || isFrontMatterPage || isBlank || !renderCtx?.contentWidth) {
+      return rawHtml;
+    }
+    return renderPageAsEngineLines(rawHtml, {
+      contentWidth:  renderCtx.contentWidth,
+      baseFontSizePx: renderCtx.baseFontSizePx,
+      fontFamily:    renderCtx.fontFamily,
+    });
+  }, [rawHtml, engineLinesOn, isFrontMatterPage, isBlank, renderCtx]);
 
   // ── Header ──────────────────────────────────────────────────────────────────
   const headerHtml = buildHeaderHtmlPure(page, config, bookTitle, baseFontSize);
@@ -112,8 +143,10 @@ export default function PageFrame({
     fontSize:      `${fontSize}px`,
     fontFamily,
     lineHeight:    `${lineHeightPx}px`,
-    textAlign,
-    textJustify:   'inter-word',
+    // Front matter (title, TOC) uses left-aligned flow — no justify, no hyphens —
+    // EXACTLY like Preview.jsx, so the modal preview matches the main preview.
+    textAlign:     isFrontMatterPage ? 'left' : textAlign,
+    textJustify:   isFrontMatterPage ? undefined : 'inter-word',
     hyphens:       'none',
     wordBreak:     'break-word',
     overflowWrap:  'break-word',
@@ -131,6 +164,19 @@ export default function PageFrame({
     } : {}),
   };
 
+  // Debug line-grid: faint ruling every lineHeightPx from marginTop to the
+  // folio, numbered — the SAME grid the vector PDF export draws, so preview and
+  // export can be counted line-for-line. Toggled by config.debugGrid.
+  const debugGrid = config?.debugGrid && !isBlank;
+  const folioTopPx = pageHeightPx - computeFolioFromEdge(previewScale);
+  const gridLines = [];
+  if (debugGrid) {
+    let n = 0;
+    for (let gy = marginTop; gy <= folioTopPx + 0.5; gy += lineHeightPx, n++) {
+      gridLines.push({ y: gy, n });
+    }
+  }
+
   const pageNode = (
     <div className="pf-page" lang="es" style={pageStyle}>
       {/* Margin guide overlay */}
@@ -144,6 +190,24 @@ export default function PageFrame({
         />
       )}
 
+      {/* Debug line-grid overlay */}
+      {debugGrid && (
+        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 5 }}>
+          {gridLines.map(({ y, n }) => (
+            <div key={n} style={{ position: 'absolute', left: marginLeft, right: marginRight, top: y,
+              borderTop: '0.5px solid rgba(120,120,255,0.5)' }}>
+              <span style={{ position: 'absolute', left: -14, top: -5, fontSize: 6, color: 'rgba(90,90,200,0.9)' }}>{n}</span>
+            </div>
+          ))}
+          {/* content-box floor (red) */}
+          <div style={{ position: 'absolute', left: marginLeft, right: marginRight,
+            top: marginTop + contentBoxHeight, borderTop: '1px solid rgba(230,80,80,0.8)' }} />
+          {/* folio line (green) */}
+          <div style={{ position: 'absolute', left: marginLeft, right: marginRight,
+            top: folioTopPx, borderTop: '1px solid rgba(60,180,60,0.8)' }} />
+        </div>
+      )}
+
       {/* Header */}
       {showHeader && !isBlank && (
         <div
@@ -153,10 +217,11 @@ export default function PageFrame({
         />
       )}
 
-      {/* Content */}
+      {/* Content — box height matches Preview.jsx exactly (+¼ line of breathing
+          room) so the modal preview clips at the same point as the main preview. */}
       <div
         className="pf-content preview-content"
-        style={{ height: `${contentBoxHeight}px`, overflow: 'hidden' }}
+        style={{ height: `${contentBoxHeight + Math.round(lineHeightPx * 0.25)}px`, overflow: 'hidden' }}
         dangerouslySetInnerHTML={{ __html: html }}
       />
 

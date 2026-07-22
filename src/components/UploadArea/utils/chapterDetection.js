@@ -1,7 +1,11 @@
 const SPECIAL_CHAPTERS = [
   'prólogo', 'prologo', 'epílogo', 'epilogo', 'introducción', 'introduccion',
-  'conclusión', 'conclusion', 'dedicatoria', 'agradecimientos',
-  'bibliografía', 'bibliografia', 'prefacio', 'colofón', 'colofon'
+  'conclusión', 'conclusion', 'dedicatoria', 'agradecimientos', 'agradecimiento',
+  'bibliografía', 'bibliografia', 'prefacio', 'colofón', 'colofon',
+  'presentación', 'presentacion', 'apéndice', 'apendice', 'anexo', 'anexos',
+  'glosario', 'nota del autor', 'sobre el autor', 'acerca del autor',
+  'referencias', 'referencias bibliográficas', 'referencias bibliograficas',
+  'reconocimientos'
 ];
 
 /**

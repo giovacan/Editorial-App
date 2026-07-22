@@ -31,6 +31,8 @@ import {
   splitListByItems,
 } from '../paginationEngine';
 
+import { splitTableByRows } from '../tableLayoutEngine.js';
+
 import {
   htmlToText,
   parseTopLevelBlocks as parseHtmlElements,
@@ -240,6 +242,17 @@ export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safe
             candidates.push(makeSplitCandidate(base + head, h, head, rest, idx - 1, idx, budget, false));
           }
         }
+      } else if (restTag === 'TABLE') {
+        // Multi-page table continuation: split again by row groups (the chunk
+        // already carries its repeated header — splitTableByRows re-detects it).
+        const tSplit = splitTableByRows(restHtml, spaceForRest, canvasCtx, { minOrphanRows: 2, minWidowRows: 2 });
+        if (tSplit) {
+          const [head, rest] = tSplit;
+          const h = measure(base + head);
+          if (h <= budget) {
+            candidates.push(makeSplitCandidate(base + head, h, head, rest, idx - 1, idx, budget, false));
+          }
+        }
       } else if (splitLongParagraphs) {
         for (let delta = 0; delta <= 1; delta++) {
           const maxH = spaceForRest - delta * lineHeightPx;
@@ -335,6 +348,18 @@ export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safe
       const listSplit = splitListByItems(f.html, remainingSpace, canvasCtx, { minOrphanItems: 1, minWidowItems: 1 });
       if (listSplit) {
         const [head, rest] = listSplit;
+        const h = measure(acc + head);
+        if (h <= budget) {
+          candidates.push(makeSplitCandidate(acc + head, h, head, rest, overflowIdx, overflowIdx + 1, budget, !!headingBefore, headingBefore));
+        }
+      }
+    } else if (f.tag === 'TABLE' && remainingSpace >= lineHeightPx * 3) {
+      // Table overflowing the page: split at a row-group boundary; the tail
+      // repeats the header rows on the next page. Needs ≥3 lines of space
+      // (header + at least a couple of data rows to be worth cutting).
+      const tSplit = splitTableByRows(f.html, remainingSpace, canvasCtx, { minOrphanRows: 2, minWidowRows: 2 });
+      if (tSplit) {
+        const [head, rest] = tSplit;
         const h = measure(acc + head);
         if (h <= budget) {
           candidates.push(makeSplitCandidate(acc + head, h, head, rest, overflowIdx, overflowIdx + 1, budget, !!headingBefore, headingBefore));

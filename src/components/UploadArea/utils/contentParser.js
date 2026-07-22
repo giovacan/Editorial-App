@@ -1,9 +1,14 @@
 import { isChapterHeading, detectChaptersInRawHtml, filterIndexListings } from './chapterDetection';
+import { isTableMarkupSane } from '../../../utils/tableLayoutEngine';
 
 const SPECIAL_CHAPTERS = [
   'prólogo', 'prologo', 'epílogo', 'epilogo', 'introducción', 'introduccion',
-  'conclusión', 'conclusion', 'dedicatoria', 'agradecimientos',
-  'bibliografía', 'bibliografia', 'prefacio'
+  'conclusión', 'conclusion', 'dedicatoria', 'agradecimientos', 'agradecimiento',
+  'bibliografía', 'bibliografia', 'prefacio', 'colofón', 'colofon',
+  'presentación', 'presentacion', 'apéndice', 'apendice', 'anexo', 'anexos',
+  'glosario', 'nota del autor', 'sobre el autor', 'acerca del autor',
+  'referencias', 'referencias bibliográficas', 'referencias bibliograficas',
+  'reconocimientos'
 ];
 
 const makeChapterId = (index) => `chapter-${Date.now()}-${index}`;
@@ -136,13 +141,15 @@ export const parseHtmlContent = (htmlContent) => {
   };
   normalizeBlocks(tempDiv);
 
-  // Linearize tables: narrative book layouts (A5/6x9) can't paginate table
-  // grids — the engine treats a <table> as one atomic element, leaving big
-  // holes before it and force-splitting it afterwards (folios 88-89 report).
-  // Reading-order linearization (each cell's blocks become top-level
-  // paragraphs) is the standard editorial treatment for comparison tables.
+  // Tables: keep STRUCTURALLY SANE tables intact — the pagination engine now
+  // lays them out natively (tableLayoutEngine: fixed col widths, row splits
+  // with repeated header, drawn borders). Only tables its grid parser rejects
+  // (nested tables, captions, images, >6 cols, header-only...) are linearized
+  // in reading order as before. Width-dependent sanity (min-content vs page)
+  // is re-checked at pagination time, where the engine falls back the same way.
   const linearizeTables = (root) => {
     for (const tbl of Array.from(root.querySelectorAll('table'))) {
+      if (isTableMarkupSane(tbl.outerHTML)) continue;
       const frag = window.document.createDocumentFragment();
       for (const cell of Array.from(tbl.querySelectorAll('td, th'))) {
         const blocks = Array.from(cell.querySelectorAll('p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote'));
@@ -403,7 +410,12 @@ export const parseHtmlContent = (htmlContent) => {
       // Excusas Frente Al Llamado De Dios" — the fragment drops too many index
       // words to reach 0.6). Each entry is consumed once (the first line that
       // matches it wins), so later subtitles can't re-trigger it.
-      if (!matched) {
+      // DISABLED when the document carries its own bare structural labels
+      // ("CAPÍTULO N" lines): chapters are already found by label, and fuzzy
+      // matching can only mint ghosts — in El Traslado an inner subtitle
+      // "LA SEMANA SETENTA DE DANIEL" hit 0.75 against the index entry
+      // "EVENTOS SEMANA SETENTA DE DANIEL" and split chapter 6 in half.
+      if (!matched && bareLabelIdx.length < 3) {
         let best = null, bestSim = 0;
         for (const e of tocEntries) {
           if (e.used) continue;
@@ -427,7 +439,7 @@ export const parseHtmlContent = (htmlContent) => {
   //   title  — display composite: `${label}  ${name}` (or just name/label)
   // Rule (user): respect the document's label if present; else auto-generate.
   const LABEL_IN_TEXT_RE = /^\s*(lección|leccion|lesson|sección|seccion|section|unidad|unit|módulo|modulo|module|tema|sesión|sesion|session|día|dia|day|capítulo|capitulo|chapter|parte|part)\s*#?\d+\s*[-–—:.\t ]*/i;
-  const FRONT_MATTER_RE = /^(introducción|introduccion|introduction|prólogo|prologo|prologue|prefacio|preface|epílogo|epilogo|epilogue|dedicatoria|agradecimientos|acknowledgements|conclusión|conclusion|colofón|colofon|bibliografía|bibliografia|foreword)\b/i;
+  const FRONT_MATTER_RE = /^(introducción|introduccion|introduction|prólogo|prologo|prologue|prefacio|preface|epílogo|epilogo|epilogue|dedicatoria|agradecimientos?|acknowledgements|conclusión|conclusion|colofón|colofon|bibliografía|bibliografia|foreword|presentación|presentacion|apéndice|apendice|anexos?|glosario|nota del autor|sobre el autor|acerca del autor|referencias|reconocimientos)\b/i;
   const isFrontMatter = (name) => FRONT_MATTER_RE.test((name || '').trim());
   const AUTO_LABEL_WORD = 'LECCIÓN'; // matches this document's family; generic enough
 
@@ -480,6 +492,79 @@ export const parseHtmlContent = (htmlContent) => {
     return !!m && t.slice(m[0].length).trim().length === 0;
   };
 
+  // ── Multiline-title fusion ────────────────────────────────────────────────
+  // Authors often stack a chapter title over several lines:
+  //     CAPÍTULO 7
+  //     EVENTOS DE LA SEMANA SETENTA O
+  //     LA TRIBULACIÓN
+  //     PARTE 1
+  // The "PARTE 1" line matches the part-heading pattern and used to open a
+  // ghost chapter that swallowed the real chapter's content (folios report:
+  // cap 7/8 left with 2 words, "PARTE 1"/"PARTE 2" with 5,800/18,300).
+  // Detection: a bare "PARTE N" arriving while the current NUMBERED chapter
+  // has almost no content (< 40 words) is a title continuation, not a part.
+  const PART_ONLY_RE = /^\s*(parte|part)\s*#?\s*(\d+|[ivxlcdm]+|primera|segunda|tercera|cuarta|quinta|first|second|third)\s*$/i;
+  const MERGE_MAX_WORDS = 40;
+
+  // Short ALL-CAPS unpunctuated <p>s at the START of the chapter body are the
+  // middle lines of the stacked title ("LA TRIBULACIÓN") — lift them into the
+  // name; anything else stays as content.
+  const liftTitleLinesFromHtml = (html) => {
+    const lifted = [];
+    let rest = html || '';
+    const pRe = /^\s*<p\b[^>]*>([\s\S]*?)<\/p>/i;
+    let m;
+    while ((m = pRe.exec(rest)) !== null) {
+      const t = m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      const isTitleLine = t && t.length <= 60
+        && t === t.toUpperCase() && /[A-ZÁÉÍÓÚÜÑ]/.test(t)
+        && t.split(/\s+/).length <= 6 && !/[.!?…;:]$/.test(t);
+      if (!isTitleLine) break;
+      lifted.push(t);
+      rest = rest.slice(m.index + m[0].length);
+    }
+    return { lifted, rest: rest.trim() };
+  };
+
+  const absorbPartIntoCurrentTitle = (partText) => {
+    const { lifted, rest } = liftTitleLinesFromHtml(currentChapter.html);
+    currentChapter.html = rest;
+    const extra = [...lifted, partText.trim().toUpperCase()].join(' ');
+    currentChapter.chapterName = `${(currentChapter.chapterName || '').trim()} ${extra}`.trim();
+    currentChapter.title = composeTitle(currentChapter.chapterLabel, currentChapter.chapterName);
+  };
+
+  // ── Free-standing section headings (inside unnumbered chapters only) ──────
+  // Front/back-matter blocks often contain inner sections written as short
+  // ALL-CAPS lines ("RESUMEN DE LOS EVENTOS PROFÉTICOS", "LA INMINENCIA DEL
+  // TRASLADO", or stacked "PANORAMA / DE / EVENTOS / PROFÉTICOS"). Promote
+  // them to chapters ONLY when substantial body follows (≥150 chars) —
+  // comparison labels ("TRASLADO" / "SEGUNDA VENIDA" followed by one-liners)
+  // and a trailing author signature stay as plain text.
+  const isAllCapsShort = (t) =>
+    !!t && t.length <= 60 && t === t.toUpperCase()
+    && /[A-ZÁÉÍÓÚÜÑ]/.test(t) && !/[.!?…;:]$/.test(t);
+
+  const tryFreeSection = (index) => {
+    const first = topChildren[index].textContent?.trim() || '';
+    if (!isAllCapsShort(first)) return null;
+    const lines = [first];
+    let j = index + 1;
+    for (; j < topChildren.length; j++) {
+      if (skipIndices.has(j) || approvedHeadings.has(j)) break;
+      const t = topChildren[j].textContent?.trim() || '';
+      if (!t) continue;
+      if (!isAllCapsShort(t)) break;
+      lines.push(t); // stacked title line
+    }
+    if (j >= topChildren.length || approvedHeadings.has(j)) return null;
+    const after = topChildren[j]?.textContent?.trim() || '';
+    if (after.length < 150) return null;
+    const title = lines.join(' ');
+    if (title.split(/\s+/).length < 2) return null;
+    return { title, lastIdx: j - 1 };
+  };
+
   let bookTitleConsumed = false;
   topChildren.forEach((el, index) => {
     if (skipIndices.has(index)) return; // documento's own TOC — omitted
@@ -495,6 +580,18 @@ export const parseHtmlContent = (htmlContent) => {
 
     if (approvedHeadings.has(index)) {
       flushAll();
+      // Bare "PARTE N" while the current numbered chapter is still (nearly)
+      // empty → it's the tail of a stacked multiline title. Absorb and stay
+      // in the same chapter instead of opening a ghost one.
+      if (
+        currentChapter && !currentSection
+        && PART_ONLY_RE.test(text)
+        && currentChapter.chapterLabel
+        && calcWordCount(currentChapter.html) < MERGE_MAX_WORDS
+      ) {
+        absorbPartIntoCurrentTitle(text);
+        return;
+      }
       if (currentChapter) {
         if (currentSection) {
           currentChapter.html += `<h3>${currentSection.title}</h3>${currentSection.html}`;
@@ -510,10 +607,17 @@ export const parseHtmlContent = (htmlContent) => {
         for (let j = index + 1; j < topChildren.length && j <= index + 2; j++) {
           const nx = topChildren[j].textContent?.trim() || '';
           if (!nx) continue;
-          if (isLabelOnlyLine(nx) || nx.toUpperCase() === text.toUpperCase()) {
+          // Skip ONLY exact duplicates of THIS label (Word emits them twice).
+          // A DIFFERENT structural label ("PARTE 1" followed by "CAPÍTULO 1")
+          // is the next chapter's own heading — never steal or drop it. But a
+          // plain NAME line stays consumable even when the TOC matcher already
+          // approved it (it IS this chapter's name — consuming it here avoids
+          // a duplicate empty chapter).
+          if (nx.toUpperCase() === text.toUpperCase()) {
             skipIndices.add(j); // duplicate label line — drop from body
             continue;
           }
+          if (isLabelOnlyLine(nx)) break;
           if (nx.length <= 70 && !/[.!?]$/.test(nx)) { nameHint = nx; skipIndices.add(j); }
           break;
         }
@@ -524,6 +628,14 @@ export const parseHtmlContent = (htmlContent) => {
         title: fields.title, chapterLabel: fields.label, chapterName: fields.name,
         html: '', wordCount: 0
       };
+      // A REAL part heading (previous chapter had substance, so it wasn't
+      // absorbed) is a book division → dedicated divider page: the title gets
+      // a full page of its own (fullPage layout, honored per-chapter by the
+      // pagination engine).
+      if (/^\s*(parte|part)\s*#?\s*(\d+|[ivxlcdm]+|primera|segunda|tercera|cuarta|quinta|first|second|third)\b/i.test(text)) {
+        currentChapter.type = 'part';
+        currentChapter.titleLayout = 'fullPage';
+      }
       currentSection = null;
     } else if (isSubtitle(el)) {
       flushAll();
@@ -537,6 +649,25 @@ export const parseHtmlContent = (htmlContent) => {
       // front-matter chapter so nothing is dropped.
       if (!currentChapter) {
         currentChapter = { id: makeChapterId(chapters.length), type: 'chapter', title: '', html: '', wordCount: 0 };
+      }
+      // Free ALL-CAPS section start inside an unnumbered block → own chapter.
+      if (!currentChapter.chapterLabel) {
+        const sec = tryFreeSection(index);
+        if (sec) {
+          flushAll();
+          if (currentSection) {
+            currentChapter.html += `<h3>${currentSection.title}</h3>${currentSection.html}`;
+            currentSection = null;
+          }
+          if (currentChapter.html.trim() || currentChapter.title) chapters.push(currentChapter);
+          currentChapter = {
+            id: makeChapterId(chapters.length), type: 'chapter',
+            title: sec.title, chapterLabel: '', chapterName: sec.title,
+            html: '', wordCount: 0
+          };
+          for (let k = index + 1; k <= sec.lastIdx; k++) skipIndices.add(k);
+          return;
+        }
       }
       if (isBoldInlineOpener(el, text)) {
         // Buffer bold opener; keep pendingParagraph (will merge all three later)
@@ -583,5 +714,69 @@ export const parseHtmlContent = (htmlContent) => {
   }
 
   chapters.forEach(ch => { ch.wordCount = calcWordCount(ch.html); });
-  return { chapters, detectedHeadings, bookTitle };
+
+  // ── Empty unnumbered pieces ───────────────────────────────────────────────
+  // a) A canonical piece heading left EMPTY because the free-section detector
+  //    captured its body right after it ("APÉNDICE" followed by the stacked
+  //    section "MATEO 24 UN CAPÍTULO MAL ENTENDIDO") prefixes its name onto
+  //    that section and is dropped — the piece keeps its canonical identity
+  //    (and its front/back-matter slot) with the content it owns.
+  // b) A canonical piece with no content anywhere (Panorama: the index lists
+  //    an INTRODUCCIÓN the author never wrote) is KEPT as an empty chapter —
+  //    the reorder puts it in its canonical slot and the author fills it in
+  //    the app (user decision: placeholder beats silent removal).
+  // c) Empty unnumbered chapters with a non-canonical name are artifacts —
+  //    dropped. Part dividers (type 'part') are empty BY DESIGN and stay.
+  for (let i = chapters.length - 1; i >= 0; i--) {
+    const ch = chapters[i];
+    if (ch.chapterLabel || ch.type === 'part') continue;
+    if (ch.wordCount > 0) continue;
+    const next = chapters[i + 1];
+    const chName = (ch.chapterName || ch.title || '').trim();
+    if (
+      next && chName && !next.chapterLabel && next.type !== 'part'
+      && !FRONT_MATTER_RE.test((next.chapterName || next.title || '').trim())
+    ) {
+      next.chapterName = `${chName} — ${(next.chapterName || next.title || '').trim()}`;
+      next.title = next.chapterName;
+      chapters.splice(i, 1);
+    } else if (!FRONT_MATTER_RE.test(chName)) {
+      chapters.splice(i, 1);
+    }
+    // canonical piece, nothing to merge with → keep as empty placeholder
+  }
+
+  // ── Canonical front/back-matter ordering ──────────────────────────────────
+  // Authors frequently write chapters first and the opening pieces last, so
+  // the document's physical order is NOT the book's order. Recognized
+  // front-matter chapters (unnumbered: no chapterLabel) are moved before the
+  // body in canonical editorial order; back matter moves after it. Body
+  // chapters keep their relative order. A well-ordered document is a no-op.
+  const normName = (s) => (s || '').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+  const FRONT_ORDER = ['dedicatoria', 'agradecimiento', 'prologo', 'prefacio', 'presentacion', 'introduccion'];
+  const BACK_ORDER = ['epilogo', 'conclusion', 'apendice', 'anexo', 'glosario', 'referencias', 'bibliografia', 'nota del autor', 'sobre el autor', 'acerca del autor', 'colofon'];
+  const matterRank = (ch, order) => {
+    if (ch.chapterLabel) return -1;               // numbered = body, always
+    const n = normName(ch.chapterName || ch.title);
+    return n ? order.findIndex(k => n.startsWith(k)) : -1;
+  };
+  const front = [];
+  const body = [];
+  const back = [];
+  for (const ch of chapters) {
+    const fr = matterRank(ch, FRONT_ORDER);
+    const br = matterRank(ch, BACK_ORDER);
+    if (fr !== -1) front.push({ ch, rank: fr });
+    else if (br !== -1) back.push({ ch, rank: br });
+    else body.push(ch);
+  }
+  const byRank = (a, b) => a.rank - b.rank;      // stable sort keeps doc order on ties
+  const ordered = [
+    ...front.sort(byRank).map(x => x.ch),
+    ...body,
+    ...back.sort(byRank).map(x => x.ch),
+  ];
+
+  return { chapters: ordered, detectedHeadings, bookTitle };
 };

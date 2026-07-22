@@ -103,6 +103,7 @@ import {
 } from './breakpoints.js';
 
 import { optimalPaginate } from './optimalPaginate.js';
+import { buildNativeTableElement, splitTableByRows } from '../tableLayoutEngine.js';
 
 import {
   repairMissingIndents,
@@ -187,7 +188,16 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
 
   const { contentHeight, lineHeightPx, baseFontSize: baseFontSizeTop, baseLineHeight: baseLineHeightTop, minOrphanLines: minOrphanLinesTop } = layoutCtx;
 
-  setDomSlack(Math.round(lineHeightPx * 1.0));
+  // Canvas↔DOM height reserve. A full line was over-conservative: on real
+  // books the browser render exceeds the Canvas measurement by only ~4-8px
+  // (worst observed: p412 +8px = 0.8 line at that size), so a whole line of
+  // reserve left a visible band of unused space at every page foot (user came
+  // from InDesign, where measure == render and the box fills to the last
+  // point). Half a line still scales with font size AND clears the worst
+  // observed delta with headroom; the post-render DOM audit
+  // (useLayoutVerification) catches any residual overflow by re-measuring in
+  // the real browser and carrying it forward.
+  setDomSlack(Math.round(lineHeightPx * 0.5));
 
   const pageFormat = safeConfig?.pageFormat || layoutCtx.pageFormat || 'unknown';
   log.setConfig({ pageFormat, fontSize: baseFontSizeTop, lineHeight: baseLineHeightTop, contentHeight, contentWidth: layoutCtx.contentWidth, minOrphanLines: minOrphanLinesTop, lineHeightPx });
@@ -253,7 +263,7 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     (layoutHints?.global?.keepWithNextTags || []).join(','),
     safeConfig?.pagination?.engineMode || 'optimal',
     safeConfig?.render?.engineLines !== false ? 'el1' : 'el0',
-    'v72-dp' // bump to force cache invalidation after algorithm changes
+    'v78-tblhdr' // bump to force cache invalidation after algorithm changes
   ].join('|'));
 
   // 'optimal' (default): global DP pagination per chapter — no fill-pass needed.
@@ -522,10 +532,15 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
       // Single-element page that still overflows — split the paragraph itself.
       if (overflow.length === 0 && blocks.length === 1 && pageH > budget) {
         const singleHtml = blocks[0].outerHtml || blocks[0].html || page.html;
-        const chunks = splitParagraphByLines(
-          singleHtml, null, budget, canvasCtx.textAlign || 'justify',
-          false, 1.5, false, canvasCtx
-        );
+        // Oversized native table alone on a page: last-resort row split
+        // (1-row minimums beat a clipped overflow at this point).
+        const singleTag = (blocks[0].tag || '').toUpperCase();
+        const chunks = singleTag === 'TABLE'
+          ? splitTableByRows(singleHtml, budget, canvasCtx, { minOrphanRows: 1, minWidowRows: 1 })
+          : splitParagraphByLines(
+              singleHtml, null, budget, canvasCtx.textAlign || 'justify',
+              false, 1.5, false, canvasCtx
+            );
         if (chunks && chunks.length >= 2) {
           const headHtml = chunks[0];
           const restHtml = chunks.slice(1).join('');
@@ -611,6 +626,77 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     }
   }
 
+  // ── Widow kill ─────────────────────────────────────────────────────────────
+  // A page that OPENS with the ≤1-line tail of a paragraph split from the
+  // previous page is the classic widow. When the previous page has room for
+  // that line, pull it back and REALLY merge it into its head (mergeIntoOne),
+  // so the reunited paragraph re-justifies naturally. Pull-only (never pushes
+  // content forward), budget-verified, word-conservation-guarded. Runs before
+  // the final parity pass because removing an emptied page changes the count.
+  {
+    const chStartExtraWk = Math.max(0, (layoutCtx.headerSpaceEstimate || 0) - (layoutCtx.chapterStartBottomClearance || 0))
+      + (layoutCtx.chapterStartExtraLines || 0) * lineHeightPx;
+    const wordsOf = (h) => (h || '').replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+    for (let i = allPages.length - 1; i >= 1; i--) {
+      const page = allPages[i];
+      if (!page?.html || page.isBlank || page.isTitleOnlyPage) continue;
+      let prevIdx = i - 1;
+      while (prevIdx >= 0 && allPages[prevIdx]?.isBlank) prevIdx--;
+      const prev = allPages[prevIdx];
+      if (!prev?.html || prev.isBlank || prev.isTitleOnlyPage) continue;
+      if (prev.chapterTitle !== page.chapterTitle) continue;
+
+      const blocks = getPageBlocks(page);
+      if (blocks.length === 0) continue;
+      const first = blocks[0];
+      if (!/data-continuation/.test(first.outerHtml || '')) continue;
+      const fragH = measureHtmlHeight(first.outerHtml, canvasCtx);
+      if (fragH > lineHeightPx * 1.6) continue; // only ≤1 rendered line
+
+      const prevBlocks = getPageBlocks(prev);
+      const last = prevBlocks[prevBlocks.length - 1];
+      if (!last || !/data-split-head/.test(last.outerHtml || '')) continue;
+
+      const merged = mergeIntoOne(last.outerHtml, first.outerHtml)
+        .replace(/\s*data-split-head="[^"]*"/i, '');
+      // Conservation: the merge must keep every word of both fragments.
+      if (wordsOf(merged) !== wordsOf(last.outerHtml) + wordsOf(first.outerHtml)) continue;
+
+      const newPrevHtml = prevBlocks.slice(0, -1).map(b => b.outerHtml).join('') + merged;
+      const budget = contentHeight - getDomSlack() + (prev.isFirstChapterPage ? chStartExtraWk : 0);
+      if (measureHtmlHeight(newPrevHtml, canvasCtx) > budget) continue;
+
+      Object.assign(prev, setPageHtml(prev, newPrevHtml));
+      const restHtml = blocks.slice(1).map(b => b.outerHtml).join('');
+      if (restHtml.trim()) {
+        Object.assign(page, setPageHtml(page, restHtml));
+      } else {
+        allPages.splice(i, 1); // widow was alone → page dissolves
+      }
+      if (process.env.NODE_ENV === 'development') {
+        log.record('widow-kill', 'pull-back', (prev.pageNumber || prevIdx + 1), {
+          fragH: +fragH.toFixed(0),
+          dissolved: !restHtml.trim(),
+        });
+      }
+    }
+  }
+
+  // Re-enforce chapter-start parity LAST: the heading fixes and the safety
+  // clamp above can INSERT pages (splice), shifting every later chapter onto
+  // the wrong side (folios 128/129 report: chapter 7 opened on a LEFT page).
+  // enforceChapterStartParity is idempotent — it strips its stale parity
+  // blanks and re-pads. The passes below (cut-line alignment, vertical
+  // justification) never change the page count, so parity is final here.
+  enforceChapterStartParity(allPages, safeConfig);
+  {
+    let pn = 1;
+    for (const p of allPages) {
+      if (!p.isBlank) p.pageNumber = pn;
+      pn++;
+    }
+  }
+
   // Final cut-line alignment guard (catch-all): whatever pass produced a
   // split-head block, if its LAST LINE is sparse (under 5 words and 55% of
   // the column) it must NOT stretch — flip to left alignment. The cut-line
@@ -670,9 +756,14 @@ export const flattenChapterElements = (chapter, layoutCtx, canvasCtx, measureDiv
   const elements = [];
   const chapterId = `ch_${(chapter.title || 'unknown').substring(0, 20).replace(/\s+/g, '_')}`;
 
-  // Chapter title
+  // Chapter title. A chapter may carry its own layout override (e.g. part
+  // dividers imported as titleLayout:'fullPage' get a dedicated page even
+  // when the book-wide chapterTitle layout is continuous/spaced).
+  const titleConfig = chapter.titleLayout
+    ? { ...safeConfig, chapterTitle: { ...(safeConfig.chapterTitle || {}), layout: chapter.titleLayout } }
+    : safeConfig;
   const { titleHtml, ctConfig } = buildChapterTitleHtml(
-    chapter, safeConfig, baseFontSize, lineHeightPx, contentHeight
+    chapter, titleConfig, baseFontSize, lineHeightPx, contentHeight
   );
   const titleHeight = measureHtmlHeight(titleHtml, canvasCtx);
   elements.push({
@@ -698,13 +789,19 @@ export const flattenChapterElements = (chapter, layoutCtx, canvasCtx, measureDiv
     el => el.textContent.trim() || el.tag === 'HR'
   );
 
-  // Tables can't paginate as a grid — the engine would treat the whole
-  // <table> as one atomic oversized element (holes before it + forced split
-  // after). Linearize in reading order: each cell's blocks become normal
-  // elements. Import does this too; this covers already-imported books.
+  // Tables: try NATIVE grid layout first (tableLayoutEngine measures cell
+  // wrapping at fixed column widths and lets the DP split by rows with the
+  // header repeated). Only when the grid engine rejects the markup (nested
+  // tables, too many columns, unfittable min-content...) fall back to the
+  // legacy reading-order linearization, so the worst case is the old behavior.
   const children = [];
   for (const el of filtered) {
     if (el.tag === 'TABLE') {
+      const native = buildNativeTableElement(el.outerHtml, canvasCtx);
+      if (native) {
+        children.push({ tag: 'TABLE', textContent: el.textContent || '', __native: native });
+        continue;
+      }
       const cells = el.outerHtml.match(/<t[dh][\s>][\s\S]*?<\/t[dh]>/gi) || [];
       let linearHtml = '';
       for (const c of cells) {
@@ -722,14 +819,28 @@ export const flattenChapterElements = (chapter, layoutCtx, canvasCtx, measureDiv
 
   let paragraphCount = 0;
   for (const el of children) {
+    // Native table: engine-owned styled HTML + deterministic height. Bypasses
+    // buildParagraphHtml (whose fallback would wrap the table in a <p>).
+    if (el.__native) {
+      elements.push({
+        html: el.__native.html,
+        height: el.__native.height,
+        isTitle: false,
+        tag: 'TABLE',
+        textContent: el.textContent || '',
+        isBold: false
+      });
+      assignBlockId(elements[elements.length - 1], chapterId, elements.length - 1);
+      continue;
+    }
     const originalIdx = allChildren.indexOf(el);
     const isFirstParagraph = originalIdx === firstParagraphIdx;
     if (el.tag === 'P' || el.tag === 'DIV') paragraphCount++;
 
-    const html = buildParagraphHtml(
+    let html = buildParagraphHtml(
       el, safeConfig, baseFontSize, baseLineHeight, textAlign, isFirstParagraph
     );
-    const height = measureHtmlHeight(html, canvasCtx);
+    let height = measureHtmlHeight(html, canvasCtx);
 
     // Detect bold from the ORIGINAL element (before buildParagraphHtml strips it).
     let origIsBold = false;
@@ -739,6 +850,33 @@ export const flattenChapterElements = (chapter, layoutCtx, canvasCtx, measureDiv
       } else if (/^<p[^>]*>\s*<(?:strong|b)\b/i.test(el.outerHtml)) {
         const { boldLen, totalLen } = getBoldTextRatio(el.outerHtml);
         origIsBold = totalLen > 0 && (boldLen / totalLen) >= 0.8;
+      }
+    }
+
+    // Runt absorption: a paragraph whose LAST line is a single word gets a
+    // subtle negative word-spacing so the word pulls up (one line less, no
+    // runt). Print practice caps tracking around ±1.5% — on ~4px spaces the
+    // -0.3/-0.7px range is invisible. Deterministic and render-consistent:
+    // the value travels inline and every measurer (KP, greedy, lineRenderer)
+    // honors word-spacing, so DP heights and drawn lines agree. Only accepted
+    // when the measured height actually drops a full line.
+    if (
+      el.tag === 'P' && !origIsBold
+      && height >= lineHeightPx * 2
+      && !/<br[\s/>]/i.test(html)
+      && !/word-spacing/.test(html)
+    ) {
+      const m = getLastLineMetrics((el.textContent || '').trim(), canvasCtx);
+      if (m && m.lastLineWords === 1) {
+        for (const ws of [-0.3, -0.5, -0.7]) {
+          const tuned = html.replace('style="', `style="word-spacing:${ws}px;`);
+          const h2 = measureHtmlHeight(tuned, canvasCtx);
+          if (h2 <= height - lineHeightPx * 0.9) {
+            html = tuned;
+            height = h2;
+            break;
+          }
+        }
       }
     }
 
@@ -1479,7 +1617,6 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
         currentHtml += listHead;
         Object.assign(pages[i], setPageHtml(pages[i], currentHtml));
         log.record('fill', 'split', i + 1, { tag, text: firstEl.textContent.substring(0, 40), reason: 'list-split' });
-        madeProgress = true;
         break;
       }
 

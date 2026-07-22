@@ -83,7 +83,7 @@ export interface KDPStandards {
     margins: Margins;
     typography: Typography;
   };
-  validateMargins: (margins: Margins, bookType?: string) => {
+  validateMargins: (margins: Margins, bookType?: string, gutter?: number) => {
     isValid: boolean;
     minMargins: Margins;
     userMargins: Margins;
@@ -179,13 +179,22 @@ export const KDP_STANDARDS: KDPStandards = {
       id: 'novela',
       name: 'Novela / Ficción',
       recommendedFormat: '6x9',
-      lineHeight: 1.5,
+      // 1.35: interlineado de trade paperback (Bringhurst 1.2–1.45). El 1.5
+      // anterior costaba ~4-5 renglones/página → ~14% más páginas impresas.
+      lineHeight: 1.35,
       fontSize: 12,
       fontFamily: 'Georgia, serif',
-      marginTop: 0.75,
-      marginBottom: 0.75,
-      marginLeft: 0.75,
-      marginRight: 0.75,
+      // Márgenes comerciales. El GUTTER se SUMA al margen interior (spec del
+      // sistema: "espacio adicional en el lomo"), así que el interior efectivo
+      // = marginLeft + gutter. Con 0.75" + 0.25" daba 1" (25.4mm) — un canal
+      // central excesivo en 6x9 que se leía como "margen doble interior".
+      // Ahora el margen base es 0.5" y el gutter lo completa a 0.75" interior
+      // total (cumple el mínimo KDP, que aplica al interior CON gutter), y el
+      // exterior baja a 0.5". Vertical 0.6" recupera altura de mancha.
+      marginTop: 0.6,
+      marginBottom: 0.6,
+      marginLeft: 0.5,
+      marginRight: 0.5,
       gutter: 0.25,
       indent: 0.5,
       description: 'Configuración estándar para novelas y obras de ficción'
@@ -194,13 +203,13 @@ export const KDP_STANDARDS: KDPStandards = {
       id: 'ensayo',
       name: 'Ensayo / No ficción',
       recommendedFormat: '6x9',
-      lineHeight: 1.5,
+      lineHeight: 1.35,
       fontSize: 12,
       fontFamily: 'Times New Roman, serif',
-      marginTop: 0.75,
-      marginBottom: 0.75,
-      marginLeft: 0.75,
-      marginRight: 0.75,
+      marginTop: 0.6,
+      marginBottom: 0.6,
+      marginLeft: 0.5,
+      marginRight: 0.5,
       gutter: 0.25,
       indent: 0.5,
       description: 'Configuración para ensayos y libros de no ficción'
@@ -291,8 +300,10 @@ export const KDP_STANDARDS: KDPStandards = {
       heading3: { min: 14, max: 18, recommended: 16 }
     },
     lineHeight: {
-      min: 1.4,
-      recommended: 1.5,
+      // Rango editorial real (Bringhurst 1.2–1.45 para texto corrido); el
+      // mínimo anterior (1.4) impedía el 1.35 profesional.
+      min: 1.25,
+      recommended: 1.35,
       max: 2.0
     }
   },
@@ -316,14 +327,21 @@ export const KDP_STANDARDS: KDPStandards = {
     };
   },
 
-  validateMargins(margins: Margins, bookType: string = 'paperback') {
+  validateMargins(margins: Margins, bookType: string = 'paperback', gutter: number = 0) {
     const minMargins = this.margins.minimum[bookType as 'paperback' | 'hardcover'];
+    // The gutter is ADDED to the inner margin at render time, so the KDP
+    // inner-margin minimum applies to (base margin + gutter), not the base
+    // alone. Validating the base by itself wrongly rejected a 0.5" base + 0.25"
+    // gutter = 0.75" inner (which meets KDP) while accepting a bare 0.75" base
+    // that renders as 1" inner. Check the effective inner margin instead.
+    const innerLeft = margins.left + gutter;
+    const innerRight = margins.right + gutter;
     return {
-      isValid: 
+      isValid:
         margins.top >= minMargins.top &&
         margins.bottom >= minMargins.bottom &&
-        margins.left >= minMargins.left &&
-        margins.right >= minMargins.right,
+        innerLeft >= minMargins.left &&
+        innerRight >= minMargins.right,
       minMargins,
       userMargins: margins
     };

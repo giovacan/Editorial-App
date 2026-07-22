@@ -36,8 +36,18 @@ const SAFE_CONFIG = {
   render: { engineLines: true },
 };
 
-const buildLayoutCtx = (fx) => {
-  const c = fx.layoutCtx || {};
+// Geometrías a ejercitar: la nativa del fixture (A5 en el primer libro) y
+// una 6x9 (152×229mm, márgenes KDP 0.5/0.75in a la misma escala del fixture:
+// columna más ANCHA y página más ALTA → otros puntos de quiebre, otros
+// cortes, otras viudas). Los bugs de paginación pueden depender de la
+// geometría — el gate corre en ambas.
+const GEOMETRIES = [
+  { name: 'nativa', override: null },
+  { name: '6x9', override: { contentWidth: 143.0, contentHeight: 253.7 } },
+];
+
+const buildLayoutCtx = (fx, override) => {
+  const c = { ...(fx.layoutCtx || {}), ...(override || {}) };
   const lineHeightPx = c.lineHeightPx || 10;
   const baseLineHeight = c.baseLineHeight || 1.5;
   return {
@@ -69,8 +79,9 @@ describe('corpus de regresión multi-libro', () => {
   for (const file of books) {
     const fx = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, file), 'utf8'));
 
-    it(`${fx.name}: pagina completo y pasa el gate de calidad`, { timeout: 600000 }, () => {
-      const layoutCtx = buildLayoutCtx(fx);
+    for (const geo of GEOMETRIES) {
+    it(`${fx.name} [${geo.name}]: pagina completo y pasa el gate de calidad`, { timeout: 600000 }, () => {
+      const layoutCtx = buildLayoutCtx(fx, geo.override);
       const result = paginateChapters(fx.chapters, layoutCtx, null, SAFE_CONFIG);
 
       expect(result.pages.length).toBeGreaterThan(0);
@@ -95,5 +106,6 @@ describe('corpus de regresión multi-libro', () => {
       expect(report.score, `score=${report.score} < gate=${minScore} — defectos: ${JSON.stringify(report.counts)}`)
         .toBeGreaterThanOrEqual(minScore);
     });
+    }
   }
 });

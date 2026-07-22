@@ -5,6 +5,7 @@ import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import { calculateContentDimensions, PX_PER_MM, PX_PER_INCH } from '../../utils/textMeasurer';
 import { fitPageScaleToViewport } from '../../utils/transformes';
 import { exportEpub, exportHtml } from '../Layout/utils/exporters';
+import { exportPdfVector } from '../Layout/utils/pdfVectorRenderer';
 import PageFrame from '../PageFrame/PageFrame';
 import './ExportPreviewModal.css';
 
@@ -30,12 +31,24 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
 
   const [format, setFormat]           = useState(initialFormat || 'pdf');
   const [showMargins, setShowMargins] = useState(false);
+  const [showGrid, setShowGrid]       = useState(false);
   const [spreadIndex, setSpreadIndex] = useState(0);
   const [viewport, setViewport]       = useState({ w: window.innerWidth, h: window.innerHeight });
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState({ current: 0, total: 0 });
   const [zoom, setZoom]               = useState(1.0);
   const [pageInput, setPageInput]     = useState('');
+  // PDF render engine: 'print' = Puppeteer Cloud Function (official) |
+  // 'vector' = local jsPDF+Gelasio true-vector export (beta, parallel).
+  // Persisted: a reload resets modal state and silently flipping back to
+  // 'print' (whose emulator may be down) reads as "export broke".
+  const [pdfEngine, setPdfEngineRaw] = useState(
+    () => localStorage.getItem('epv-pdf-engine') === 'vector' ? 'vector' : 'print'
+  );
+  const setPdfEngine = (v) => {
+    localStorage.setItem('epv-pdf-engine', v);
+    setPdfEngineRaw(v);
+  };
 
   // Track viewport for scale recalculation
   useEffect(() => {
@@ -53,6 +66,9 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
 
   // ── Page format & book config ──────────────────────────────────────────────
   const safeConfig   = config || {};
+  // Config used for rendering (preview PageFrame + vector export). Injects the
+  // debug line-grid flag so both draw the SAME ruling for line-by-line compare.
+  const renderConfig = showGrid ? { ...safeConfig, debugGrid: true } : safeConfig;
   const safeBookData = bookData || { bookType: 'novela', chapters: [] };
   const bookConfig   = KDP_STANDARDS.getBookTypeConfig(safeBookData.bookType);
 
@@ -104,7 +120,11 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
   //   - isTitleOnlyPage → gutter = 0 (symmetric margins, same as Preview)
   //   - isEven derived from actual pageNumber (not hardcoded by spread slot)
   const computeDimsForPage = useCallback((page) => {
-    const isTitleOnly  = page?.isTitleOnlyPage === true || page?.isTitlePage === true || page?.isTOCPage === true;
+    // Gutter zeroing must match getPageLayout() (used by the main Preview tab AND
+    // the vector export): ONLY isTitleOnlyPage is symmetric. TOC/title pages keep
+    // the gutter — zeroing it here made the modal's TOC column a different width
+    // than the other preview and the PDF ("el toc no se ve igual").
+    const isTitleOnly  = page?.isTitleOnlyPage === true;
     const isEven       = page ? (page.pageNumber % 2 === 0) : false;
     const gutterForPage = isTitleOnly ? 0 : effectiveGutter;
     const d = calculateContentDimensions(pageFormat, bookConfig, PREVIEW_SCALE, gutterForPage, isEven, totalPages, applyDynamicMargins);
@@ -116,9 +136,16 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
     const headerEst = storeDims?.headerSpaceEstimate ?? 0;
     const clearance = storeDims?.chapterStartBottomClearance ?? 0;
     const extraLines = storeDims?.chapterStartExtraLines ?? 0;
+    // Front matter (TOC/title) has no running header → reclaim the reserved
+    // header space so the content box reaches the real floor near the folio,
+    // matching getPageLayout (main preview) and the vector PDF distribution.
+    const isFM = page?.isTOCPage === true || page?.isTitlePage === true || page?.isFrontMatter === true
+      || page?.type === 'toc' || page?.type === 'title' || page?.type === 'cover';
     const effectiveContentHeight = (isChStart && skipFirstCh)
       ? baseContentHeight + Math.max(0, headerEst - clearance) + extraLines * lineHeightPx
-      : baseContentHeight;
+      : isFM
+        ? baseContentHeight + headerEst
+        : baseContentHeight;
     return { ...d, fontSize, fontFamily, lineHeightPx, textAlign, effectiveContentHeight, baseFontSize, previewScale: PREVIEW_SCALE };
   }, [storeDims, safeConfig, pageFormat, effectiveGutter, totalPages, fontSize, lineHeightPx, fontFamily, textAlign, baseFontSize, applyDynamicMargins]);
 
@@ -192,6 +219,15 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
   const leftDims  = computeDimsForPage(leftPage);
   const rightDims = computeDimsForPage(rightPage);
 
+  // Engine-scale layout ctx for deterministic line rendering. PageFrame uses it
+  // to draw the engine's exact line breaks (the SAME transform Preview.jsx and
+  // the vector PDF export apply) so this preview matches both by construction.
+  const renderCtx = useMemo(() => (
+    storeDims?.contentWidth && storeDims?.baseFontSizePx
+      ? { contentWidth: storeDims.contentWidth, baseFontSizePx: storeDims.baseFontSizePx, fontFamily }
+      : null
+  ), [storeDims?.contentWidth, storeDims?.baseFontSizePx, fontFamily]);
+
   // ── Export handlers ────────────────────────────────────────────────────────
   const handleDownload = async () => {
     if (isExporting) return;
@@ -208,22 +244,47 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
           marginLeft:           refDims.marginLeft,
           fontSize,
           fontFamily,
-          lineHeightPx,
           baseFontSize,
           effectiveContentHeight: storeDims?.contentHeight ?? refDims.contentHeight,
           previewScale:         PREVIEW_SCALE,
+          // Engine measurements (px space the DP paginated in) — the vector
+          // renderer draws lines/tables straight from these.
+          contentWidth:         storeDims?.contentWidth,
+          baseFontSizePx:       storeDims?.baseFontSizePx,
+          lineHeightPx:         storeDims?.lineHeightPx ?? lineHeightPx,
+          baseLineHeight:       storeDims?.baseLineHeight,
+          // For per-page getPageLayout (folio/header position, visibility) — the
+          // vector renderer uses the SAME layout engine the preview does.
+          totalPages,
+          tocConfig,
+          layoutDims:           storeDims,
         };
 
-        const response = await fetch('http://127.0.0.1:5002/editorial-app-test/us-central1/generatePdf', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            bookData: safeBookData,
-            config: safeConfig,
-            paginatedPages: allPages,
-            dims: pdfDims,
-          }),
-        });
+        if (pdfEngine === 'vector') {
+          await exportPdfVector(safeBookData, renderConfig, allPages, pdfDims,
+            (cur, tot) => setExportProgress({ current: cur, total: tot }));
+          return;
+        }
+
+        let response;
+        try {
+          response = await fetch('http://127.0.0.1:5002/editorial-app-test/us-central1/generatePdf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              bookData: safeBookData,
+              config: safeConfig,
+              paginatedPages: allPages,
+              dims: pdfDims,
+            }),
+          });
+        } catch {
+          // fetch() network failure = the Firebase emulator isn't running.
+          throw new Error(
+            'El motor "Impresión" necesita el emulador de Firebase (127.0.0.1:5002), que no está corriendo. ' +
+            'Usa "Vectorial (beta)" o arranca el emulador.'
+          );
+        }
 
         if (!response.ok) {
           throw new Error('Error al generar PDF: ' + response.statusText);
@@ -294,6 +355,22 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
               {label}
             </button>
           ))}
+          {format === 'pdf' && (
+            <div className="epv-pdf-engine" style={{ display: 'flex', gap: 4, marginLeft: 12 }}>
+              {[['print', 'Impresión'], ['vector', 'Vectorial (beta)']].map(([key, label]) => (
+                <button
+                  key={key}
+                  className={`epv-tab ${pdfEngine === key ? 'active' : ''}`}
+                  onClick={() => setPdfEngine(key)}
+                  title={key === 'vector'
+                    ? 'PDF con texto real seleccionable (jsPDF + Gelasio) — experimental'
+                    : 'PDF de impresión fiel al navegador (predeterminado)'}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="epv-toolbar-right">
@@ -313,6 +390,15 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
             Márgenes
+          </button>
+
+          <button
+            className={`epv-toggle-btn ${showGrid ? 'active' : ''}`}
+            onClick={() => setShowGrid((v) => !v)}
+            title="Mostrar/ocultar rejilla de renglones (preview y export)"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="3" y1="14" x2="21" y2="14"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            Renglones
           </button>
 
 
@@ -352,9 +438,10 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
               dims={leftDims}
               cssScale={effectiveCssScale}
               showMargins={showMargins}
-              config={safeConfig}
+              config={renderConfig}
               bookTitle={safeBookData.title}
               tocConfig={tocConfig}
+              renderCtx={renderCtx}
             />
             {/* Spine */}
             <div className="epv-spine" style={{ width: SPREAD_GAP }} />
@@ -364,9 +451,10 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
               dims={rightDims}
               cssScale={effectiveCssScale}
               showMargins={showMargins}
-              config={safeConfig}
+              config={renderConfig}
               bookTitle={safeBookData.title}
               tocConfig={tocConfig}
+              renderCtx={renderCtx}
             />
           </div>
         ) : (
@@ -376,9 +464,10 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
               dims={rightDims}
               cssScale={effectiveCssScale}
               showMargins={showMargins}
-              config={safeConfig}
+              config={renderConfig}
               bookTitle={safeBookData.title}
               tocConfig={tocConfig}
+              renderCtx={renderCtx}
             />
           </div>
         )}

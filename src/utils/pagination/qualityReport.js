@@ -24,6 +24,7 @@
 import { measureHtmlHeight } from '../textLayoutEngine';
 import { renderPageAsEngineLines, computeBlockLineMetrics } from '../lineRenderer.js';
 import { parseTopLevelBlocks, htmlToText } from '../layoutIr.js';
+import { buildFontString } from '../textMeasurement.js';
 
 const WEIGHTS = {
   overflow: 2.0,
@@ -100,8 +101,26 @@ export const computeQualityReport = (pages, canvasCtx, layoutCtx) => {
           const text = last.replace(/<[^>]+>/g, '').trim();
           const words = text.split(/\s+/).filter(Boolean).length;
           const align = (last.match(/text-align-last:([a-z]+)/) || [])[1];
+          // A justify tail is only a DEFECT when it actually stretches. The
+          // line renderer draws the cut line at its natural width regardless of
+          // the justify attribute, so a 2-3 word line that already fills most
+          // of the column reads fine — it's the SHORT ones (large empty gap) the
+          // browser would inflate into visible rivers. Measure the drawn width:
+          // only flag when the tail fills < 62% of the column (a real stretch).
+          // Without this, 36 tails that render fine were counted as defects.
+          let fillRatio = 1;
           if (align === 'justify' && words < 4) {
-            defects.push({ type: 'stretched_cut', page: folio, detail: `"${text.slice(0, 40)}"` });
+            try {
+              const ctx2d = canvasCtx.ctx2d;
+              const W = canvasCtx.contentWidth - (canvasCtx.widthSlack || 0);
+              if (ctx2d && W > 0) {
+                ctx2d.font = buildFontString(canvasCtx.baseFontSizePx, canvasCtx.fontFamily);
+                fillRatio = ctx2d.measureText(text).width / W;
+              }
+            } catch { fillRatio = 0; /* can't measure → treat as suspect */ }
+          }
+          if (align === 'justify' && words < 4 && fillRatio < 0.62) {
+            defects.push({ type: 'stretched_cut', page: folio, detail: `"${text.slice(0, 40)}" (${Math.round(fillRatio * 100)}%)` });
           }
         }
       } catch { /* presentación — nunca tumbar el reporte */ }
