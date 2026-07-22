@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
+import Toaster from './components/Toast/Toaster';
 import Layout from './components/Layout/Layout';
 import { LandingPage } from './pages/LandingPage';
 import HomePage from './pages/HomePage';
@@ -22,6 +23,7 @@ import './App.css';
 function App() {
   return (
     <ErrorBoundary>
+      <Toaster />
       <Routes>
         {/* Public routes */}
         <Route path="/login" element={<LoginPage />} />

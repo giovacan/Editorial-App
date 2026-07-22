@@ -1,5 +1,6 @@
 import { KDP_STANDARDS } from '../../../utils/kdpStandards';
 import { buildHeaderHtmlPure } from '../../../hooks/useHeaderFooter';
+import { toast } from '../../../utils/toast';
 
 /**
  * Creates a minimal ZIP file from an array of { name, content } entries.
@@ -119,7 +120,7 @@ const downloadBlob = (blob, filename) => {
  */
 export const exportPdf = async (bookData, config, paginatedPages, dims, onProgress, quality = 'print') => {
   if (!paginatedPages?.length || !dims) {
-    alert('No hay páginas para exportar. Abre la Vista previa primero.');
+    toast.error('No hay páginas para exportar. Abre la Vista previa primero.');
     return;
   }
 
@@ -128,7 +129,7 @@ export const exportPdf = async (bookData, config, paginatedPages, dims, onProgre
   const pageFormat = KDP_STANDARDS.getPageFormat(formatId);
 
   if (!pageFormat) {
-    alert('Formato de página no reconocido: ' + formatId);
+    toast.error('Formato de página no reconocido: ' + formatId);
     return;
   }
 
@@ -139,7 +140,7 @@ export const exportPdf = async (bookData, config, paginatedPages, dims, onProgre
       import('html2canvas'),
     ]);
   } catch (err) {
-    alert('Error cargando dependencias PDF: ' + err.message);
+    toast.error('Error cargando dependencias PDF: ' + err.message);
     return;
   }
   const { jsPDF } = jsPDFModule;
@@ -373,7 +374,7 @@ ${bookData.chapters.map((ch, i) => `      <li><a href="chapter${i}.xhtml">${ch.t
     const zip = createSimpleZip(files);
     downloadBlob(new Blob([zip], { type: 'application/epub+zip' }), `${title.replace(/[^a-z0-9]/gi, '_')}.epub`);
   } catch (error) {
-    alert('Error al generar EPUB: ' + error.message);
+    toast.error('Error al generar EPUB: ' + error.message);
   }
 };
 
@@ -412,7 +413,7 @@ export const exportHtml = (bookData) => {
  */
 export const exportPdfPrint = async (bookData, config, paginatedPages, dims, onProgress) => {
   if (!paginatedPages?.length || !dims) {
-    alert('No hay páginas para exportar. Abre la Vista previa primero.');
+    toast.error('No hay páginas para exportar. Abre la Vista previa primero.');
     return;
   }
 
@@ -421,7 +422,7 @@ export const exportPdfPrint = async (bookData, config, paginatedPages, dims, onP
   const pageFormat = KDP_STANDARDS.getPageFormat(formatId);
 
   if (!pageFormat) {
-    alert('Formato de página no reconocido: ' + formatId);
+    toast.error('Formato de página no reconocido: ' + formatId);
     return;
   }
 

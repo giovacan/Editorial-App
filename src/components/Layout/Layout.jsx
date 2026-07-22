@@ -4,6 +4,7 @@ import useEditorStore from '../../store/useEditorStore';
 import { useBookSync } from '../../hooks/useBookSync';
 import { useConfigHistory } from '../../hooks/useConfigHistory';
 import { addRecentBook } from '../../utils/recentBooks';
+import { toast } from '../../utils/toast';
 import ExportPreviewModal from '../ExportPreviewModal/ExportPreviewModal';
 import Header from '../Header/Header';
 import SidebarLeft from '../SidebarLeft/SidebarLeft';
@@ -138,10 +139,10 @@ function Layout() {
             editing: { activeChapterId: projectData.safeBookData.chapters[0]?.id || null, isDirty: false }
           });
         } else {
-          alert('Archivo de proyecto no válido');
+          toast.error('Archivo de proyecto no válido');
         }
       } catch (error) {
-        alert('Error al abrir proyecto: ' + error.message);
+        toast.error('Error al abrir proyecto: ' + error.message);
       }
     };
     input.click();
