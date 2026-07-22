@@ -98,20 +98,22 @@ function SidebarRight({ onExportPdf, onExportEpub, onExportHtml }) {
           </div>
 
           <div className="export-section">
-            <h3>Opciones de exportación</h3>
-            
-            <label className="checkbox-label">
-              <input type="checkbox" defaultChecked />
+            <h3>Opciones de exportación <span className="opt-soon">próximamente</span></h3>
+
+            {/* Aún no conectadas al export — deshabilitadas para no prometer algo
+                que no hace. Se activarán con "EPUB completo" (roadmap Fase C). */}
+            <label className="checkbox-label is-disabled" title="Disponible próximamente">
+              <input type="checkbox" defaultChecked disabled />
               Incluir tabla de contenidos
             </label>
 
-            <label className="checkbox-label">
-              <input type="checkbox" defaultChecked />
+            <label className="checkbox-label is-disabled" title="Disponible próximamente">
+              <input type="checkbox" defaultChecked disabled />
               Incluir metadatos
             </label>
 
-            <label className="checkbox-label">
-              <input type="checkbox" defaultChecked />
+            <label className="checkbox-label is-disabled" title="Disponible próximamente">
+              <input type="checkbox" defaultChecked disabled />
               Comprimir archivo (EPUB)
             </label>
           </div>

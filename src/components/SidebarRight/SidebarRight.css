@@ -65,3 +65,22 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Export options not yet wired — visually disabled with a "próximamente" tag. */
+.checkbox-label.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.checkbox-label.is-disabled input { cursor: not-allowed; }
+.opt-soon {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #9ca3af;
+  background: #f3f4f6;
+  padding: 1px 6px;
+  border-radius: 999px;
+  margin-left: 6px;
+  vertical-align: middle;
+}

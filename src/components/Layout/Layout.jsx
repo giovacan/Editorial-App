@@ -18,9 +18,9 @@ function Layout() {
   const [searchParams] = useSearchParams();
   const bookId = searchParams.get('bookId');
 
-  if (bookId) {
-    useBookSync(bookId);
-  }
+  // Call unconditionally (Rules of Hooks); useBookSync no-ops when bookId is
+  // falsy. flushWrites forces pending Firestore writes on demand (Save button).
+  const { flushWrites } = useBookSync(bookId);
 
   const bookData = useEditorStore((s) => s.bookData);
   const chapters = useEditorStore((s) => s.bookData?.chapters);
@@ -149,7 +149,7 @@ function Layout() {
     input.click();
   };
 
-  const handleSaveProject = () => {
+  const handleSaveProject = async () => {
     const { bookData: bd, config: cfg } = useEditorStore.getState();
     const json = JSON.stringify({ timestamp: Date.now(), safeBookData: bd, safeConfig: cfg }, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
@@ -159,6 +159,19 @@ function Layout() {
     a.download = `libro-${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
+
+    // For a cloud book, also flush pending writes to Firestore immediately
+    // (otherwise they only persist via the debounced auto-save).
+    if (bookId && flushWrites) {
+      try {
+        await flushWrites();
+        toast.success('Proyecto guardado (local + nube).');
+      } catch (err) {
+        toast.error('Guardado local OK, pero falló la nube: ' + (err?.message || err));
+      }
+    } else {
+      toast.success('Proyecto descargado.');
+    }
   };
 
   const handleContentLoaded = (loadedChapters, bookTitle) => {
