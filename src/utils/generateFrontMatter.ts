@@ -368,6 +368,38 @@ export function computeH3UniformFontSize(
   return null;
 }
 
+// Chapter-title styling the TOC heading mirrors so "Índice" reads like a
+// chapter opener (same size/weight/alignment). Sourced from the book's
+// config.chapterTitle at the call site; falls back to the same defaults
+// buildChapterTitleHtml uses.
+export interface ChapterTitleStyle {
+  sizeMultiplier?: number;
+  bold?: boolean;
+  align?: string;
+}
+
+// True when a title string is written in ALL CAPS (≥3 letters, every letter
+// uppercase). Numbers/punctuation are ignored. Used to detect the chapter
+// titles' native casing so the TOC matches it instead of imposing its own.
+const isAllCaps = (s: string): boolean => {
+  const letters = (s || '').match(/[A-Za-zÀ-ÿ]/g);
+  if (!letters || letters.length < 3) return false;
+  return letters.every(c => c === c.toUpperCase() && c !== c.toLowerCase());
+};
+
+// Decide the TOC's casing from the chapter titles themselves: if most H1 titles
+// are ALL CAPS the index reads as ALL CAPS too (via CSS uppercase, so short
+// words the source lower-cased are unified); otherwise it keeps the native
+// mixed case (no forced uppercase). Returns the text-transform to apply, or null
+// to mean "leave the template's own value" (used when the user picked an
+// explicit titleTransform and we must not override it).
+const detectTocCasing = (titles: string[]): 'uppercase' | 'none' => {
+  const meaningful = titles.filter(t => (t || '').match(/[A-Za-zÀ-ÿ]/g));
+  if (meaningful.length === 0) return 'none';
+  const caps = meaningful.filter(isAllCaps).length;
+  return caps / meaningful.length >= 0.6 ? 'uppercase' : 'none';
+};
+
 export const generateTOCPages = (
   tocEntries: TOCResolvedEntry[],
   tocConfig: TOCConfig | null,
@@ -377,7 +409,9 @@ export const generateTOCPages = (
   contentWidth?: number,
   precomputedH3FontSize?: string | null,
   baseFontSizePx?: number,
-  fontFamily?: string
+  fontFamily?: string,
+  chapterTitleStyle?: ChapterTitleStyle | null,
+  headerSpaceReclaimPx?: number
 ): { pages: FrontMatterPage[], tocLog: TocLogEntry[], tocSummaryText: string } => {
   if (!ENABLE_TOC || !tocEntries || tocEntries.length === 0 || !tocConfig?.includeLevels?.length) {
     return { pages: [], tocLog: [], tocSummaryText: '' };
@@ -408,6 +442,20 @@ export const generateTOCPages = (
     entryNumbers?.[i] ? `${entryNumbers[i]}\u00a0${t}` : t
   );
 
+  // \u2500\u2500 Casing detection: match the chapter titles' own style \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // The chapter openers in the body render chapter.title verbatim (no CSS
+  // transform), so their casing IS the source text's casing. The TOC should
+  // read the same way. When the user hasn't forced an explicit titleTransform,
+  // derive the index's text-transform from the chapters: ALL-CAPS chapters \u2192
+  // uppercase index (unifies the short words the source left lowercase), mixed
+  // case \u2192 no forced uppercase (overrides templates like modern/editorial that
+  // hard-code uppercase). When the user DID pick a transform, respect it and
+  // keep the template's own text-transform untouched.
+  const userChoseTransform = !!(tocConfig.titleTransform && tocConfig.titleTransform !== 'none');
+  const autoCasing = userChoseTransform
+    ? null
+    : detectTocCasing(filteredEntries.filter(e => e.level === 1).map(e => e.title));
+
   const pages: FrontMatterPage[] = [];
 
   // Use accurate baseFontSizePx when available; fall back to ratio-1.5 approximation.
@@ -425,20 +473,36 @@ export const generateTOCPages = (
   const h2SinglePx = lineHeightPx
     + ((parseFloat(h2Style.marginTop) || 0) + (parseFloat(h2Style.marginBottom) || 0)) * h2FontPx;
 
-  // TOC title: line text + margin-bottom: 1.5em (1em = effective title font * bfPx)
-  const titleFontEm  = parseFloat(tocConfig.titleFontSize || TOC_TITLE_SIZE) || 1.1;
-  const titleHeightPx = Math.ceil(lineHeightPx + 1.5 * titleFontEm * bfPx);
+  // ── TOC title — mirror the chapter-start title style ──────────────────────
+  // The user wants "Índice" to read like a chapter opener: same size multiplier
+  // (×1.8 of base), weight, alignment and line-height:1.3 as buildChapterTitleHtml.
+  // Its height (font line + margin-bottom) is reserved out of the first page so
+  // the entries below still leave the standard 1-line gap above the folio.
+  const ctSizeMult  = chapterTitleStyle?.sizeMultiplier ?? 1.8;
+  const ctBold      = chapterTitleStyle?.bold !== false;
+  const ctAlign     = chapterTitleStyle?.align || 'center';
+  // Match buildChapterTitleHtml EXACTLY: it sizes the title as
+  // round(baseFontSizePt × mult) pt, and pt→px is ×96/72. Our bfPx is px, so the
+  // pt base is bfPx×72/96. Reproducing the same round() and pt→px keeps the TOC
+  // heading pixel-identical to a chapter opener (rather than a hair off, which a
+  // naive round(bfPx×mult) in px would be).
+  const basePt = bfPx * 72 / 96;
+  const titleSizePt = Math.round(basePt * ctSizeMult);
+  const titleFontPx = titleSizePt * 96 / 72;
+  const titleLineHeightPx = Math.ceil(titleFontPx * 1.3);
+  // margin-bottom mirrors the chapter title's 1-line gap below the heading.
+  const titleMarginBotPx = Math.ceil(lineHeightPx);
+  const titleHeightPx = titleLineHeightPx + titleMarginBotPx;
+  // TOC pages show no running header, so the header space the engine reserved in
+  // contentHeight is free — reclaim it so entries distribute all the way to the
+  // real floor near the folio (matches the vector PDF, which fills that space).
+  const usableContentHeight = contentHeight + (headerSpaceReclaimPx || 0);
   // First page has the TOC title taking space; subsequent pages use full content height.
-  // Bottom buffer: absorbs accumulated sub-pixel rounding from margins and line-heights.
-  const firstPageUsable = contentHeight - titleHeightPx;
-  const bodyPageUsable  = contentHeight;
+  const firstPageUsable = usableContentHeight - titleHeightPx;
+  const bodyPageUsable  = usableContentHeight;
 
-  // CRITICAL: margin-bottom uses explicit px (not em) to prevent browser minimum-font-size
-  // from inflating the margin. titleHeightPx already includes this margin in the formula.
-  const titleMarginBotPx = Math.ceil(1.5 * titleFontEm * bfPx);
-  const titleFontSize = tocConfig.titleFontSize || TOC_TITLE_SIZE;
   const titleLetterSpacing = (template === 'editorial' || template === 'modern') ? '0.08em' : 'normal';
-  const titleHtml = `<div style="text-align:center; font-size:${titleFontSize}; font-weight:bold; margin-bottom:${titleMarginBotPx}px; line-height:${lineHeightPx}px; letter-spacing:${titleLetterSpacing};">${tocConfig.title || 'Índice'}</div>`;
+  const titleHtml = `<div style="text-align:${ctAlign}; font-size:${titleFontPx.toFixed(2)}px; font-weight:${ctBold ? 'bold' : 'normal'}; margin-bottom:${titleMarginBotPx}px; line-height:${titleLineHeightPx}px; letter-spacing:${titleLetterSpacing};">${tocConfig.title || 'Índice'}</div>`;
 
   // ── Uniform H3 font size ─────────────────────────────────────────────────────
   // Use pre-computed value from caller if provided; otherwise compute on the spot.
@@ -501,6 +565,7 @@ export const generateTOCPages = (
   let currentHtml = outerDivOpen(true);
   let usedHeight = 0;   // pixels used so far on current page (after title)
   let currentPage = 1;
+  let prevIdxOnPage = -1; // last entry index placed on the current page (margin collapse)
 
   // separator mode is checked inline per-entry (dots use float+inline, dash/none use flex)
 
@@ -555,7 +620,13 @@ export const generateTOCPages = (
 
   const computed: ComputedEntry[] = filteredEntries.map((entry, i) => {
     const displayTitle = displayTitles[i];
-    const style = getLevelStyle(template, entry.level, tocConfig.levelOverrides);
+    const baseStyle = getLevelStyle(template, entry.level, tocConfig.levelOverrides);
+    // Casing override: when in auto mode, the detected chapter casing wins over
+    // the template's fixed text-transform (so modern/editorial don't force
+    // uppercase on a mixed-case book, and a classic index of ALL-CAPS chapters
+    // is unified to uppercase). Applied to the style used everywhere downstream
+    // (DOM measurement + entry HTML) so widths and rendering stay consistent.
+    const style = autoCasing ? { ...baseStyle, textTransform: autoCasing } : baseStyle;
     const isH3 = entry.level === 3;
     const isCompact = entry.level >= 3; // H3 and H4 use compact line-height
 
@@ -659,6 +730,19 @@ export const generateTOCPages = (
   // Uniform page-number column width: use the widest entry so all numbers right-align.
   const maxPageNumW = Math.max(...computed.map(c => c.exactPageNumWidth));
 
+  // ── Vertical margin collapse ─────────────────────────────────────────────
+  // TOC entries are block-level flow siblings inside the wrapper, so the CSS
+  // margin between two adjacent entries COLLAPSES to max(prev.mb, curr.mt) — it
+  // is NOT the sum. The entryPx formula adds both margins, so accumulating
+  // Σ entryPx overcounts the page by Σ min(prev.mb, curr.mt) and leaves real,
+  // usable space empty at the bottom ("huecos en la parte inferior"). This is
+  // the collapsed overlap to subtract when an entry follows another on the SAME
+  // page; the first entry of a page collapses against nothing (returns 0).
+  const collapseWithPrev = (prevIdx: number, curIdx: number): number => {
+    if (prevIdx < 0) return 0;
+    return Math.min(computed[prevIdx].marginBotPx, computed[curIdx].marginTopPx);
+  };
+
   // ── Phase 2: Greedy pass — find minimum page count P ─────────────────────
   // No orphan guard here: guard inflates P when every entry is H1 (chapter-only
   // TOC), doubling the effective height per slot and halving soft targets.
@@ -669,22 +753,36 @@ export const generateTOCPages = (
   const effBody  = bodyPageUsable  - lineHeightPx * 0.40;
   let P = 1;
   {
-    let usedG = 0;
-    for (const c of computed) {
+    let usedG = 0, prevOnPage = -1;
+    for (let i = 0; i < computed.length; i++) {
+      const c = computed[i];
       const usable = P === 1 ? effFirst : effBody;
-      if (usedG + c.entryPx > usable && usedG > 0) { P++; usedG = 0; }
-      usedG += c.entryPx;
+      const net = c.entryPx - collapseWithPrev(prevOnPage, i);
+      if (usedG + net > usable && usedG > 0) { P++; usedG = 0; prevOnPage = -1; }
+      usedG += c.entryPx - collapseWithPrev(prevOnPage, i);
+      prevOnPage = i;
     }
   }
 
   // ── Phase 3: Balanced layout — equalize fill% across P pages ─────────────
-  // Each page receives a soft target proportional to its capacity so no page
-  // is significantly emptier than others.  The hard page limit is still respected.
-  // Soft target = just below the hard limit so it fires as a last-resort safety net
-  // rather than redistributing content across pages. Pages fill to the hard limit
-  // and only soft-break if used reaches 0.40 lines before the hard limit.
-  const softTarget1  = effFirst - lineHeightPx * 0.40;
-  const softTargetN  = effBody  - lineHeightPx * 0.40;
+  // With P>1 pages, filling each page to the hard limit stuffs the FIRST pages
+  // to the brim (looks "presionada"/cramped) and leaves the LAST page nearly
+  // empty. Instead, aim each page at its FAIR SHARE of the total content so the
+  // fill% is even across all P pages. The soft target is that fair share
+  // (proportional to each page's capacity, since page 1 is shorter by the TOC
+  // title); the hard limit still caps every page so nothing overflows.
+  const totalEntryPx = computed.reduce((s, c) => s + c.entryPx, 0);
+  const capSum = effFirst + effBody * (P - 1); // total usable across P pages
+  // Fraction of the global content each page should carry to be balanced.
+  const fillFrac = P > 1 && capSum > 0 ? Math.min(1, totalEntryPx / capSum) : 1;
+  // Fair-share target per page = its own capacity × the global fill fraction.
+  // NO upward nudge: the break fires BEFORE the entry that would cross this line
+  // (see softBreak below), so the target is the ceiling the page fills TO, not a
+  // threshold it must exceed. A +0.5-line nudge here (old code) let page 1 take
+  // one extra entry and end at 91% while page 2 sat at 59% — the imbalance the
+  // user saw. Single-page TOC (P=1) just fills to the hard limit.
+  const softTarget1  = P > 1 ? effFirst * fillFrac : effFirst - lineHeightPx * 0.40;
+  const softTargetN  = P > 1 ? effBody  * fillFrac : effBody  - lineHeightPx * 0.40;
 
   // Phase 3 decision metadata — kept parallel to computed[] so Phase 4 log uses
   // the SAME followPx and breakReason that Phase 3 actually used (not recomputed).
@@ -693,13 +791,18 @@ export const generateTOCPages = (
 
   const pageBreakBefore: boolean[] = new Array(computed.length).fill(false);
   {
-    let curPage = 1, pageUsed = 0;
+    let curPage = 1, pageUsed = 0, prevOnPage = -1;
     for (let i = 0; i < computed.length; i++) {
       const c = computed[i];
       const pagesLeft  = P - curPage + 1;
       // effFirst/effBody already include clearance — use them directly.
       const hardLimit  = curPage === 1 ? effFirst : effBody;
       const softTarget = curPage === 1 ? softTarget1 : softTargetN;
+      // Net height this entry adds on the CURRENT page = entryPx minus the margin
+      // it collapses with the previous entry (see collapseWithPrev). A fresh page
+      // (prevOnPage = −1) collapses nothing.
+      const collapse = collapseWithPrev(prevOnPage, i);
+      const netPx = c.entryPx - collapse;
       // Orphan guard: only keep H1 with its immediate sub-entry (H2+).
       // H1-after-H1 means a new chapter starts — no orphan concern there.
       // Use the actual pre-computed entryPx of the next entry (not a single-line
@@ -710,19 +813,34 @@ export const generateTOCPages = (
       const rawFollowPx = c.entry.level === 1 && nextIsSubEntry ? computed[i + 1].entryPx : 0;
       const pairFitsOnFreshPage = (c.entryPx + rawFollowPx) <= hardLimit;
       const followPx  = pairFitsOnFreshPage ? rawFollowPx : 0;
-      const hardBreak = pageUsed + c.entryPx + followPx > hardLimit && pageUsed > 0;
-      const softBreak = pagesLeft > 1 && pageUsed >= softTarget && pageUsed > 0;
+      const hardBreak = pageUsed + netPx + followPx > hardLimit && pageUsed > 0;
+      // Look-ahead soft break: break BEFORE placing an entry that would push the
+      // page past its fair-share target, so the page fills UP TO the target and
+      // the remainder carries to the next page. Breaking AFTER crossing (old
+      // `pageUsed >= softTarget`) overshot by one entry every time — page 1 ended
+      // at 91% while page 2 sat at 59%. Only break if the page already holds more
+      // than half its fair share, so a single oversized entry can't strand an
+      // almost-empty page.
+      const softBreak = pagesLeft > 1 && pageUsed > 0
+        && pageUsed + netPx > softTarget
+        && pageUsed >= softTarget * 0.5;
       const orphanReleased = rawFollowPx > 0 && !pairFitsOnFreshPage;
-      if (hardBreak || softBreak) { pageBreakBefore[i] = true; curPage++; pageUsed = 0; }
+      if (hardBreak || softBreak) { pageBreakBefore[i] = true; curPage++; pageUsed = 0; prevOnPage = -1; }
       p3[i] = { followPx, orphanReleased, breakReason: hardBreak ? 'hard' : softBreak ? 'soft' : 'none' };
-      pageUsed += c.entryPx;
+      // Re-evaluate collapse after a possible break (fresh page → no collapse).
+      pageUsed += c.entryPx - collapseWithPrev(prevOnPage, i);
+      prevOnPage = i;
     }
   }
 
   // ── Phase 3.5: Distribute free vertical space on underfilled pages ────────
-  // When a page is < 88% full, spread extra space as additional top margin on
-  // H1 entries so the TOC "breathes". Only affects CSS — entryPx/usedHeight
-  // stay unchanged so Phase 3 page assignments remain valid (no overflow risk).
+  // An underfilled TOC page stacks its entries from the top and leaves the free
+  // space as one dead block at the bottom ("todo arrimado arriba"). Spread that
+  // free space through the page instead so the index breathes evenly. Adds it as
+  // extra margin-top on the entries (a small lead-in above the first entry + the
+  // rest split between the gaps). Only affects CSS — entryPx/usedHeight stay
+  // unchanged so Phase 3 page assignments remain valid (no overflow/clip risk:
+  // the total added never exceeds the page's own free height).
   const extraMarginTop: number[] = new Array(computed.length).fill(0);
   {
     // Replay Phase 3 page assignments using pageBreakBefore[]
@@ -735,14 +853,42 @@ export const generateTOCPages = (
     for (let p = 0; p < pageGroups.length; p++) {
       const group = pageGroups[p];
       const usable = p === 0 ? effFirst : effBody;
-      const usedH = group.reduce((s, i) => s + computed[i].entryPx, 0);
+      // Real used height = Σ entryPx minus the margins that collapse between
+      // adjacent entries (same model Phase 3 breaks on). Using the raw sum here
+      // would understate freeH and leave the bottom gap the user reported.
+      const usedH = group.reduce((s, i, k) =>
+        s + computed[i].entryPx - (k > 0 ? collapseWithPrev(group[k - 1], i) : 0), 0);
       const freeH = usable - usedH;
-      if (freeH < 8 || usedH / usable >= 0.88) continue;
-      const h1Idxs = group.filter(i => computed[i].entry.level === 1);
-      if (h1Idxs.length === 0) continue;
-      // Cap at 20px per entry to avoid overly large gaps
-      const addPerH1 = Math.min(20, Math.floor(freeH / h1Idxs.length));
-      for (const idx of h1Idxs) extraMarginTop[idx] = addPerH1;
+      // Fill ratio ≥ 92% is already visually even — leave it alone.
+      if (freeH < 8 || group.length === 0 || usedH / usable >= 0.92) continue;
+
+      // Distribute ALL of freeH so the entries span the full usable height with
+      // even air between them (a short TOC page must not stack at the top with a
+      // dead block below — the reported "gran hueco"). Model the page as N+1
+      // vertical gaps: one above the first entry and one before each following
+      // entry. The lead-in gets a slightly smaller share (×0.6) so the block sits
+      // a touch above center (editorial convention), the inter-entry gaps split
+      // the rest evenly. Every px of freeH is consumed → no bottom gap remains.
+      // This is CSS-only (extra margin-top); entryPx/usedHeight are untouched so
+      // Phase 3 page assignments and the overflow guard stay valid.
+      if (group.length === 1) {
+        // Single entry: center it vertically (half the free space above).
+        extraMarginTop[group[0]] += Math.round(freeH * 0.5);
+      } else {
+        // N gaps: lead-in weighted 0.6, the rest split evenly. Weighted-unit math:
+        // 0.6·u + (N-1)·u = freeH  ⇒  u = freeH / (N - 0.4).
+        const n = group.length;
+        const unit = freeH / (n - 0.4);
+        const leadIn = Math.round(unit * 0.6);
+        let dealt = leadIn;
+        extraMarginTop[group[0]] += leadIn;
+        for (let k = 1; k < n; k++) {
+          // Last gap absorbs the rounding remainder so the total equals freeH.
+          const add = k === n - 1 ? (freeH - dealt) : Math.round(unit);
+          extraMarginTop[group[k]] += add;
+          dealt += add;
+        }
+      }
     }
   }
 
@@ -819,11 +965,18 @@ export const generateTOCPages = (
     // Use Phase 3's actual decisions — not a re-computation that could diverge.
     const { followPx, orphanReleased, breakReason } = p3[i];
 
+    // Net height this entry adds = entryPx minus the margin it collapses with
+    // the previous entry on this page (same model as Phase 2/3). The lead-in
+    // extra margin (Phase 3.5) does NOT collapse — it was chosen to fit inside
+    // freeH — so the guard measures the raw entryPx net of collapse only.
+    const collapseP4 = collapseWithPrev(prevIdxOnPage, i);
+    const netP4 = entryPx - collapseP4;
+
     // Runtime overflow guard: fires if Phase 3 underestimated entryPx and placing
     // this entry would exceed the actual hard limit. usedHeight > 0 prevents
     // infinite loop when a single entry is taller than the entire page.
     const actualHardLimit = currentPage === 1 ? effFirst : effBody;
-    const runtimeOverflow = !pageBreak && usedHeight > 0 && usedHeight + entryPx > actualHardLimit;
+    const runtimeOverflow = !pageBreak && usedHeight > 0 && usedHeight + netP4 > actualHardLimit;
 
     if (pageBreak || runtimeOverflow) {
       currentHtml += buildDebugOverlay(currentPage === 1, currentPage === 1 ? softTarget1 : softTargetN) + '</div>';
@@ -838,7 +991,12 @@ export const generateTOCPages = (
       currentPage++;
       currentHtml = outerDivOpen(false);
       usedHeight = 0;
+      prevIdxOnPage = -1; // fresh page: next entry collapses against nothing
     }
+
+    // Collapse is recomputed against the (possibly reset) previous entry so the
+    // first entry of a new page adds its full height.
+    const netApplied = entryPx - collapseWithPrev(prevIdxOnPage, i);
 
     // Log AFTER potential page break so page/usedBefore/usedAfter reflect
     // where the entry actually lands (new page if break fired).
@@ -848,13 +1006,14 @@ export const generateTOCPages = (
       title: displayTitle.substring(0, 35),
       rawLines, entryPx,
       usedBefore: usedHeight,
-      usedAfter: usedHeight + entryPx,
+      usedAfter: usedHeight + netApplied,
       pageUsable,
       pageBreak, followPx, orphanReleased, breakReason
     });
 
     currentHtml += entryHtml;
-    usedHeight += entryPx;
+    usedHeight += netApplied;
+    prevIdxOnPage = i;
   }
 
   // ── Print DEV log ─────────────────────────────────────────────────────────
@@ -936,7 +1095,9 @@ export const generateFrontMatter = (
   lineHeightPx: number,
   contentWidth?: number,
   baseFontSizePx?: number,
-  fontFamily?: string
+  fontFamily?: string,
+  chapterTitleStyle?: ChapterTitleStyle | null,
+  headerSpaceReclaimPx?: number
 ): { pages: FrontMatterPage[], totalPages: number, h3AutoFontSize: string | null, tocLog: TocLogEntry[], tocSummaryText: string } => {
   const mergedConfig = { ...DEFAULT_FRONT_MATTER_CONFIG, ...(config || {}) };
   const pages: FrontMatterPage[] = [];
@@ -996,7 +1157,7 @@ export const generateFrontMatter = (
       });
       currentPageNum++;
     }
-    const { pages: tocPages, tocLog: tocBuildLog, tocSummaryText: tocSummary } = generateTOCPages(tocEntries, tocConfig, currentPageNum, contentHeight, lineHeightPx, contentWidth, h3AutoFontSize, baseFontSizePx, fontFamily);
+    const { pages: tocPages, tocLog: tocBuildLog, tocSummaryText: tocSummary } = generateTOCPages(tocEntries, tocConfig, currentPageNum, contentHeight, lineHeightPx, contentWidth, h3AutoFontSize, baseFontSizePx, fontFamily, chapterTitleStyle, headerSpaceReclaimPx);
     pages.push(...tocPages);
     tocLog = tocBuildLog;
     tocSummaryText = tocSummary;

@@ -173,7 +173,14 @@ export function getPageLayout({
     ? engineContentHeight
       + Math.max(0, headerSpaceEstimate - chapterStartBottomClearance)
       + chapterStartExtraLines * lineHeightPxForChStart
-    : engineContentHeight;
+    // Front matter (TOC, title) shows no running header, so the header space the
+    // engine reserved globally in contentHeight is unused — reclaim it so the
+    // content box reaches down to the real floor (≈1 line above the folio),
+    // matching where the vector PDF distributes the TOC ("el PDF proporciona
+    // mejor con el folio"). Without this the preview clipped ~1 line too high.
+    : isFrontMatterPage
+      ? engineContentHeight + headerSpaceEstimate
+      : engineContentHeight;
 
   // Typography
   const fontSize     = (safeConfig.fontSize || bookConfig.fontSize) * (PX_PER_INCH / 72) * previewScale;

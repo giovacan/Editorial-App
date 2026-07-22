@@ -2,7 +2,7 @@
  * lineRenderer.test.js — deterministic line-by-line rendering invariants.
  */
 
-import { renderPageAsEngineLines } from './lineRenderer';
+import { renderPageAsEngineLines, layoutPageToLines } from './lineRenderer';
 import { countLines } from './lineBreaking';
 import { buildFontString } from './textMeasurement';
 import { htmlToText } from './layoutIr';
@@ -120,5 +120,85 @@ describe('renderPageAsEngineLines', () => {
     expect(out).toContain('<h2>Título</h2>');
     expect(out).toContain('<ul><li>a</li></ul>');
     expect(out).toContain('data-engine-lines');
+  });
+});
+
+// ─── layoutPageToLines: same truth as the DOM renderer, but as data ──────────
+
+// Reconstruct the original text from a list of line texts, honoring hyphen
+// pulls (line ends in '-' → join without space) and em-dash breaks.
+const joinLineTexts = (lineTexts) => {
+  let joined = '';
+  for (const lt of lineTexts) {
+    if (!joined) { joined = lt; continue; }
+    if (/-$/.test(joined)) joined = joined.slice(0, -1) + lt;
+    else if (/[—–]$/.test(joined)) joined += lt;
+    else joined += ' ' + lt;
+  }
+  return joined;
+};
+
+describe('layoutPageToLines', () => {
+  const page = `<p style="${PSTYLE}">${LONG_TEXT}</p>`;
+
+  it('produce el MISMO número de líneas que el renderer HTML', () => {
+    const spans = (renderPageAsEngineLines(page, CTX).match(/<span class="el-line"/g) || []).length;
+    const desc = layoutPageToLines(page, CTX);
+    expect(desc).toHaveLength(1);
+    expect(desc[0].type).toBe('lines');
+    expect(desc[0].lines).toHaveLength(spans);
+  });
+
+  it('el texto de cada línea coincide con el span homólogo del renderer', () => {
+    const spanTexts = (renderPageAsEngineLines(page, CTX).match(/<span class="el-line"[^>]*>[\s\S]*?<\/span>/g) || [])
+      .map(s => collapseWhitespace(htmlToText(s)).trim());
+    const desc = layoutPageToLines(page, CTX);
+    const lineTexts = desc[0].lines.map(l => (l.text + (l.hyphen ? '-' : '')).trim());
+    expect(lineTexts).toEqual(spanTexts);
+  });
+
+  it('reconstruye el texto original sin perder ni duplicar palabras', () => {
+    const desc = layoutPageToLines(page, CTX);
+    const lineTexts = desc[0].lines.map(l => (l.text + (l.hyphen ? '-' : '')).trim());
+    expect(joinLineTexts(lineTexts)).toBe(collapseWhitespace(htmlToText(page)).trim());
+  });
+
+  it('primera línea con sangría, interiores justify, última con la del bloque', () => {
+    const desc = layoutPageToLines(page, CTX);
+    const lines = desc[0].lines;
+    expect(lines[0].indent).toBeCloseTo(1.5 * CTX.baseFontSizePx, 1);
+    expect(lines[1].indent).toBe(0);
+    for (let i = 0; i < lines.length - 1; i++) expect(lines[i].align).toBe('justify');
+    expect(lines[lines.length - 1].align).toBe('left');
+  });
+
+  it('párrafos con runs devuelven segmentos por estilo que reconstruyen el texto', () => {
+    const withRuns = `<p style="${PSTYLE}">${LONG_TEXT.slice(0, 120)} <strong>una frase en negritas dentro del texto</strong> ${LONG_TEXT.slice(120)}</p>`;
+    const desc = layoutPageToLines(withRuns, CTX);
+    expect(desc[0].type).toBe('lines');
+    expect(desc[0].styled).toBe(true);
+    // cada línea = concatenación de sus runs
+    for (const line of desc[0].lines) {
+      expect(line.runs.map(r => r.text).join('')).toBe(line.text);
+    }
+    // algún run debe ir en negrita (style bit 1)
+    const anyBold = desc[0].lines.some(l => l.runs.some(r => (r.style & 1) === 1));
+    expect(anyBold).toBe(true);
+    // texto completo preservado
+    const lineTexts = desc[0].lines.map(l => (l.text + (l.hyphen ? '-' : '')).trim());
+    expect(joinLineTexts(lineTexts)).toBe(collapseWhitespace(htmlToText(withRuns)).trim());
+  });
+
+  it('bloques fuera de alcance vuelven como passthrough', () => {
+    const mixed = `<h2 style="text-align:center;">Título</h2><p style="${PSTYLE}">${LONG_TEXT}</p><ul><li>a</li></ul>`;
+    const desc = layoutPageToLines(mixed, CTX);
+    expect(desc).toHaveLength(3);
+    expect(desc[0]).toMatchObject({ type: 'passthrough', tag: 'H2' });
+    expect(desc[1].type).toBe('lines');
+    expect(desc[2]).toMatchObject({ type: 'passthrough', tag: 'UL' });
+  });
+
+  it('es determinista', () => {
+    expect(layoutPageToLines(page, CTX)).toEqual(layoutPageToLines(page, CTX));
   });
 });

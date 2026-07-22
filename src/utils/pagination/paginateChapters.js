@@ -1617,7 +1617,6 @@ const applyFillPass = (pages, layoutCtx, canvasCtx, measureDiv, safeConfig, log)
         currentHtml += listHead;
         Object.assign(pages[i], setPageHtml(pages[i], currentHtml));
         log.record('fill', 'split', i + 1, { tag, text: firstEl.textContent.substring(0, 40), reason: 'list-split' });
-        madeProgress = true;
         break;
       }
 

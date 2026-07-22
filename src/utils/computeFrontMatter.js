@@ -29,6 +29,11 @@ export function computeFrontMatter({
   useEditorStore.getState().setTOCData(tocResolved);
 
   const { tocAuto, frontMatterConfig } = useEditorStore.getState();
+  const chapterTitleStyle = useEditorStore.getState().config?.chapterTitle;
+  // TOC has no running header → reclaim the reserved header space so entries
+  // distribute down to the folio (matches the vector PDF). Same value the engine
+  // reserved in contentHeight.
+  const headerSpaceReclaim = useEditorStore.getState().layoutDims?.headerSpaceEstimate;
   let { tocConfig } = useEditorStore.getState();
   
   if (tocAuto && !tocConfig) {
@@ -50,7 +55,9 @@ export function computeFrontMatter({
     lineHeightPx,
     contentWidth,
     baseFontSizePx,
-    fontFamily
+    fontFamily,
+    chapterTitleStyle,
+    headerSpaceReclaim
   );
 
   const fmOffset = fmDry.length;
@@ -65,7 +72,9 @@ export function computeFrontMatter({
     lineHeightPx,
     contentWidth,
     baseFontSizePx,
-    fontFamily
+    fontFamily,
+    chapterTitleStyle,
+    headerSpaceReclaim
   );
 
   const fmNumbering = useEditorStore.getState().config?.frontMatterNumbering ?? 'roman';

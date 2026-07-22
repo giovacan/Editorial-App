@@ -179,7 +179,9 @@ export const KDP_STANDARDS: KDPStandards = {
       id: 'novela',
       name: 'Novela / Ficción',
       recommendedFormat: '6x9',
-      lineHeight: 1.5,
+      // 1.35: interlineado de trade paperback (Bringhurst 1.2–1.45). El 1.5
+      // anterior costaba ~4-5 renglones/página → ~14% más páginas impresas.
+      lineHeight: 1.35,
       fontSize: 12,
       fontFamily: 'Georgia, serif',
       // Márgenes comerciales. El GUTTER se SUMA al margen interior (spec del
@@ -201,7 +203,7 @@ export const KDP_STANDARDS: KDPStandards = {
       id: 'ensayo',
       name: 'Ensayo / No ficción',
       recommendedFormat: '6x9',
-      lineHeight: 1.5,
+      lineHeight: 1.35,
       fontSize: 12,
       fontFamily: 'Times New Roman, serif',
       marginTop: 0.6,
@@ -298,8 +300,10 @@ export const KDP_STANDARDS: KDPStandards = {
       heading3: { min: 14, max: 18, recommended: 16 }
     },
     lineHeight: {
-      min: 1.4,
-      recommended: 1.5,
+      // Rango editorial real (Bringhurst 1.2–1.45 para texto corrido); el
+      // mínimo anterior (1.4) impedía el 1.35 profesional.
+      min: 1.25,
+      recommended: 1.35,
       max: 2.0
     }
   },

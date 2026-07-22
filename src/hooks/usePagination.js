@@ -343,15 +343,28 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
       //   already provided by marginBottom = marginBottomPx
       //   reserve = required - provided (clamped to 0)
       const folioFromEdgePx = Math.round(FOLIO_FROM_BOTTOM_MM * PX_PER_MM * previewScale);
-      const marginBottomPx  = Math.min(dimsOdd.marginBottom, dimsEven.marginBottom);
-      const folioReserve    = Math.max(folioFromEdgePx + lineHeightPx - marginBottomPx, 0);
-      // Snap DOWN to the nearest full line grid boundary so the engine never
-      // allocates more px than fits in the page. ceil() caused DOM overflow
-      // (engine budget > available px → text spilled over the folio).
-      // The render subtracts 1 lineHeight from effectiveContentHeight (see store save below)
-      // to guarantee a visible gap between the last text line and the folio.
-      const rawContentHeight = Math.min(dimsOdd.contentHeight, dimsEven.contentHeight) - headerSpaceEstimate - folioReserve;
-      const contentHeight = Math.floor(rawContentHeight / lineHeightPx) * lineHeightPx;
+      // Anchor the content floor to the FOLIO, not to the bottom margin.
+      // The old formula subtracted marginBottom AND a folioReserve AND the grid
+      // snap — with dynamic margins (thick books) those stacked into a 3-5 line
+      // dead zone between the last text line and the page number even on 100%
+      // full pages ("mucho hueco blanco entre la última línea y la numeración").
+      // The contract was always "content box bottom ≥ 1 line above the folio";
+      // computing straight from the folio position enforces exactly that:
+      //   floor(content) = pageBottom − folioFromEdge − 1·lineHeight − snap
+      // The box may extend into the (dynamic) bottom margin — the folio zone is
+      // the real floor. Never smaller than the old formula (pure recovery).
+      const marginTopPx = Math.min(dimsOdd.marginTop, dimsEven.marginTop);
+      const rawContentHeight = (pageHeightPx - folioFromEdgePx - lineHeightPx)
+        - marginTopPx - headerSpaceEstimate;
+      // Snap to the line grid. rawContentHeight already reserves a FULL line of
+      // clearance above the folio (the `- lineHeightPx` above), so flooring the
+      // remainder on top of that stranded up to ~1 extra line of usable space
+      // between the last text line and the folio ("hay espacio, la línea llegó
+      // ahí sin colapsar" — the TOC proved it). ROUND instead of floor reclaims
+      // that remainder: when the leftover is ≥½ line the box gains one more line
+      // (safe — it eats at most ½ of the full-line clearance, never the folio;
+      // ceil() DID overflow in the past, round() keeps ≥½ line of guard).
+      const contentHeight = Math.round(rawContentHeight / lineHeightPx) * lineHeightPx;
 
       const minWidowLines = safeConfig.pagination?.minWidowLines ?? 2;
       const splitLongParagraphs = safeConfig.pagination?.splitLongParagraphs !== false;
@@ -636,7 +649,9 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
       layoutDims.lineHeightPx,
       layoutDims.contentWidth,
       layoutDims.baseFontSizePx,
-      fmFontFamily
+      fmFontFamily,
+      safeConfig.chapterTitle,
+      layoutDims.headerSpaceEstimate
     );
     // Pass 2: offset TOC entry page numbers by FM count
     const fmOffset = fmDry.length;
@@ -651,7 +666,9 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
       layoutDims.lineHeightPx,
       layoutDims.contentWidth,
       layoutDims.baseFontSizePx,
-      fmFontFamily
+      fmFontFamily,
+      safeConfig.chapterTitle,
+      layoutDims.headerSpaceEstimate
     );
     // Assign displayPageNumber to FM pages (roman numerals, cover has none)
     const fmNumbering2 = useEditorStore.getState().config?.frontMatterNumbering ?? 'roman';

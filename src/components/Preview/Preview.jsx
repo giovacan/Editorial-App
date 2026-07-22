@@ -209,7 +209,13 @@ function Preview() {
     ? allPages[currentPage]
     : { html: '', pageNumber: 1, isBlank: false, chapterTitle: '', currentSubheader: '' };
 
-  const isFrontMatterPage = !!(currentPageData.isTOCPage || currentPageData.isTitlePage || currentPageData.isFrontMatter);
+  // Also key off type (toc/title/cover): renumbering/offsetting can drop the
+  // boolean flags, and a TOC page missing isTOCPage would wrongly show the
+  // running header (the "Capítulo" fallback on the Índice page).
+  const isFrontMatterPage = !!(
+    currentPageData.isTOCPage || currentPageData.isTitlePage || currentPageData.isFrontMatter ||
+    currentPageData.type === 'toc' || currentPageData.type === 'title' || currentPageData.type === 'cover'
+  );
 
   const debugHtml = (!isFrontMatterPage && debugConfig.enabled)
     ? addDebugTags(currentPageData.html, debugConfig, safeConfig.paragraph)

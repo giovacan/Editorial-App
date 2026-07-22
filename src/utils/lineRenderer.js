@@ -393,6 +393,119 @@ const renderBlockAsLines = (block, layoutCtx) => {
 };
 
 /**
+ * Split a collapsed string + parallel charStyles array into styled runs
+ * (maximal same-style segments). Returns [{ text, style }] where style ∈ 0..3.
+ */
+const sliceRuns = (text, charStyles, startChar) => {
+  if (!charStyles) return [{ text, style: 0 }];
+  const runs = [];
+  let i = 0;
+  while (i < text.length) {
+    const s = charStyles[startChar + i] || 0;
+    let j = i + 1;
+    while (j < text.length && (charStyles[startChar + j] || 0) === s) j++;
+    runs.push({ text: text.slice(i, j), style: s });
+    i = j;
+  }
+  return runs;
+};
+
+/**
+ * Lay a full page's HTML out into DRAWABLE line descriptors — the same model
+ * the DOM line renderer uses, but as data (text + runs + geometry) instead of
+ * `<span>` markup. This is the single source of truth a vector PDF renderer
+ * (or any non-DOM consumer) draws from, so it stays pixel-identical with the
+ * preview by construction.
+ *
+ * Every top-level block becomes one descriptor:
+ *   - { type:'lines', lines:[{ runs:[{text,style}], indent, align, hyphen,
+ *       width, effWidth }], fontPx, effWidth }   ← in-scope <p>/<blockquote>
+ *   - { type:'passthrough', outerHtml, tag }      ← out of scope (h1-6, table,
+ *       hr, lists, images…) — the caller renders these with its own logic.
+ *
+ * `align` is 'justify' for interior lines, and the block's own final alignment
+ * (left for paragraph ends, justify for law-approved cut lines) for the last.
+ * `hyphen` true means the line ends mid-word and must be drawn with a '-'.
+ *
+ * @param {string} pageHtml
+ * @param {object} layoutCtx - { contentWidth, baseFontSizePx, fontFamily }
+ * @returns {Array<object>} block descriptors in document order
+ */
+export const layoutPageToLines = (pageHtml, layoutCtx) => {
+  if (!pageHtml || !layoutCtx?.contentWidth || !layoutCtx?.baseFontSizePx) {
+    return pageHtml ? [{ type: 'passthrough', outerHtml: pageHtml, tag: '' }] : [];
+  }
+  const blocks = parseTopLevelBlocks(pageHtml);
+  return blocks.map((block) => {
+    const g = deriveBlockGeometry(block, layoutCtx);
+    if (!g) {
+      return { type: 'passthrough', outerHtml: block.outerHtml, tag: (block.tag || '').toUpperCase() };
+    }
+    const { collapsed, fontStr, styled, effWidth, indentPx, wordSpacingPx, fontPx, styleStr } = g;
+    const lines = computeLineBreaks(collapsed, effWidth, fontStr, indentPx, wordSpacingPx, styled);
+    if (!lines || lines.length === 0) {
+      return { type: 'passthrough', outerHtml: block.outerHtml, tag: (block.tag || '').toUpperCase() };
+    }
+    const cutHyphen = /data-cut-hyphen/.test(g.open);
+    const finalAlign = (styleStr.match(/text-align-last:\s*([^;"]+)/i) || ['', 'left'])[1].trim();
+    const charStyles = styled ? styled.charStyles : null;
+
+    // Block vertical spacing (px) — the engine's height for this block is
+    // marginTop + paddingTop+paddingBottom + lineCount×lineHeightPx + marginBottom
+    // (textLayoutEngine.measureBlock). A consumer that draws the lines must add
+    // these or it under-advances and fabricates a gap at the page bottom (the
+    // "huecote" reported in the vector PDF). em/rem resolve against this block's
+    // font; px absolute.
+    const sizePx = (prop) => {
+      const mm = styleStr.match(new RegExp(`${prop}:\\s*(-?[\\d.]+)(em|rem|px)?`, 'i'));
+      if (!mm) return 0;
+      const n = parseFloat(mm[1]); const u = mm[2] || 'px';
+      return (u === 'em' || u === 'rem') ? n * fontPx : n;
+    };
+    let mTop = sizePx('margin-top'), mBot = sizePx('margin-bottom');
+    const shortM = styleStr.match(/(?:^|;)\s*margin:\s*([^;]+)/i);
+    if (shortM && !/margin-top/i.test(styleStr)) {
+      const p = shortM[1].trim().split(/\s+/);
+      const toPx = (v) => { const x = /(-?[\d.]+)(em|rem|px)?/.exec(v); if (!x) return 0; const n = parseFloat(x[1]); return (x[2] === 'em' || x[2] === 'rem') ? n * fontPx : n; };
+      mTop = toPx(p[0]); mBot = toPx(p[2] ?? p[0]);
+    }
+    const padV = sizePx('padding-top') + sizePx('padding-bottom')
+      + (/(?:^|;)\s*padding:\s*/i.test(styleStr) && !/padding-top|padding-bottom/i.test(styleStr)
+          ? (() => { const pm = styleStr.match(/(?:^|;)\s*padding:\s*([^;]+)/i); if (!pm) return 0; const p = pm[1].trim().split(/\s+/); const toPx = (v) => { const x = /(-?[\d.]+)(em|rem|px)?/.exec(v); if (!x) return 0; const n = parseFloat(x[1]); return (x[2] === 'em' || x[2] === 'rem') ? n * fontPx : n; }; return toPx(p[0]) + toPx(p[2] ?? p[0]); })()
+          : 0);
+
+    // Walk the collapsed text, slicing at each line's endChar (in collapsed
+    // char offsets). Leading space between lines is dropped, matching the DOM
+    // renderer's trimLeadingSpace.
+    const out = [];
+    let start = 0;
+    for (let li = 0; li < lines.length; li++) {
+      const line = lines[li];
+      const isLast = li === lines.length - 1;
+      const end = line.endChar;
+      let text = collapsed.slice(start, end);
+      // hyphenPull already extended endChar into the next word; the '-' is
+      // drawn (not part of the sliced text).
+      const runs = sliceRuns(text, charStyles, start);
+      out.push({
+        runs,
+        text,
+        indent: li === 0 ? indentPx : 0,
+        align: isLast ? finalAlign : 'justify',
+        hyphen: !!line.pulledMidWord || (isLast && cutHyphen),
+        width: line.width,
+        effWidth,
+      });
+      // Advance past this line's chars + the single space that separated it
+      // from the next word (collapsed text uses single spaces).
+      start = end + (collapsed[end] === ' ' ? 1 : 0);
+    }
+    return { type: 'lines', lines: out, fontPx, effWidth, styled: !!styled,
+      marginTopPx: mTop, marginBottomPx: mBot, paddingVPx: padV };
+  });
+};
+
+/**
  * Line count under the EXACT model the line renderer draws with (greedy,
  * dash-aware, full effective width, per-run fonts). Used by the height engine
  * for engine-lines blocks so planned heights equal drawn heights.
