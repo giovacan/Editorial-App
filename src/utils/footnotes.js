@@ -137,11 +137,17 @@ export const footnoteBlockHeight = (refIds, notesMap, fnCtx) => {
 export const makeFootnoteCtx = (bodyCtx, footnotesConfig = {}) => {
   const fontScale = footnotesConfig.fontScale ?? 0.72;
   const lineHeight = footnotesConfig.lineHeight ?? 1.4;
+  const fnFontPx = bodyCtx.baseFontSizePx * fontScale;
+  const bodyLinePx = bodyCtx.lineHeightPx || (bodyCtx.baseFontSizePx * bodyCtx.baseLineHeight);
   return {
     ...bodyCtx,
-    baseFontSizePx: bodyCtx.baseFontSizePx * fontScale,
+    baseFontSizePx: fnFontPx,
     baseLineHeight: lineHeight,
-    // ~ one body line of air above the rule (in px of the body grid).
-    marginAbovePx: Math.round((bodyCtx.lineHeightPx || (bodyCtx.baseFontSizePx * bodyCtx.baseLineHeight)) * 0.6),
+    // CRITICAL: recompute lineHeightPx for the note font. Inheriting the body's
+    // lineHeightPx (bodyCtx) made splitParagraphByLines compute the wrong line
+    // count → the footnote block never split and its measured height was off.
+    lineHeightPx: Math.ceil(fnFontPx * lineHeight),
+    // ~ 0.6 of a BODY line of air above the rule.
+    marginAbovePx: Math.round(bodyLinePx * 0.6),
   };
 };
