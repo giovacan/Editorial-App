@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router-dom';
-import { createBook } from '../../services/books';
+import { createBook, saveChapters } from '../../services/books';
 import { retagBookImages } from '../../utils/imageStore';
 import { useEffect, useRef, useCallback, useState } from 'react';
 import useEditorStore from '../../store/useEditorStore';
@@ -54,18 +54,25 @@ function Layout() {
     (async () => {
       try {
         const localId = bookData?.id || null;
+        const localChapters = bookData?.chapters || [];
         const newBookId = await createBook(user.uid, {
           title: bookData?.title || 'Libro sin título',
           author: bookData?.author || '',
           bookType: bookData?.bookType || 'novela',
           pageFormat: bookData?.pageFormat || '6x9',
         });
+        // CRITICAL: persist the chapters to the new book BEFORE switching the
+        // URL. Otherwise useBookSync mounts on the new (empty) book, loads 0
+        // chapters and wipes the local content — the book shows up empty in
+        // "mis libros" and the preview goes blank.
+        if (localChapters.length) await saveChapters(newBookId, localChapters);
         if (localId) await retagBookImages(localId, newBookId);
         setSearchParams({ bookId: newBookId }, { replace: true });
         toast.success('Libro guardado en tu cuenta.');
       } catch (e) {
         promotingRef.current = false;
         console.warn('No se pudo promover el libro local a la nube:', e);
+        toast.error('No se pudo guardar el libro en tu cuenta. Sigue disponible localmente.');
       }
     })();
   }, [user, bookId, chapters]); // eslint-disable-line react-hooks/exhaustive-deps
