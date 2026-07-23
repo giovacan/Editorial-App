@@ -17,6 +17,7 @@ import ValidationErrorDialog from '../ValidationErrorDialog/ValidationErrorDialo
 import PaginationProgressBar from '../PaginationProgressBar/PaginationProgressBar';
 import { useLayoutVerification, formatLayoutAuditText } from '../../hooks/useLayoutVerification';
 import { renderPageAsEngineLines } from '../../utils/lineRenderer';
+import { buildFootnoteBlockHtml } from '../../utils/footnotes';
 import './Preview.css';
 
 const PX_PER_MM = 3.7795;
@@ -385,6 +386,24 @@ function Preview() {
               marginLeft={marginLeft}
               contentWidth={pageWidthPx - marginLeft - marginRight}
               pageKey={currentPage}
+            />
+          )}
+          {/* Footnotes for this page — just above the folio (engine reserved
+              the space by fitting less body text). */}
+          {currentPageData?.footnotes?.length > 0 && (
+            <div
+              className="preview-footnotes"
+              style={{
+                position: 'absolute',
+                left: marginLeft,
+                right: marginRight,
+                bottom: computeFolioFromEdge(previewScale) + fontSize * (safeConfig?.footnotes?.fontScale ?? 0.72) * 2,
+                fontSize: `${fontSize * (safeConfig?.footnotes?.fontScale ?? 0.72)}px`,
+                lineHeight: (safeConfig?.footnotes?.lineHeight ?? 1.4),
+                color: '#000',
+                textAlign: 'left',
+              }}
+              dangerouslySetInnerHTML={{ __html: buildFootnoteBlockHtml(currentPageData.footnotes, {}) }}
             />
           )}
           {pageNumHtml}

@@ -529,6 +529,40 @@ export const exportPdfVector = async (bookData, config, paginatedPages, dims, on
       }
     }
 
+    // Footnotes — draw the note block (rule + notes at reduced size) just above
+    // the folio on the page that holds each marker. The engine already reserved
+    // this vertical space, so it never overlaps the body.
+    if (page.footnotes && page.footnotes.length > 0) {
+      const fnCfg = config?.footnotes || {};
+      const fnFontPx = baseFontSizePx * (fnCfg.fontScale ?? 0.72);
+      const fnFontPt = pxToPt(fnFontPx, mmPerPx);
+      const fnLineMm = fnFontPx * (fnCfg.lineHeight ?? 1.4) * mmPerPx;
+      // Total block height (rule + one line per wrapped note line) in mm.
+      const wrappedPerNote = page.footnotes.map((n) => {
+        doc.setFont(FONT_ID, 'normal'); doc.setFontSize(fnFontPt);
+        return doc.splitTextToSize(`${n.index}. ${(n.html || '').replace(/<[^>]+>/g, '')}`, colWidthMm);
+      });
+      const totalLines = wrappedPerNote.reduce((s, w) => s + w.length, 0);
+      const ruleGapMm = fnLineMm * 0.5;
+      const blockH = ruleGapMm + totalLines * fnLineMm;
+      const folioTopMm = (L.page.height - L.folio.fromEdge) * mmPerPx;
+      // Block bottom sits ~1.2 lines above the folio.
+      let y = folioTopMm - fnLineMm * 1.2 - blockH;
+      // Separator rule (⅓ column, left-aligned).
+      doc.setDrawColor(80, 80, 80);
+      doc.setLineWidth(Math.max(0.1, 0.5 * mmPerPx));
+      doc.line(leftMm, y, leftMm + colWidthMm / 3, y);
+      y += ruleGapMm + fnLineMm * 0.8;
+      doc.setTextColor(0, 0, 0);
+      doc.setFont(FONT_ID, 'normal'); doc.setFontSize(fnFontPt);
+      for (const wrapped of wrappedPerNote) {
+        for (const line of wrapped) {
+          doc.text(line, leftMm, y, { baseline: 'alphabetic' });
+          y += fnLineMm;
+        }
+      }
+    }
+
     // Folio — visibility + alignment + distance from edge all from the engine.
     if (L.folio.show) {
       doc.setFont(FONT_ID, 'normal');

@@ -43,6 +43,8 @@ import {
   measureHtmlHeight,
 } from '../textLayoutEngine';
 
+import { footnoteRefsIn, footnoteBlockHeight } from '../footnotes.js';
+
 import {
   getDomSlack,
   DEFAULT_REPAIR_PRIORITY,
@@ -147,6 +149,25 @@ export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safe
     return measureHtmlHeight(html, canvasCtx);
   };
   const baseBudget = contentHeight - getDomSlack();
+
+  // ── Footnotes (B1): per-page budget reduction ───────────────────────────────
+  // When footnotes are enabled, a page carrying a <sup data-fn> marker must
+  // reserve room for its note block at the foot. `pageFootnoteH(html)` returns
+  // that reserve (0 when disabled or no marks) so the fit checks below compare
+  // against `budget − footnoteH`. Disabled → always 0 → engine identical.
+  const fnMeta = canvasCtx?.footnotes || null;
+  const notesMap = (() => {
+    if (!fnMeta || !chapter?.footnotes) return null;
+    const m = new Map();
+    const list = Array.isArray(chapter.footnotes) ? chapter.footnotes : Object.values(chapter.footnotes);
+    for (const n of list) if (n && n.refId) m.set(n.refId, n);
+    return m.size ? m : null;
+  })();
+  const pageFootnoteH = (html) => {
+    if (!fnMeta || !notesMap || !html || html.indexOf('data-fn=') === -1) return 0;
+    return footnoteBlockHeight(footnoteRefsIn(html), notesMap, fnMeta.ctx);
+  };
+
   const minOrphan = minOrphanLines || 2;
   const targetFill = canvasCtx?.targetFillPct ?? 0.92;
   const minLastLineWords = chapterLayoutPolicy?.minLastLineWords ?? canvasCtx?.minLastLineWords ?? 0;
@@ -292,6 +313,9 @@ export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safe
       budget, headingBeforeSplit: false, isRestEnd: true,
     } : null;
 
+    // Running footnote reserve for `acc`. Only recomputed when an element that
+    // carries a data-fn marker is added (most elements have none → no cost).
+    let fnH = fnMeta ? pageFootnoteH(acc) : 0;
     for (let e = idx; e < content.length; e++) {
       const el = content[e];
       // Incremental height: measuring the growing `acc+el.html` string each
@@ -299,9 +323,13 @@ export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safe
       // (elements were pre-measured in flatten); only the exact fit check at
       // the boundary needs a precise combined measure.
       const elH = el.height != null ? el.height : measure(el.html);
-      if (accH + elH <= budget) {
+      // Footnote reserve AFTER adding this element (grows only if el has marks).
+      const elHasFn = fnMeta && el.html && el.html.indexOf('data-fn=') !== -1;
+      const nextFnH = elHasFn ? pageFootnoteH(acc + el.html) : fnH;
+      if (accH + elH + nextFnH <= budget) {
         acc = acc + el.html;
         accH = accH + elH;
+        fnH = nextFnH;
         blockEnds.push({ endIdx: e, html: acc, height: accH });
         lastAddedEl = el;
         continue;
@@ -309,10 +337,11 @@ export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safe
       // Near the budget — confirm with a precise measure (margin collapsing).
       const withEl = acc + el.html;
       const withElH = measure(withEl);
-      if (withElH <= budget) {
+      if (withElH + nextFnH <= budget) {
         blockEnds.push({ endIdx: e, html: withEl, height: withElH });
         acc = withEl;
         accH = withElH;
+        fnH = nextFnH;
         lastAddedEl = el;
         continue;
       }
@@ -637,6 +666,18 @@ export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safe
 
   const pushPage = (html, opts = {}) => {
     const blocks = parseHtmlElements(html);
+    // Footnotes on this page: the notes whose markers land in its HTML, in
+    // order. Height = the reserve the DP already accounted for. Empty/absent
+    // when footnotes are disabled → field is [] (harmless downstream).
+    let footnotes = [];
+    let footnoteHeightPx = 0;
+    if (fnMeta && notesMap) {
+      const refs = footnoteRefsIn(html);
+      if (refs.length) {
+        footnotes = refs.map((refId) => notesMap.get(refId)).filter(Boolean);
+        footnoteHeightPx = footnoteBlockHeight(refs, notesMap, fnMeta.ctx);
+      }
+    }
     pages.push({
       html: serializeBlocks(blocks),
       blocks,
@@ -650,6 +691,8 @@ export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safe
       targetFillPct: chapterLayoutPolicy?.targetFillPct ?? null,
       minLastLineWords,
       repairPriority: chapterLayoutPolicy?.repairPriority ?? DEFAULT_REPAIR_PRIORITY,
+      footnotes,
+      footnoteHeightPx,
     });
   };
 
