@@ -160,11 +160,20 @@ function Layout() {
   };
 
   const handleNewProject = () => {
+    const startNew = () => {
+      // Detach from any cloud book FIRST: while ?bookId=… is in the URL,
+      // useBookSync keeps re-loading that book (loadContent sets showUpload:false)
+      // and would immediately hide the UploadArea again. Clearing the param
+      // stops the sync so the fresh, empty project (showUpload:true) sticks.
+      if (bookId) setSearchParams({}, { replace: true });
+      promotingRef.current = false; // allow a future local→cloud promotion
+      newProject();
+    };
     const safeChapters = chapters || [];
     if (safeChapters.length > 0) {
-      if (confirm('¿Crear nuevo proyecto? Se perderán los cambios sin guardar.')) newProject();
+      if (confirm('¿Crear nuevo proyecto? Se perderán los cambios sin guardar.')) startNew();
     } else {
-      newProject();
+      startNew();
     }
   };
 
