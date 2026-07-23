@@ -134,7 +134,7 @@ export const putImage = async (blob, meta = {}) => {
   const record = {
     id, blob, mime: meta.mime || blob.type || 'image/png',
     w: meta.w || 0, h: meta.h || 0, bookId: meta.bookId || null,
-    createdAt: Date.now(),
+    synced: false, createdAt: Date.now(),
   };
   const db = await openDB();
   if (db) {
@@ -146,24 +146,92 @@ export const putImage = async (blob, meta = {}) => {
   return id;
 };
 
+/** Get the stored record for an id (null if unknown). */
+const getRecord = async (id) => {
+  const db = await openDB();
+  if (db) return idbGet(db, id);
+  return memStore.get(id) || null;
+};
+
 /** Get the stored Blob for an id (null if unknown). */
 export const getImageBlob = async (id) => {
-  const db = await openDB();
-  if (db) { const rec = await idbGet(db, id); return rec ? rec.blob : null; }
-  const rec = memStore.get(id);
+  const rec = await getRecord(id);
   return rec ? rec.blob : null;
 };
 
-// ─── Resolver (id → objectURL) with cache ────────────────────────────
-
-const urlCache = new Map(); // id → objectURL
+/**
+ * List all stored image records for a book (for the local→cloud sync).
+ * @returns {Promise<Array<{id,blob,mime,w,h,bookId,synced}>>}
+ */
+export const listBookImages = async (bookId) => {
+  const db = await openDB();
+  if (!db) return [...memStore.values()].filter((r) => r.bookId === bookId);
+  return new Promise((resolve) => {
+    try {
+      const out = [];
+      const tx = db.transaction(STORE, 'readonly');
+      const cur = tx.objectStore(STORE).openCursor();
+      cur.onsuccess = () => {
+        const c = cur.result;
+        if (!c) { resolve(out); return; }
+        if (c.value.bookId === bookId) out.push(c.value);
+        c.continue();
+      };
+      cur.onerror = () => resolve(out);
+    } catch { resolve([]); }
+  });
+};
 
 /**
- * Resolve an id to a displayable src. Async because the blob may come from
- * IndexedDB. Caches the objectURL so repeated renders don't recreate it.
+ * Re-tag every image stored under `fromBookId` to `toBookId`. Used when an
+ * anonymous/local import (tagged with the local bookData.id) gets promoted to a
+ * cloud book with a real Firestore id, so the sync uploads them under the right
+ * book. Returns the count re-tagged.
+ */
+export const retagBookImages = async (fromBookId, toBookId) => {
+  if (!fromBookId || !toBookId || fromBookId === toBookId) return 0;
+  const recs = await listBookImages(fromBookId);
+  const db = await openDB();
+  let n = 0;
+  for (const rec of recs) {
+    const updated = { ...rec, bookId: toBookId };
+    if (db) await idbPut(db, updated); else memStore.set(rec.id, updated);
+    n++;
+  }
+  return n;
+};
+
+/** Mark a record as synced to the cloud (best-effort; ignored in memory mode). */
+export const markSynced = async (id) => {
+  const db = await openDB();
+  if (!db) { const r = memStore.get(id); if (r) r.synced = true; return; }
+  const rec = await idbGet(db, id);
+  if (rec) await idbPut(db, { ...rec, synced: true });
+};
+
+// ─── Resolver (id → objectURL | cloud URL) with cache ────────────────
+
+const urlCache = new Map(); // id → objectURL (local)
+const cloudUrls = new Map(); // id → downloadURL (cloud, preferred)
+
+/** Register a cloud downloadURL for an id (from services/images / mirror docs). */
+export const registerCloudUrl = (id, url) => { if (id && url) cloudUrls.set(id, url); };
+
+/** Bulk-register cloud URLs from a { id: {downloadURL} } index. */
+export const registerCloudUrls = (index) => {
+  for (const [id, meta] of Object.entries(index || {})) {
+    if (meta?.downloadURL) cloudUrls.set(id, meta.downloadURL);
+  }
+};
+
+/**
+ * Resolve an id to a displayable src. Prefers a registered CLOUD url (survives
+ * across devices/sessions); falls back to a local objectURL from IndexedDB.
+ * Caches the objectURL so repeated renders don't recreate it.
  * @returns {Promise<string|null>}
  */
 export const resolveImageSrc = async (id) => {
+  if (cloudUrls.has(id)) return cloudUrls.get(id);
   if (urlCache.has(id)) return urlCache.get(id);
   const blob = await getImageBlob(id);
   if (!blob) return null;
@@ -172,8 +240,8 @@ export const resolveImageSrc = async (id) => {
   return url;
 };
 
-/** Synchronous lookup of an already-resolved objectURL (for render-time use). */
-export const cachedImageSrc = (id) => urlCache.get(id) || null;
+/** Synchronous lookup of an already-resolved src (cloud preferred, else local). */
+export const cachedImageSrc = (id) => cloudUrls.get(id) || urlCache.get(id) || null;
 
 /**
  * Ensure objectURLs exist for every data-img-id in the HTML, then return the
@@ -196,5 +264,5 @@ export const revokeAll = () => {
   urlCache.clear();
 };
 
-/** Test seam: clear the in-memory fallback store. */
-export const _resetMemStore = () => { memStore.clear(); };
+/** Test seam: clear the in-memory fallback store + caches. */
+export const _resetMemStore = () => { memStore.clear(); urlCache.clear(); cloudUrls.clear(); };

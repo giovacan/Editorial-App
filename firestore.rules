@@ -29,6 +29,13 @@ service cloud.firestore {
         allow read, write: if request.auth != null
           && request.auth.uid == get(/databases/$(database)/documents/books/$(bookId)).data.uid;
       }
+
+      // images/{imageId}: doc espejo de la imagen (B2 PR-B). Solo el dueño del
+      // libro. (Panel superadmin ampliará el acceso por rol en PR-SUPERADMIN.)
+      match /images/{imageId} {
+        allow read, write: if request.auth != null
+          && request.auth.uid == get(/databases/$(database)/documents/books/$(bookId)).data.uid;
+      }
     }
 
     // Deny all other access

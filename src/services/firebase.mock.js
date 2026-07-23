@@ -196,6 +196,14 @@ export const db = {
   },
 };
 
+// ==================== MOCK STORAGE ====================
+// Sentinel object so services/images.js can detect mock mode and keep images
+// in IndexedDB instead of calling the real modular Storage SDK (which would
+// throw against this stub). `__mock` is the flag used by the upload guard.
+export const storage = {
+  __mock: true,
+};
+
 // ==================== MOCK FUNCTIONS ====================
 
 export const functions = {

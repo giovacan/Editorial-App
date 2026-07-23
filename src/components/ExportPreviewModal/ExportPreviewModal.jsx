@@ -7,6 +7,7 @@ import { calculateContentDimensions, PX_PER_MM, PX_PER_INCH } from '../../utils/
 import { fitPageScaleToViewport } from '../../utils/transformes';
 import { exportEpub, exportHtml } from '../Layout/utils/exporters';
 import { exportPdfVector } from '../Layout/utils/pdfVectorRenderer';
+import { useAuth } from '../../contexts/AuthContext';
 import PageFrame from '../PageFrame/PageFrame';
 import './ExportPreviewModal.css';
 
@@ -23,6 +24,7 @@ function getGutterInInches(value, unit) {
 }
 
 export default function ExportPreviewModal({ initialFormat, onClose }) {
+  const { user } = useAuth();
   const paginatedPages   = useEditorStore((s) => s.paginatedPages);
   const frontMatterPages = useEditorStore((s) => s.frontMatterPages ?? []);
   const storeDims        = useEditorStore((s) => s.layoutDims);
@@ -232,6 +234,12 @@ export default function ExportPreviewModal({ initialFormat, onClose }) {
   // ── Export handlers ────────────────────────────────────────────────────────
   const handleDownload = async () => {
     if (isExporting) return;
+    // PDF download requires a session (user decision): the PDF needs the image
+    // bytes, and export is a gated/billable action.
+    if (format === 'pdf' && !user) {
+      toast.info('Inicia sesión para descargar el PDF.');
+      return;
+    }
     setIsExporting(true);
     setExportProgress({ current: 0, total: allPages.length });
     try {

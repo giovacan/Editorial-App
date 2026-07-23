@@ -8,6 +8,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   hashBytes, rewriteImgTag, hydrateImageSrcs,
   putImage, getImageBlob, _resetMemStore,
+  listBookImages, retagBookImages, registerCloudUrl, registerCloudUrls,
+  resolveImageSrc, cachedImageSrc,
 } from './imageStore.js';
 
 const blobOf = (str, type = 'image/png') => new Blob([str], { type });
@@ -88,5 +90,39 @@ describe('putImage / getImageBlob (dedup)', () => {
 
   it('id desconocido → null', async () => {
     expect(await getImageBlob('img_nope')).toBeNull();
+  });
+});
+
+describe('listBookImages / retagBookImages (PR-B)', () => {
+  it('lista solo las imágenes del libro dado', async () => {
+    await putImage(blobOf('A'), { bookId: 'b1' });
+    await putImage(blobOf('B'), { bookId: 'b1' });
+    await putImage(blobOf('C'), { bookId: 'b2' });
+    const b1 = await listBookImages('b1');
+    expect(b1.length).toBe(2);
+    expect(b1.every((r) => r.bookId === 'b1')).toBe(true);
+  });
+
+  it('re-etiqueta las imágenes de un bookId a otro (promoción local→nube)', async () => {
+    await putImage(blobOf('X'), { bookId: 'local-1' });
+    const n = await retagBookImages('local-1', 'cloud-9');
+    expect(n).toBe(1);
+    expect((await listBookImages('local-1')).length).toBe(0);
+    expect((await listBookImages('cloud-9')).length).toBe(1);
+  });
+});
+
+describe('resolver: cloud URL preferida sobre local (PR-B)', () => {
+  it('resolveImageSrc devuelve la downloadURL registrada', async () => {
+    const id = await putImage(blobOf('PIXELS'), { bookId: 'b1' });
+    registerCloudUrl(id, 'https://cdn.example/img.png');
+    expect(await resolveImageSrc(id)).toBe('https://cdn.example/img.png');
+    expect(cachedImageSrc(id)).toBe('https://cdn.example/img.png');
+  });
+
+  it('registerCloudUrls acepta un índice { id: {downloadURL} }', async () => {
+    const id = await putImage(blobOf('ZZ'), { bookId: 'b1' });
+    registerCloudUrls({ [id]: { downloadURL: 'https://cdn.example/z.png' } });
+    expect(cachedImageSrc(id)).toBe('https://cdn.example/z.png');
   });
 });

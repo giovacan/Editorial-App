@@ -1,8 +1,12 @@
 import { useSearchParams } from 'react-router-dom';
+import { createBook } from '../../services/books';
+import { retagBookImages } from '../../utils/imageStore';
 import { useEffect, useRef, useCallback, useState } from 'react';
 import useEditorStore from '../../store/useEditorStore';
 import { useBookSync } from '../../hooks/useBookSync';
 import { useConfigHistory } from '../../hooks/useConfigHistory';
+import { useAuth } from '../../contexts/AuthContext';
+import { syncBookImages } from '../../utils/imageSync';
 import { addRecentBook } from '../../utils/recentBooks';
 import { toast } from '../../utils/toast';
 import ExportPreviewModal from '../ExportPreviewModal/ExportPreviewModal';
@@ -15,15 +19,56 @@ import CentralSearchBar from './CentralSearchBar';
 import './Layout.css';
 
 function Layout() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const bookId = searchParams.get('bookId');
 
   // Call unconditionally (Rules of Hooks); useBookSync no-ops when bookId is
   // falsy. flushWrites forces pending Firestore writes on demand (Save button).
   const { flushWrites } = useBookSync(bookId);
 
+  const { user } = useAuth();
   const bookData = useEditorStore((s) => s.bookData);
   const chapters = useEditorStore((s) => s.bookData?.chapters);
+
+  // B2 PR-B: with a cloud book + signed-in owner, upload the book's images from
+  // IndexedDB to Firebase Storage in the BACKGROUND (never blocks the UI).
+  // Keyed on the chapter set so newly-imported images get picked up too.
+  useEffect(() => {
+    if (!bookId || !user) return;
+    const t = setTimeout(() => { syncBookImages(bookId); }, 800);
+    return () => clearTimeout(t);
+  }, [bookId, user, chapters]);
+
+  // B2 PR-B: promote a local book to the cloud whenever there's a signed-in user
+  // but no cloud bookId and the book has content. Covers BOTH (a) importing a
+  // .docx while logged in, and (b) an anonymous user who imported locally then
+  // logs in. Creates the Firestore book, re-tags its local images to the new id,
+  // and switches the URL — which triggers useBookSync (persist chapters) and the
+  // image sync effect above. Guarded so it runs once per promotion.
+  const promotingRef = useRef(false);
+  useEffect(() => {
+    if (!user || bookId || promotingRef.current) return;
+    const hasContent = (chapters || []).some((ch) => ch.html && ch.html.trim());
+    if (!hasContent) return;
+    promotingRef.current = true;
+    (async () => {
+      try {
+        const localId = bookData?.id || null;
+        const newBookId = await createBook(user.uid, {
+          title: bookData?.title || 'Libro sin título',
+          author: bookData?.author || '',
+          bookType: bookData?.bookType || 'novela',
+          pageFormat: bookData?.pageFormat || '6x9',
+        });
+        if (localId) await retagBookImages(localId, newBookId);
+        setSearchParams({ bookId: newBookId }, { replace: true });
+        toast.success('Libro guardado en tu cuenta.');
+      } catch (e) {
+        promotingRef.current = false;
+        console.warn('No se pudo promover el libro local a la nube:', e);
+      }
+    })();
+  }, [user, bookId, chapters]); // eslint-disable-line react-hooks/exhaustive-deps
   const config = useEditorStore((s) => s.config);
   const ui = useEditorStore((s) => s.ui);
   const loadContent = useEditorStore((s) => s.loadContent);
@@ -176,6 +221,8 @@ function Layout() {
 
   const handleContentLoaded = (loadedChapters, bookTitle) => {
     loadContent(loadedChapters, bookTitle);
+    // If signed in without a cloud book, the promotion effect below picks this
+    // up (chapters now have content) and creates the cloud book automatically.
   };
 
   const handleExportPdf  = () => setExportModal({ open: true, format: 'pdf' });
