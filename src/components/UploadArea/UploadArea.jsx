@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { toast } from '../../utils/toast';
 import { extractImagesFromHtml } from '../../utils/extractImages';
+import { docxToHtml } from '../../utils/docxToHtml';
 import ChapterDetectionDialog from '../ChapterDetectionDialog/ChapterDetectionDialog';
 import useEditorStore from '../../store/useEditorStore';
 import { detectChaptersLocal } from './utils/chapterDetection';
@@ -17,6 +18,7 @@ function UploadArea({ onContentLoaded, onChaptersDetected, bookId = null }) {
   const [pendingBookTitle, setPendingBookTitle] = useState('');
   const [showChapterDetection, setShowChapterDetection] = useState(false);
   const [chapterDetectionConfirmed, setChapterDetectionConfirmed] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef(null);
   // B2 perf: image extraction runs in the background while the chapter dialog is
   // shown. extractionRef holds that promise; hadImagesRef tells confirm whether
@@ -59,11 +61,12 @@ function UploadArea({ onContentLoaded, onChaptersDetected, bookId = null }) {
         return;
       }
       try {
+        setIsImporting(true);
         const _t0 = performance.now();
-        const arrayBuffer = await file.arrayBuffer();
-        const result = await window.mammoth.convertToHtml({ arrayBuffer });
-        if (!result.value?.trim()) { toast.error('El documento DOCX está vacío o no se pudo leer.'); return; }
-        const rawHtml = result.value;
+        // Decode the .docx in a Worker (off the main thread) so the UI stays
+        // responsive during the heavy ~9-16s convert on image-heavy books.
+        const rawHtml = await docxToHtml(file);
+        if (!rawHtml?.trim()) { toast.error('El documento DOCX está vacío o no se pudo leer.'); return; }
         console.log(`[import] mammoth ${(performance.now() - _t0).toFixed(0)}ms · ${(rawHtml.length/1024).toFixed(0)}KB · ${(rawHtml.match(/<img/gi)||[]).length} imgs`);
         const _tDlg = performance.now();
         const hasImages = rawHtml.indexOf('<img') !== -1;
@@ -99,6 +102,8 @@ function UploadArea({ onContentLoaded, onChaptersDetected, bookId = null }) {
         console.log(`[import] detección+diálogo ${(performance.now() - _tDlg).toFixed(0)}ms`);
       } catch (error) {
         toast.error('Error al leer el archivo DOCX: ' + error.message);
+      } finally {
+        setIsImporting(false);
       }
       return;
     }
@@ -202,30 +207,40 @@ function UploadArea({ onContentLoaded, onChaptersDetected, bookId = null }) {
       <div className="upload-area" role="region" aria-label="Área de carga de archivos">
         <div className="upload-column">
           <div
-            className={`upload-box ${isDragOver ? 'drag-over' : ''}`}
-            onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+            className={`upload-box ${isDragOver ? 'drag-over' : ''} ${isImporting ? 'is-importing' : ''}`}
+            onDragOver={(e) => { if (isImporting) return; e.preventDefault(); setIsDragOver(true); }}
             onDragLeave={() => setIsDragOver(false)}
-            onDrop={(e) => { e.preventDefault(); setIsDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+            onDrop={(e) => { e.preventDefault(); setIsDragOver(false); if (isImporting) return; const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
           >
-            <svg className="upload-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="17 8 12 3 7 8"/>
-              <line x1="12" y1="3" x2="12" y2="15"/>
-            </svg>
-            <h2 className="upload-title">Importar manuscrito</h2>
-            <p className="upload-subtitle">Arrastra un archivo o haz clic para seleccionar</p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".txt,.md,.html,.docx"
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
-              hidden
-              aria-label="Seleccionar archivo"
-            />
-            <button className="btn btn-primary" onClick={() => fileInputRef.current?.click()}>
-              Seleccionar archivo
-            </button>
-            <p className="upload-formats">Formatos: <strong>TXT, MD, HTML, DOCX</strong></p>
+            {isImporting ? (
+              <>
+                <div className="upload-spinner" aria-hidden="true" />
+                <h2 className="upload-title">Procesando documento…</h2>
+                <p className="upload-subtitle">Leyendo el archivo y sus imágenes. Esto puede tardar unos segundos en libros grandes.</p>
+              </>
+            ) : (
+              <>
+                <svg className="upload-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <h2 className="upload-title">Importar manuscrito</h2>
+                <p className="upload-subtitle">Arrastra un archivo o haz clic para seleccionar</p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".txt,.md,.html,.docx"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+                  hidden
+                  aria-label="Seleccionar archivo"
+                />
+                <button className="btn btn-primary" onClick={() => fileInputRef.current?.click()}>
+                  Seleccionar archivo
+                </button>
+                <p className="upload-formats">Formatos: <strong>TXT, MD, HTML, DOCX</strong></p>
+              </>
+            )}
           </div>
           <div className="upload-info">
             <h3>Formatos detectados como capítulos</h3>
