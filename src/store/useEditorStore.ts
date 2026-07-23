@@ -576,12 +576,25 @@ const useEditorStore = create<EditorState>()(
     // the upload screen (bug: "Nuevo libro" showed the UploadArea then it
     // vanished because the live subscription re-ran loadContent → showUpload:false).
     syncChaptersFromCloud: (chapters) => set((state) => {
+      // Guard against the self-echo write→snapshot loop: Firestore fires a
+      // snapshot for our own debounced write, and if we always replaced the
+      // array (new identity) the pagination hash would think content changed →
+      // repaginate → write → snapshot → … (symptoms: page count stuck at 0, the
+      // active chapter kept resetting to the first). Skip when the incoming
+      // chapters match what we already have by id + html.
+      const cur = state.bookData.chapters || [];
+      const same = cur.length === chapters.length
+        && cur.every((c, i) => c.id === chapters[i]?.id && c.html === chapters[i]?.html);
+      if (same) return state;
+      // Preserve the active chapter if it still exists in the incoming set.
+      const activeStillThere = chapters.some((c) => c.id === state.editing.activeChapterId);
       const newState = {
         bookData: { ...state.bookData, chapters },
         editing: {
           ...state.editing,
-          activeChapterId: state.editing.activeChapterId
-            || chapters[0]?.id || null,
+          activeChapterId: activeStillThere
+            ? state.editing.activeChapterId
+            : (chapters[0]?.id || null),
         },
       };
       saveToStorage(newState as EditorState);

@@ -212,11 +212,19 @@ export async function saveChapters(bookId, chapters) {
         'chapters',
         chapter.id
       );
+      // Persist ALL structural fields the pagination engine relies on. Dropping
+      // chapterLabel/chapterName/titleLayout/footnotes here degraded the book on
+      // the cloud round-trip (parts stopped being full-page dividers, footnotes
+      // vanished). Firestore rejects `undefined`, so coalesce to safe defaults.
       batch.set(chapterDocRef, {
         id: chapter.id,
-        type: chapter.type,
-        title: chapter.title,
-        html: chapter.html,
+        type: chapter.type || 'chapter',
+        title: chapter.title || '',
+        chapterLabel: chapter.chapterLabel || '',
+        chapterName: chapter.chapterName || '',
+        titleLayout: chapter.titleLayout || null,
+        html: chapter.html || '',
+        footnotes: chapter.footnotes || [],
         wordCount: chapter.wordCount || 0,
         order: index,
         updatedAt: serverTimestamp(),
