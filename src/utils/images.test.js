@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { readImageDims, scaleImage } from './images.js';
+import { describe, it, expect, vi } from 'vitest';
+import { readImageDims, scaleImage, precomputeImageDims } from './images.js';
 
 describe('readImageDims', () => {
   it('lee data-w/data-h', () => {
@@ -59,5 +59,24 @@ describe('scaleImage', () => {
     const small = scaleImage({ w: 100, h: 100 }, CW);
     const big = scaleImage({ w: 2000, h: 2000 }, CW);
     expect(big.height).toBeGreaterThanOrEqual(small.height);
+  });
+});
+
+describe('precomputeImageDims', () => {
+  it('sin window / sin <img> devuelve el html tal cual', async () => {
+    // jsdom no está activo en este archivo → typeof window === 'undefined'.
+    const html = '<p>hola</p>';
+    expect(await precomputeImageDims(html)).toBe(html);
+  });
+
+  it('html sin imágenes no cambia', async () => {
+    const html = '<p>solo texto</p>';
+    expect(await precomputeImageDims(html)).toBe(html);
+  });
+
+  it('imagen que ya tiene data-w no se re-procesa', async () => {
+    const html = '<img src="x" data-w="100" data-h="50">';
+    // Sin window igual devuelve tal cual; el guard de data-w es defensa extra.
+    expect(await precomputeImageDims(html)).toContain('data-w="100"');
   });
 });

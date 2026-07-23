@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -qiE \"localhost|error\" \"C:/Users/equipo/AppData/Local/Temp/claude/c--Users-equipo-OneDrive-GCpersonal-APPS-editorial-app/cebde1d4-6b57-4349-a56b-b955afd82144/tasks/byjsx37v3.output\")",
+      "Bash(break)",
+      "Bash(cat \"C:/Users/equipo/AppData/Local/Temp/claude/c--Users-equipo-OneDrive-GCpersonal-APPS-editorial-app/cebde1d4-6b57-4349-a56b-b955afd82144/tasks/byjsx37v3.output\")",
+      "Bash(curl -s -o /dev/null -w \"main.jsx: HTTP %{http_code} \\(%{size_download} bytes\\)\\\\n\" \"http://localhost:5173/src/main.jsx\")",
+      "Bash(curl -s -o /dev/null -w \"App.jsx:  HTTP %{http_code} \\(%{size_download} bytes\\)\\\\n\" \"http://localhost:5173/src/App.jsx\")",
+      "Bash(taskkill //F //IM node.exe)"
+    ]
+  }
+}

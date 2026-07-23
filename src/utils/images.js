@@ -68,28 +68,39 @@ export const scaleImage = (dims, contentWidth, cfg = {}, pageHeight = 0) => {
  * @param {string} html
  * @returns {Promise<string>}
  */
-export const precomputeImageDims = async (html) => {
+export const precomputeImageDims = async (html, perImageTimeoutMs = 5000) => {
   if (!html || typeof window === 'undefined' || html.indexOf('<img') === -1) return html || '';
   const srcs = [...html.matchAll(/<img\b[^>]*?\bsrc="([^"]+)"[^>]*>/gi)];
   if (srcs.length === 0) return html;
 
+  // Load with a TIMEOUT: a corrupt data-URI or a format the browser can't decode
+  // (Word WMF/EMF) may fire NEITHER onload nor onerror → without a timeout the
+  // whole import hangs forever ("no sucede nada"). Resolve null on timeout so the
+  // engine falls back to a default aspect for that image.
   const load = (src) => new Promise((resolve) => {
+    let done = false;
+    const finish = (v) => { if (!done) { done = true; resolve(v); } };
     const img = new Image();
-    img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
-    img.onerror = () => resolve(null);
-    img.src = src;
+    img.onload = () => finish({ w: img.naturalWidth, h: img.naturalHeight });
+    img.onerror = () => finish(null);
+    setTimeout(() => finish(null), perImageTimeoutMs);
+    try { img.src = src; } catch { finish(null); }
   });
 
+  // Load all images in PARALLEL (faster; each guarded by its own timeout).
+  const dimsList = await Promise.all(srcs.map((m) => (/\bdata-w=/.test(m[0]) ? Promise.resolve(null) : load(m[1]))));
+
+  // Rewrite each occurrence by INDEX (not string replace) so identical images
+  // don't collide. Walk the original matches in reverse to keep offsets valid.
   let out = html;
-  for (const m of srcs) {
+  for (let i = srcs.length - 1; i >= 0; i--) {
+    const dims = dimsList[i];
+    if (!dims || !(dims.w > 0 && dims.h > 0)) continue;
+    const m = srcs[i];
     const tag = m[0];
-    const src = m[1];
-    if (/\bdata-w=/.test(tag)) continue; // already computed
-    const dims = await load(src);
-    if (dims && dims.w > 0 && dims.h > 0) {
-      const withDims = tag.replace(/<img\b/i, `<img data-w="${dims.w}" data-h="${dims.h}"`);
-      out = out.replace(tag, withDims);
-    }
+    if (/\bdata-w=/.test(tag)) continue;
+    const withDims = tag.replace(/<img\b/i, `<img data-w="${dims.w}" data-h="${dims.h}"`);
+    out = out.slice(0, m.index) + withDims + out.slice(m.index + tag.length);
   }
   return out;
 };

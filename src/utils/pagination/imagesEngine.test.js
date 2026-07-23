@@ -60,6 +60,21 @@ describe('images engine (B2)', () => {
     expect((html.match(/La memoria del tiempo/g) || []).length).toBe(2);
   });
 
+  it('imagen envuelta en <p> (salida real de mammoth) NO se pierde', () => {
+    // mammoth emite <p><img …></p>: un <p> sin texto. Sin el unwrap del parser,
+    // el filtro de bloques-con-texto lo descartaba y la imagen desaparecía.
+    const chapter = {
+      id: 'ch1', type: 'chapter', title: 'Capítulo 1',
+      html: `<p>${PARA}</p><p><img src="${SRC}" data-w="800" data-h="600" alt="foto"></p><p>${PARA}</p>`,
+      wordCount: 100,
+    };
+    const pages = paginate(chapter);
+    expect(allHtml(pages)).toContain('<img');
+    expect(allHtml(pages)).toContain(SRC);
+    // el texto sigue íntegro
+    expect((allHtml(pages).match(/La memoria del tiempo/g) || []).length).toBe(2);
+  });
+
   it('capítulo sin imágenes: pagina normal (mismo texto)', () => {
     const noImg = { id: 'c', type: 'chapter', title: 'C', html: `<p>${PARA}</p><p>${PARA}</p>`, wordCount: 40 };
     const pages = paginate(noImg);

@@ -792,6 +792,18 @@ export const flattenChapterElements = (chapter, layoutCtx, canvasCtx, measureDiv
 
   // Content elements — Worker-safe: use string-based parser instead of DOM
   const allChildren = parseHtmlElements(chapter.html || '');
+  // B2: mammoth wraps images as <p><img …></p> — a container with no text. Unwrap
+  // it to an IMG block so it survives the text-only filter below and hits the IMG
+  // sizing branch. (Without this the whole <p> was dropped and the image vanished.)
+  for (let ci = 0; ci < allChildren.length; ci++) {
+    const el = allChildren[ci];
+    if ((el.tag === 'P' || el.tag === 'DIV') && !el.textContent.trim() && /<img\b/i.test(el.innerHTML || '')) {
+      const imgM = el.innerHTML.match(/<img\b[^>]*>/i);
+      if (imgM) {
+        allChildren[ci] = { ...el, tag: 'IMG', outerHtml: imgM[0], innerHTML: '', textContent: '' };
+      }
+    }
+  }
   let firstParagraphIdx = -1;
   for (let ci = 0; ci < allChildren.length; ci++) {
     if (allChildren[ci].tag === 'P' || allChildren[ci].tag === 'DIV') {

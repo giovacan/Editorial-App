@@ -56,9 +56,16 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
         const result = await window.mammoth.convertToHtml({ arrayBuffer });
         if (!result.value?.trim()) { toast.error('El documento DOCX está vacío o no se pudo leer.'); return; }
         // B2: precompute image intrinsic dimensions (main thread) so the engine
-        // can size images deterministically without DOM.
-        const withDims = await precomputeImageDims(result.value);
-        handleHtmlContent(withDims);
+        // can size images without DOM. NEVER let this block the import — on any
+        // failure/timeout, fall back to the raw HTML (the engine uses a default
+        // aspect for images without data-w/data-h).
+        let htmlToLoad = result.value;
+        try {
+          htmlToLoad = await precomputeImageDims(result.value);
+        } catch (e) {
+          console.warn('precomputeImageDims falló, importando sin dimensiones:', e);
+        }
+        handleHtmlContent(htmlToLoad);
       } catch (error) {
         toast.error('Error al leer el archivo DOCX: ' + error.message);
       }
