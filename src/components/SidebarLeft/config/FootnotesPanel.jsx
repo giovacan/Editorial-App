@@ -5,6 +5,8 @@
  * when `config.footnotes.enabled` is true. Notes come from imported Word
  * documents (mammoth) for now; creating/editing notes in-app is a later PR.
  */
+import FootnotesList from './FootnotesList';
+
 function FootnotesPanel({ safeConfig, setConfig }) {
   const fn = safeConfig.footnotes || {};
   const update = (patch) => setConfig({ footnotes: { ...fn, ...patch } });
@@ -64,6 +66,11 @@ function FootnotesPanel({ safeConfig, setConfig }) {
               <option value="per-chapter">Reiniciar por capítulo</option>
               <option value="per-book">Continua en todo el libro</option>
             </select>
+          </fieldset>
+
+          <fieldset className="config-group">
+            <legend>Notas del libro</legend>
+            <FootnotesList />
           </fieldset>
         </>
       )}

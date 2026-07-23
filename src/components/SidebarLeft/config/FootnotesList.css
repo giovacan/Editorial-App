@@ -1,0 +1,36 @@
+.fn-list { margin-top: 4px; }
+.fn-list-empty { font-size: 11px; color: #6b7280; margin: 8px 0; line-height: 1.4; }
+
+.fn-list-group { margin-bottom: 10px; }
+.fn-list-chapter {
+  font-size: 11px; font-weight: 700; color: #374151;
+  text-transform: uppercase; letter-spacing: 0.03em;
+  padding: 4px 0; border-bottom: 1px solid #e5e7eb; margin-bottom: 6px;
+}
+
+.fn-list-item {
+  padding: 6px; border-radius: 6px; background: #f9fafb; margin-bottom: 6px;
+}
+.fn-list-item-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.fn-list-num {
+  flex-shrink: 0; width: 18px; height: 18px; border-radius: 50%;
+  background: #4f46e5; color: #fff; font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.fn-list-context {
+  flex: 1 1 auto; min-width: 0; font-size: 11px; color: #6b7280;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fn-list-context b { color: #4f46e5; }
+.fn-list-go {
+  flex-shrink: 0; border: none; background: none; cursor: pointer;
+  color: #4f46e5; font-size: 14px; width: 20px; height: 20px; border-radius: 5px;
+}
+.fn-list-go:hover { background: #eef2ff; }
+
+.fn-list-text {
+  width: 100%; box-sizing: border-box; border: 1px solid #d1d5db;
+  border-radius: 5px; padding: 5px; font-size: 12px; line-height: 1.4;
+  resize: vertical; font-family: inherit; outline: none;
+}
+.fn-list-text:focus { border-color: #6366f1; }

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { nanoid } from 'nanoid';
 import type { EditorState, Chapter } from '../types';
+import { syncFootnotes } from '../utils/footnotes';
 
 const STORAGE_KEY = 'editorial-app-storage';
 
@@ -476,6 +477,59 @@ const useEditorStore = create<EditorState>()(
     setActiveChapter: (id) => set((state) => ({
       editing: { ...state.editing, activeChapterId: id }
     })),
+
+    // ── Footnotes CRUD (B1 UI) ──────────────────────────────────────────────
+    // The MARKER lives in chapter.html (<sup data-fn="refId">); the CONTENT
+    // lives in chapter.footnotes = [{ refId, index, html }]. These mutate only
+    // the content map; the editor inserts/removes the markers and calls
+    // syncFootnotesFromBody to keep numbering/orphans consistent.
+    addFootnote: (chapterId: string, refId: string, html = '') => set((state) => {
+      const chapters = state.bookData.chapters.map((ch) => {
+        if (ch.id !== chapterId) return ch;
+        const footnotes = [...(ch.footnotes || [])];
+        if (!footnotes.some((n) => n.refId === refId)) {
+          footnotes.push({ refId, index: footnotes.length + 1, html });
+        }
+        return { ...ch, footnotes };
+      });
+      const newState = { bookData: { ...state.bookData, chapters } };
+      saveToStorage(newState as EditorState);
+      return newState;
+    }),
+
+    updateFootnote: (chapterId: string, refId: string, html: string) => set((state) => {
+      const chapters = state.bookData.chapters.map((ch) => {
+        if (ch.id !== chapterId) return ch;
+        const footnotes = (ch.footnotes || []).map((n) => n.refId === refId ? { ...n, html } : n);
+        return { ...ch, footnotes };
+      });
+      const newState = { bookData: { ...state.bookData, chapters } };
+      saveToStorage(newState as EditorState);
+      return newState;
+    }),
+
+    removeFootnote: (chapterId: string, refId: string) => set((state) => {
+      const chapters = state.bookData.chapters.map((ch) => {
+        if (ch.id !== chapterId) return ch;
+        const footnotes = (ch.footnotes || []).filter((n) => n.refId !== refId);
+        return { ...ch, footnotes };
+      });
+      const newState = { bookData: { ...state.bookData, chapters } };
+      saveToStorage(newState as EditorState);
+      return newState;
+    }),
+
+    // Reconcile a chapter's notes with the markers present in its body (orderedRefIds
+    // = footnoteRefsIn(html), in order): renumber by appearance, prune orphans.
+    syncFootnotesFromBody: (chapterId: string, orderedRefIds: string[]) => set((state) => {
+      const chapters = state.bookData.chapters.map((ch) => {
+        if (ch.id !== chapterId) return ch;
+        return { ...ch, footnotes: syncFootnotes(ch.footnotes || [], orderedRefIds) };
+      });
+      const newState = { bookData: { ...state.bookData, chapters } };
+      saveToStorage(newState as EditorState);
+      return newState;
+    }),
 
     loadContent: (chapters, bookTitle?: string) => set((state) => {
       // Prefill the book title from the document when we found one and the
