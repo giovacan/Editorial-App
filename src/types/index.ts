@@ -293,6 +293,7 @@ export interface EditorState {
   removeFootnote: (chapterId: string, refId: string) => void;
   syncFootnotesFromBody: (chapterId: string, orderedRefIds: string[]) => void;
   loadContent: (chapters: Chapter[]) => void;
+  syncChaptersFromCloud: (chapters: Chapter[]) => void;
   newProject: () => void;
   getStats: () => Stats;
   setConfirmedChapterTitles: (titles: string[]) => void;

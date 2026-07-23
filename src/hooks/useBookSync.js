@@ -78,13 +78,14 @@ export function useBookSync(bookId) {
       });
     });
 
-    // Subscribe to real-time chapter changes
+    // Subscribe to real-time chapter changes. Use syncChaptersFromCloud (NOT
+    // loadContent) so a background snapshot only updates data and never flips
+    // the view — otherwise "Nuevo libro" flashes the UploadArea then hides it.
     unsubscribeRefs.current.chapters = subscribeToChapters(
       bookId,
       (updatedChapters) => {
         if (!isMounted) return;
-        // Update store with new chapters
-        store.loadContent(updatedChapters);
+        store.syncChaptersFromCloud(updatedChapters);
       }
     );
 

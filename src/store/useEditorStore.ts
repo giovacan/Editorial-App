@@ -571,6 +571,23 @@ const useEditorStore = create<EditorState>()(
       return newState;
     }),
 
+    // Real-time cloud sync of chapters. Unlike loadContent/loadBook this NEVER
+    // touches `ui` — a background Firestore snapshot must not flip the user off
+    // the upload screen (bug: "Nuevo libro" showed the UploadArea then it
+    // vanished because the live subscription re-ran loadContent → showUpload:false).
+    syncChaptersFromCloud: (chapters) => set((state) => {
+      const newState = {
+        bookData: { ...state.bookData, chapters },
+        editing: {
+          ...state.editing,
+          activeChapterId: state.editing.activeChapterId
+            || chapters[0]?.id || null,
+        },
+      };
+      saveToStorage(newState as EditorState);
+      return newState;
+    }),
+
     newProject: () => {
       localStorage.removeItem(STORAGE_KEY);
       const freshState = getInitialState();
