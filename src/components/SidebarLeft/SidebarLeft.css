@@ -168,6 +168,53 @@
   color: #dc2626;
 }
 
+.btn-merge-item {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+.btn-merge-item:hover:not(:disabled) {
+  background: #e0e7ff;
+  color: #4f46e5;
+}
+.btn-merge-item:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.chapter-item-label-edit {
+  margin: 4px 0 2px 2rem;
+}
+.chapter-label-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.chapter-label-field > span {
+  font-size: 0.65rem;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.chapter-item-label-input {
+  font-size: 0.75rem;
+  padding: 3px 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.chapter-item-label-input:focus {
+  outline: none;
+  border-color: #6366f1;
+}
+
 .chapter-item-meta {
   font-size: 0.75rem;
   color: #9ca3af;

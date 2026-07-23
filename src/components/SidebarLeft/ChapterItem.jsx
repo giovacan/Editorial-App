@@ -1,4 +1,5 @@
 import { useState, useCallback, memo } from 'react';
+import { composeTitle, parseLabelAndName } from '../../utils/chapterTitle';
 
 const ChapterItem = memo(function ChapterItem({
   chapter,
@@ -7,11 +8,19 @@ const ChapterItem = memo(function ChapterItem({
   onSelect,
   onDelete,
   onMove,
+  onMerge,
   onTitleChange,
+  onUpdateChapter,
   totalChapters
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [editingLabel, setEditingLabel] = useState(false);
+
+  // Prefer the parser's structured fields; fall back to splitting the title.
+  const split = parseLabelAndName(chapter.title);
+  const label = chapter.chapterLabel ?? split.label;
+  const name = chapter.chapterName ?? split.name;
 
   const handleDragStart = useCallback((e) => {
     setIsDragging(true);
@@ -45,6 +54,18 @@ const ChapterItem = memo(function ChapterItem({
     setIsDragging(false);
   }, [index, onMove]);
 
+  // Update label or name → recompose title and persist all three fields.
+  const applyFields = useCallback((nextLabel, nextName) => {
+    const cleanLabel = (nextLabel || '').trim();
+    const cleanName = (nextName || '').trim();
+    const title = composeTitle(cleanLabel, cleanName) || 'Sin título';
+    if (onUpdateChapter) {
+      onUpdateChapter(chapter.id, { chapterLabel: cleanLabel, chapterName: cleanName, title });
+    } else {
+      onTitleChange(chapter.id, title); // fallback: only title
+    }
+  }, [chapter.id, onUpdateChapter, onTitleChange]);
+
   return (
     <div
       className={`chapter-item ${isActive ? 'active' : ''} ${dragOver ? 'drag-over' : ''} ${isDragging ? 'dragging' : ''}`}
@@ -63,8 +84,8 @@ const ChapterItem = memo(function ChapterItem({
         </span>
         <input
           className="chapter-item-title-input"
-          value={chapter.title}
-          onChange={(e) => onTitleChange(chapter.id, e.target.value)}
+          value={name}
+          onChange={(e) => applyFields(label, e.target.value)}
           onClick={(e) => e.stopPropagation()}
           onFocus={(e) => e.stopPropagation()}
           onKeyDown={(e) => {
@@ -74,12 +95,19 @@ const ChapterItem = memo(function ChapterItem({
             }
           }}
           onBlur={(e) => {
-            if (!e.target.value.trim()) {
-              onTitleChange(chapter.id, 'Sin título');
+            if (!e.target.value.trim() && !label.trim()) {
+              applyFields('', 'Sin título');
             }
           }}
         />
         <div className="reorder-buttons">
+          <button
+            className="btn-reorder"
+            onClick={(e) => { e.stopPropagation(); setEditingLabel(v => !v); }}
+            title="Editar número/etiqueta"
+          >
+            #
+          </button>
           <button
             className="btn-reorder"
             onClick={(e) => {
@@ -104,10 +132,24 @@ const ChapterItem = memo(function ChapterItem({
           </button>
         </div>
         <button
+          className="btn-merge-item"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (confirm(`¿Fusionar "${name || chapter.title}" con el capítulo anterior?`)) {
+              onMerge(chapter.id);
+            }
+          }}
+          disabled={index === 0}
+          title="Fusionar con el capítulo anterior"
+          aria-label="Fusionar con anterior"
+        >
+          ⭱
+        </button>
+        <button
           className="btn-delete-item"
           onClick={(e) => {
             e.stopPropagation();
-            if (confirm(`¿Eliminar "${chapter.title}"?`)) {
+            if (confirm(`¿Eliminar "${name || chapter.title}"?`)) {
               onDelete(chapter.id);
             }
           }}
@@ -116,6 +158,22 @@ const ChapterItem = memo(function ChapterItem({
           ✕
         </button>
       </div>
+
+      {editingLabel && (
+        <div className="chapter-item-label-edit" onClick={(e) => e.stopPropagation()}>
+          <label className="chapter-label-field">
+            <span>Número / etiqueta</span>
+            <input
+              className="chapter-item-label-input"
+              value={label}
+              placeholder="Ej. CAPÍTULO 2"
+              onChange={(e) => applyFields(e.target.value, name)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } }}
+            />
+          </label>
+        </div>
+      )}
+
       <span className="chapter-item-meta">{chapter.wordCount} palabras</span>
     </div>
   );

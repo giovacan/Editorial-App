@@ -123,6 +123,11 @@ export interface Chapter {
   wordCount: number;
   isCover?: boolean;
   footnotes?: Footnote[];
+  // Structural fields set by the import parser (contentParser.js) and edited by
+  // the structure editor. Optional at the type level, present in practice.
+  chapterLabel?: string;   // "CAPÍTULO 2" / "LECCIÓN 5" / "" for front matter
+  chapterName?: string;    // the chapter's own name ("Dios El Padre")
+  titleLayout?: string;    // "fullPage" for part dividers
 }
 
 export interface Document {
@@ -294,6 +299,7 @@ export interface EditorState {
   syncFootnotesFromBody: (chapterId: string, orderedRefIds: string[]) => void;
   loadContent: (chapters: Chapter[]) => void;
   syncChaptersFromCloud: (chapters: Chapter[]) => void;
+  mergeChapterIntoPrevious: (id: string) => void;
   newProject: () => void;
   getStats: () => Stats;
   setConfirmedChapterTitles: (titles: string[]) => void;

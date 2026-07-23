@@ -482,6 +482,35 @@ const useEditorStore = create<EditorState>()(
       return newState;
     }),
 
+    // Merge a chapter into the PREVIOUS one (fix for "detector split one chapter
+    // into two" / "detected a false chapter"). The absorbed chapter's title is
+    // KEPT as an inner subheading (<h3>) so no line is lost; its html, wordCount
+    // and footnotes are appended to the previous chapter. No-op on the first
+    // chapter (nothing before) or when there's only one.
+    mergeChapterIntoPrevious: (id) => set((state) => {
+      const chapters = [...(state.bookData?.chapters || [])];
+      const idx = chapters.findIndex((c) => c.id === id);
+      if (idx <= 0) return state; // first chapter or not found → nothing to merge into
+      const cur = chapters[idx];
+      const prev = chapters[idx - 1];
+      const subtitle = (cur.chapterName || cur.title || '').trim();
+      const subHtml = subtitle ? `<h3>${subtitle}</h3>` : '';
+      const merged = {
+        ...prev,
+        html: `${prev.html || ''}${subHtml}${cur.html || ''}`,
+        wordCount: (prev.wordCount || 0) + (cur.wordCount || 0),
+        footnotes: [ ...(prev.footnotes || []), ...(cur.footnotes || []) ],
+      };
+      chapters[idx - 1] = merged;
+      chapters.splice(idx, 1); // remove the absorbed chapter
+      const newState = {
+        bookData: { ...state.bookData, chapters },
+        editing: { ...state.editing, activeChapterId: prev.id, isDirty: true },
+      };
+      saveToStorage(newState as EditorState);
+      return newState;
+    }),
+
     setActiveChapter: (id) => set((state) => ({
       editing: { ...state.editing, activeChapterId: id }
     })),
