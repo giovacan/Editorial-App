@@ -109,6 +109,12 @@ export interface HeaderConfig {
   skipFirstChapterPage: boolean;
 }
 
+export interface Footnote {
+  refId: string;
+  index: number;
+  html: string;
+}
+
 export interface Chapter {
   id: string;
   type: ChapterType;
@@ -116,6 +122,7 @@ export interface Chapter {
   html: string;
   wordCount: number;
   isCover?: boolean;
+  footnotes?: Footnote[];
 }
 
 export interface Document {
@@ -281,6 +288,10 @@ export interface EditorState {
   updateChapter: (id: string, updates: Partial<Chapter>) => void;
   deleteChapter: (id: string) => void;
   setActiveChapter: (id: string | null) => void;
+  addFootnote: (chapterId: string, refId: string, html?: string) => void;
+  updateFootnote: (chapterId: string, refId: string, html: string) => void;
+  removeFootnote: (chapterId: string, refId: string) => void;
+  syncFootnotesFromBody: (chapterId: string, orderedRefIds: string[]) => void;
   loadContent: (chapters: Chapter[]) => void;
   newProject: () => void;
   getStats: () => Stats;

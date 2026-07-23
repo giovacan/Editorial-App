@@ -9,12 +9,22 @@ import { KDP_STANDARDS } from '../../utils/kdpStandards';
 import { calculateContentDimensions } from '../../utils/textMeasurer';
 import PageLayoutView from '../PageLayoutView/PageLayoutView';
 import { findNthMatchInDoc } from '../../utils/editorSearch';
+import { footnoteRefsIn } from '../../utils/footnotes';
+import { nanoid } from 'nanoid';
+import FootnoteMark from './extensions/FootnoteMark';
+import FootnoteBubbleMenu from './FootnoteBubbleMenu';
+import FootnotePopover from './FootnotePopover';
 import './Editor.css';
 
 function Editor({ pushChange, onContentChange }) {
   const activeChapterId = useEditorStore((s) => s.editing.activeChapterId);
   const chapters = useEditorStore((s) => s.bookData?.chapters);
   const setActiveChapter = useEditorStore((s) => s.setActiveChapter);
+  const addFootnote = useEditorStore((s) => s.addFootnote);
+  const syncFootnotesFromBody = useEditorStore((s) => s.syncFootnotesFromBody);
+
+  // Popover: which footnote (refId) is being edited, and where to anchor it.
+  const [fnPopover, setFnPopover] = useState(null); // { refId, x, y } | null
 
   // ── In-book search: apply a match coming from the central search bar ─────────
   // A pending match to select once the target chapter's content is loaded into
@@ -88,6 +98,7 @@ function Editor({ pushChange, onContentChange }) {
       Placeholder.configure({
         placeholder: 'Escribe tu contenido aquí...',
       }),
+      FootnoteMark,
     ],
     content: activeChapter?.html || '',
     onUpdate: ({ editor: ed }) => {
@@ -106,7 +117,10 @@ function Editor({ pushChange, onContentChange }) {
         saveTimeoutRef.current = setTimeout(() => {
           const cleanHtml = html.replace(/<div class="page-break-marker">.*?<\/div>/gi, '');
           updateChapter(activeChapter.id, { html: cleanHtml, wordCount });
-          
+          // Reconcile footnotes with the markers now in the body: renumber by
+          // order + prune orphans (a marker the user deleted removes its note).
+          syncFootnotesFromBody(activeChapter.id, footnoteRefsIn(cleanHtml));
+
           const now = new Date();
           lastSaveTimeRef.current = now;
           
@@ -233,6 +247,17 @@ function Editor({ pushChange, onContentChange }) {
     pendingMatchRef.current = null;
     // Defer to the next frame so setContent has committed the new doc.
     requestAnimationFrame(() => {
+      // Footnote jump (from the side panel): select the marker node.
+      if (pending.footnoteRefId) {
+        editor.state.doc.descendants((n, pos) => {
+          if (n.type.name === 'footnoteMark' && n.attrs.refId === pending.footnoteRefId) {
+            editor.chain().focus().setNodeSelection(pos).scrollIntoView().run();
+            return false;
+          }
+          return true;
+        });
+        return;
+      }
       const range = findNthMatchInDoc(editor.state.doc, pending.query, pending.wordIndex);
       if (!range) { editor.commands.focus(); return; }
       editor.chain().focus().setTextSelection(range).scrollIntoView().run();
@@ -261,6 +286,65 @@ function Editor({ pushChange, onContentChange }) {
     window.editorGoToMatch = (match, query) => handleGoToMatch(match, query);
     return () => { delete window.editorGoToMatch; };
   }, [handleGoToMatch]);
+
+  // ── Footnotes: insert / open / jump ─────────────────────────────────────────
+  // Anchor the popover next to a marker (by refId) using ProseMirror coords.
+  const openPopoverForRef = useCallback((refId) => {
+    if (!editor) return;
+    let coords = null;
+    editor.state.doc.descendants((n, pos) => {
+      if (n.type.name === 'footnoteMark' && n.attrs.refId === refId) {
+        try { coords = editor.view.coordsAtPos(pos); } catch { /* off-screen */ }
+        return false;
+      }
+      return true;
+    });
+    if (coords) setFnPopover({ refId, x: coords.left, y: coords.bottom });
+    else setFnPopover({ refId, x: null, y: null }); // fallback: centered
+  }, [editor]);
+
+  // Insert a new footnote marker at the cursor and open its editor popover.
+  const handleInsertFootnote = useCallback(() => {
+    if (!editor || !activeChapter) return;
+    const refId = `fn-${nanoid(6)}`;
+    editor.chain().focus().insertFootnote(refId).run();
+    addFootnote(activeChapter.id, refId, '');
+    // Sync numbering from the new body, then open the popover to type the note.
+    syncFootnotesFromBody(activeChapter.id, footnoteRefsIn(editor.getHTML()));
+    requestAnimationFrame(() => openPopoverForRef(refId));
+  }, [editor, activeChapter, addFootnote, syncFootnotesFromBody, openPopoverForRef]);
+
+  // A marker was clicked (event from the NodeView) → open its popover.
+  useEffect(() => {
+    const onOpen = (e) => openPopoverForRef(e.detail?.refId);
+    window.addEventListener('footnote:open', onOpen);
+    return () => window.removeEventListener('footnote:open', onOpen);
+  }, [openPopoverForRef]);
+
+  // Jump to a footnote's marker (from the side panel list): switch chapter if
+  // needed, then select the marker. Uses the same pending-switch pattern as search.
+  const handleGoToFootnote = useCallback((chapterId, refId) => {
+    const selectMark = () => {
+      if (!editor) return;
+      editor.state.doc.descendants((n, pos) => {
+        if (n.type.name === 'footnoteMark' && n.attrs.refId === refId) {
+          editor.chain().focus().setNodeSelection(pos).scrollIntoView().run();
+          return false;
+        }
+        return true;
+      });
+    };
+    if (chapterId === activeChapterId) { selectMark(); }
+    else {
+      pendingMatchRef.current = { chapterId, footnoteRefId: refId };
+      setActiveChapter(chapterId);
+    }
+  }, [editor, activeChapterId, setActiveChapter]);
+
+  useEffect(() => {
+    window.editorGoToFootnote = (chapterId, refId) => handleGoToFootnote(chapterId, refId);
+    return () => { delete window.editorGoToFootnote; };
+  }, [handleGoToFootnote]);
 
   const wordCount = activeChapter?.wordCount || 0;
 
@@ -477,6 +561,7 @@ function Editor({ pushChange, onContentChange }) {
                 editor={editor}
                 className={`main-editor${showPageBreaks ? ' show-page-breaks' : ''}`}
               />
+              <FootnoteBubbleMenu editor={editor} onInsertFootnote={handleInsertFootnote} />
               <PageBreakMarkers
                 pages={pages}
                 chapterTitle={activeChapter?.title}
@@ -486,6 +571,24 @@ function Editor({ pushChange, onContentChange }) {
               />
             </div>
           </div>
+          {fnPopover && activeChapter && (
+            <FootnotePopover
+              anchor={fnPopover}
+              chapterId={activeChapter.id}
+              onClose={() => setFnPopover(null)}
+              onDelete={(refId) => {
+                // Remove the marker node from the body for this refId.
+                if (!editor) return;
+                editor.state.doc.descendants((n, pos) => {
+                  if (n.type.name === 'footnoteMark' && n.attrs.refId === refId) {
+                    editor.chain().focus().deleteRange({ from: pos, to: pos + n.nodeSize }).run();
+                    return false;
+                  }
+                  return true;
+                });
+              }}
+            />
+          )}
 
           <div className="editor-footer">
             <span className="editor-info">Listo para editar</span>

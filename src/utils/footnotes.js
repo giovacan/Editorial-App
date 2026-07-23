@@ -89,6 +89,42 @@ export const footnoteRefsIn = (html) => {
   return out;
 };
 
+/**
+ * Sync a chapter's stored notes with the markers present in the body.
+ *
+ * Given the current notes and the refIds actually present in the body (in order
+ * of appearance), returns a new notes array that:
+ *   - keeps only notes whose marker still exists (prunes orphans);
+ *   - is ordered by appearance;
+ *   - renumbers `index` = 1..N by that order.
+ * Pure — the store uses it after any body edit. Notes referenced by a marker but
+ * missing from the map are created empty (a freshly inserted marker).
+ *
+ * @param {Array<{refId,index,html}>} notes
+ * @param {string[]} orderedRefIds  - footnoteRefsIn(body), in order
+ */
+export const syncFootnotes = (notes, orderedRefIds) => {
+  const byId = new Map((notes || []).map((n) => [n.refId, n]));
+  return (orderedRefIds || []).map((refId, i) => {
+    const existing = byId.get(refId);
+    return { refId, index: i + 1, html: existing?.html ?? '' };
+  });
+};
+
+/**
+ * Context snippet around a marker: the plain text just before the
+ * <sup data-fn="refId"> in the body, so a note list can show where it lives.
+ * Returns up to `radius` chars ending at the marker (…prefix elided).
+ */
+export const footnoteContextSnippet = (html, refId, radius = 45) => {
+  if (!html || !refId) return '';
+  const m = html.match(new RegExp(`([\\s\\S]*?)<sup[^>]*data-fn="${refId}"`, 'i'));
+  if (!m) return '';
+  const before = htmlToText(m[1]).replace(/\s+/g, ' ').trim();
+  const tail = before.slice(-radius);
+  return (before.length > radius ? '…' : '') + tail;
+};
+
 // ── Footnote block height (for the pagination budget) ────────────────────────
 
 // Cache by ordered refId set + ctx signature — a burst of DP candidates asks
