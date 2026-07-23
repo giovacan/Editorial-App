@@ -105,7 +105,9 @@ export const buildFootnoteBlockHtml = (notes, fnCtx) => {
   const ruleTopPx = Math.round((fnCtx?.marginAbovePx ?? 6));
   const rule = `<div style="border-top:0.5px solid #333;margin:${ruleTopPx}px 0 3px 0;height:0;"></div>`;
   const items = notes
-    .map((n) => `<p style="margin:0 0 2px 0;"><sup>${n.index}</sup> ${n.html || ''}</p>`)
+    // A `continued` fragment (a note that started on the previous page) shows no
+    // number — its text simply resumes.
+    .map((n) => `<p style="margin:0 0 2px 0;">${n.continued ? '' : `<sup>${n.index}</sup> `}${n.html || ''}</p>`)
     .join('');
   return rule + items;
 };
@@ -131,6 +133,128 @@ export const footnoteBlockHeight = (refIds, notesMap, fnCtx) => {
   if (_fnHeightCache.size > MAX_FN_CACHE) _fnHeightCache.clear();
   _fnHeightCache.set(key, h);
   return h;
+};
+
+// ── Note-block splitting + continuation reflow (B1-PR2) ──────────────────────
+
+/**
+ * Height (px) of a rendered footnote block given the note objects directly
+ * (used by the reflow pass, which works with concrete note arrays).
+ */
+export const measureNotes = (notes, fnCtx) =>
+  !notes || notes.length === 0 ? 0 : measureHtmlHeight(buildFootnoteBlockHtml(notes, fnCtx), fnCtx);
+
+/**
+ * Split a list of notes so the head fits in `maxH` px, returning
+ * { head: Note[], rest: Note[] }. Whole notes are packed until one won't fit;
+ * that note is split by lines (splitParagraphByLines) — its head keeps the
+ * number, its tail becomes a `continued` note (no number, no rule contribution
+ * beyond the block's own). Returns null when nothing fits (caller lets it
+ * overflow rather than loop).
+ *
+ * @param {Array<{index,html,continued?}>} notes
+ * @param {number} maxH
+ * @param {object} fnCtx  - footnote measurement ctx (has lineHeightPx, ctx2d…)
+ * @param {Function} splitParaFn - splitParagraphByLines (injected to avoid a
+ *                                 circular import paginationEngine↔footnotes)
+ */
+export const splitNotesToHeight = (notes, maxH, fnCtx, splitParaFn) => {
+  if (!notes || notes.length === 0) return null;
+  const head = [];
+  let usedH = 0;
+  for (let i = 0; i < notes.length; i++) {
+    const note = notes[i];
+    const noteHtml = `<p style="margin:0 0 2px 0;">${note.continued ? '' : `<sup>${note.index}</sup> `}${note.html || ''}</p>`;
+    const noteH = measureHtmlHeight(noteHtml, fnCtx);
+    // The rule sits above the first note only; approximate by measuring the
+    // running head block each time is costly — use additive note heights plus
+    // the block's rule margin once.
+    const ruleH = i === 0 ? (fnCtx.marginAbovePx || 0) + 3 : 0;
+    if (usedH + ruleH + noteH <= maxH) {
+      head.push(note);
+      usedH += ruleH + noteH;
+      continue;
+    }
+    // This note doesn't fit whole. Try to split it by lines.
+    const remaining = maxH - usedH - ruleH;
+    if (remaining >= (fnCtx.lineHeightPx || 12) * 2) {
+      // Ask for the cut a line below the real room (splitter may overshoot ~1
+      // line — see continuation go/no-go).
+      const targetH = remaining - (fnCtx.lineHeightPx || 12);
+      const bodyOnly = `<p style="margin:0;">${note.continued ? '' : `<sup>${note.index}</sup> `}${note.html || ''}</p>`;
+      const chunks = splitParaFn
+        ? splitParaFn(bodyOnly, null, targetH, 'left', false, 1.5, false, fnCtx)
+        : null;
+      if (chunks && chunks.length >= 2) {
+        const headText = plainInner(chunks[0]);
+        const restText = plainInner(chunks.slice(1).join(' '));
+        head.push({ index: note.index, html: stripLeadingMarker(headText, note), continued: note.continued });
+        const rest = [{ index: note.index, html: restText, continued: true }, ...notes.slice(i + 1)];
+        return { head, rest };
+      }
+    }
+    // Couldn't fit or split this note here → it (and the rest) go to next page.
+    if (head.length === 0) return null; // nothing fit at all
+    return { head, rest: notes.slice(i) };
+  }
+  return { head, rest: [] }; // everything fit
+};
+
+const plainInner = (html) => (html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+// The split head text may still carry the "N " prefix we injected; drop it so
+// the note object's html stays prose-only (the renderer re-adds the number).
+const stripLeadingMarker = (text, note) =>
+  note.continued ? text : text.replace(new RegExp(`^${note.index}\\s+`), '');
+
+/**
+ * Reflow footnotes so no page's note block exceeds its available foot space.
+ * Monotonic: a page's overflow only ever moves FORWARD (to the next page), and
+ * each move strictly reduces the remainder, so it terminates. Only mutates
+ * page.footnotes / page.footnoteHeightPx (never the body) — the body space was
+ * already reserved by the DP.
+ *
+ * @param {Array} pages          - pages from the DP (each may have .footnotes)
+ * @param {object} fnCtx         - footnote ctx
+ * @param {number} maxFootH      - max px a footnote block may occupy per page
+ * @param {Function} splitParaFn - splitParagraphByLines
+ */
+export const reflowFootnotes = (pages, fnCtx, maxFootH, splitParaFn) => {
+  if (!pages || pages.length === 0 || !fnCtx) return pages;
+  let carry = []; // notes dragged from the previous page (continuations first)
+  for (let p = 0; p < pages.length; p++) {
+    const page = pages[p];
+    const own = page.footnotes || [];
+    let all = carry.concat(own);
+    carry = [];
+    if (all.length === 0) { page.footnotes = []; page.footnoteHeightPx = 0; continue; }
+
+    let h = measureNotes(all, fnCtx);
+    if (h <= maxFootH) {
+      page.footnotes = all;
+      page.footnoteHeightPx = h;
+      continue;
+    }
+    // Overflow → split: keep the head here, carry the rest forward.
+    const split = splitNotesToHeight(all, maxFootH, fnCtx, splitParaFn);
+    if (!split || split.head.length === 0) {
+      // Nothing fits (a single note taller than a whole page) — keep it here and
+      // let it overflow rather than loop; better than an infinite carry.
+      page.footnotes = all;
+      page.footnoteHeightPx = h;
+      continue;
+    }
+    page.footnotes = split.head;
+    page.footnoteHeightPx = measureNotes(split.head, fnCtx);
+    carry = split.rest;
+    // If we're on the last page and still have carry, append it (overflow) so no
+    // note is ever lost.
+    if (p === pages.length - 1 && carry.length) {
+      page.footnotes = page.footnotes.concat(carry);
+      page.footnoteHeightPx = measureNotes(page.footnotes, fnCtx);
+      carry = [];
+    }
+  }
+  return pages;
 };
 
 /** Build the reduced-size measurement/render ctx for footnotes from the body ctx. */

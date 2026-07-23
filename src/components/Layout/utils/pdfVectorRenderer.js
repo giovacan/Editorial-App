@@ -540,7 +540,9 @@ export const exportPdfVector = async (bookData, config, paginatedPages, dims, on
       // Total block height (rule + one line per wrapped note line) in mm.
       const wrappedPerNote = page.footnotes.map((n) => {
         doc.setFont(FONT_ID, 'normal'); doc.setFontSize(fnFontPt);
-        return doc.splitTextToSize(`${n.index}. ${(n.html || '').replace(/<[^>]+>/g, '')}`, colWidthMm);
+        // Continued fragments (from the previous page) show no number.
+        const prefix = n.continued ? '' : `${n.index}. `;
+        return doc.splitTextToSize(`${prefix}${(n.html || '').replace(/<[^>]+>/g, '')}`, colWidthMm);
       });
       const totalLines = wrappedPerNote.reduce((s, w) => s + w.length, 0);
       const ruleGapMm = fnLineMm * 0.5;

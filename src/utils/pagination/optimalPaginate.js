@@ -43,7 +43,7 @@ import {
   measureHtmlHeight,
 } from '../textLayoutEngine';
 
-import { footnoteRefsIn, footnoteBlockHeight } from '../footnotes.js';
+import { footnoteRefsIn, footnoteBlockHeight, reflowFootnotes } from '../footnotes.js';
 
 import {
   getDomSlack,
@@ -744,6 +744,17 @@ export const optimalPaginate = (elements, layoutCtx, canvasCtx, measureDiv, safe
     if (!node.next || (node.next.idx >= content.length && !node.next.restHtml)) break;
     stateIdx = node.next.idx;
     node = memo.get(`${node.next.idx}|${node.next.restHtml ? simpleHash(node.next.restHtml) : ''}|0`);
+  }
+
+  // Footnote continuation reflow (B1-PR2): move any page's overflowing note
+  // block forward, splitting the last note if needed. Only runs when footnotes
+  // are enabled AND some page carries notes → OFF path is untouched. Monotonic
+  // (remainder only shrinks) → always terminates.
+  if (fnMeta && notesMap && pages.some((p) => p.footnotes && p.footnotes.length)) {
+    // A note block may occupy at most ~45% of the content budget; beyond that
+    // the note continues on the next page (keeps pages readable).
+    const maxFootH = Math.round(baseBudget * 0.45);
+    reflowFootnotes(pages, fnMeta.ctx, maxFootH, splitParagraphByLines);
   }
 
   return pages;
