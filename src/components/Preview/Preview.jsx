@@ -236,25 +236,6 @@ function Preview() {
     adjustWordSpacing(magnifierContentRef.current);
   }, [currentPage, debugHtml, isFrontMatterPage, safeConfig.paragraph?.align]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // B2: images live in the content-addressed store, not in the HTML (only a
-  // `data-img-id` ref survives). After the page renders, resolve each id to an
-  // objectURL and set the <img> src. Async (blob may come from IndexedDB); runs
-  // whenever the page content changes.
-  useEffect(() => {
-    let cancelled = false;
-    const hydrate = async (root) => {
-      if (!root) return;
-      const imgs = root.querySelectorAll('img[data-img-id]:not([src])');
-      await Promise.all([...imgs].map(async (img) => {
-        const url = await resolveImageSrc(img.getAttribute('data-img-id'));
-        if (!cancelled && url) img.src = url;
-      }));
-    };
-    hydrate(previewContentRef.current);
-    hydrate(magnifierContentRef.current);
-    return () => { cancelled = true; };
-  }, [currentPage, renderedHtml]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const {
     pageWidthPx, pageHeightPx,
     marginTop, marginBottom, marginLeft, marginRight,
@@ -291,6 +272,27 @@ function Preview() {
       fontFamily: layoutDims.fontFamily,
     });
   }, [debugHtml, isFrontMatterPage, engineLinesOn, layoutDims]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // B2: images live in the content-addressed store, not in the HTML (only a
+  // `data-img-id` ref survives). After the page renders, resolve each id to an
+  // objectURL and set the <img> src. Async (blob may come from IndexedDB); runs
+  // whenever the page content changes. Placed AFTER renderedHtml is declared —
+  // referencing it in the deps before its useMemo caused a TDZ ("Cannot access
+  // 'renderedHtml' before initialization") that crashed the whole preview.
+  useEffect(() => {
+    let cancelled = false;
+    const hydrate = async (root) => {
+      if (!root) return;
+      const imgs = root.querySelectorAll('img[data-img-id]:not([src])');
+      await Promise.all([...imgs].map(async (img) => {
+        const url = await resolveImageSrc(img.getAttribute('data-img-id'));
+        if (!cancelled && url) img.src = url;
+      }));
+    };
+    hydrate(previewContentRef.current);
+    hydrate(magnifierContentRef.current);
+    return () => { cancelled = true; };
+  }, [currentPage, renderedHtml]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { showMagnifier, setShowMagnifier, magnifierZoom, setMagnifierZoom, magnifierPanelRef,
     magnifierPos, updateMagnifierPosition, handleMouseEnterPreview, handleMouseLeavePreview,
