@@ -360,7 +360,10 @@ export const parseHtmlContent = (htmlContent) => {
     // Normalize for matching: lowercase, strip accents AND all punctuation
     // (¿?¡!.,: etc.) so "¿Cómo … Propósito?" (index) == "Cómo … Propósito"
     // (body). Keeping the signs made tokens like "¿como" ≠ "como".
-    const norm = (s) => s.toLowerCase()
+    // OCR fix: a standalone "E1" is almost always a mis-scan of the article
+    // "El" (seen in this book's index: "E1 Milenio" for "El Milenio"). Fixing it
+    // makes the article a stopword that drops, so the index matches the body.
+    const norm = (s) => s.replace(/\bE1\b/g, 'El').toLowerCase()
       .normalize('NFD').replace(/[̀-ͯ]/g, '')
       .replace(/[^a-z0-9ñ]+/gi, ' ')
       .trim();
