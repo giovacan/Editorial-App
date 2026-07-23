@@ -365,27 +365,81 @@ export const parseHtmlContent = (htmlContent) => {
       .replace(/[^a-z0-9ñ]+/gi, ' ')
       .trim();
     const NUM_PREFIX_RE = /^(lección|leccion|lesson|sección|seccion|section|unidad|unit|módulo|modulo|module|tema|sesión|sesion|session|día|dia|day|capítulo|capitulo|chapter|parte|part)\s*#?\d+/i;
+    // Numeric-dash index format: "1-La Biblia", "9-La Santidad", "21-El Culto".
+    // The author numbered their chapters this way instead of "CAPÍTULO N".
+    // "1-La Biblia", "1.- La Biblia", "1) La Biblia": number + separator(s).
+    // At least one separator (. ) - – —) is required so a plain "16 Toda…" verse
+    // line isn't mistaken for a numbered entry.
+    const NUMDASH_PREFIX_RE = /^\s*(\d{1,3})\s*(?:[.)]\s*[-–—]?|[-–—])\s*(?=\S)/;
     const tocKeys = new Set();
-    const tocEntryData = []; // { name, label } per TOC entry (label = "LECCIÓN 1" o '')
+    const tocEntryData = []; // { name, label, hasNumericPrefix } per TOC entry
     for (const i of skipIndices) {
       if (i === tocStart) continue;
       const raw = topChildren[i]?.textContent?.trim() || '';
       if (raw.length < 4) continue;
       tocKeys.add(norm(raw));
       const prefixM = raw.match(NUM_PREFIX_RE);
-      const label = prefixM ? prefixM[0].replace(/\s+/g, ' ').trim().toUpperCase() : '';
-      const namePart = raw.replace(NUM_PREFIX_RE, '').trim();
-      if (namePart.length >= 4) { tocKeys.add(norm(namePart)); tocEntryData.push({ name: namePart, label }); }
-      else tocEntryData.push({ name: raw, label });
+      const dashM = !prefixM ? raw.match(NUMDASH_PREFIX_RE) : null;
+      let label = '';
+      let namePart = raw;
+      let hasNumericPrefix = false;
+      if (prefixM) {
+        label = prefixM[0].replace(/\s+/g, ' ').trim().toUpperCase();
+        namePart = raw.replace(NUM_PREFIX_RE, '').trim();
+      } else if (dashM) {
+        const afterDash = raw.slice(dashM[0].length).trim();
+        // The entry may itself carry an INTERNAL structural label, e.g.
+        // "5.- Capítulo # 1 ¿Qué Es Un Apóstol?" — here the outer "5.-" is just
+        // the index row number (bienvenida=1, dedicatoria=2…), and "Capítulo # 1"
+        // is the REAL chapter number. In that case honour the internal label and
+        // do NOT treat the outer number as the chapter number.
+        // Internal label like "Capítulo # 1" / "Capítulo #1" / "Lección 2"
+        // (note the possible space after '#'). If present, it — not the outer
+        // index-row number — is the chapter number.
+        const INNER_LABEL_RE = /^(lección|leccion|lesson|sección|seccion|section|unidad|unit|módulo|modulo|module|tema|sesión|sesion|session|día|dia|day|capítulo|capitulo|chapter|parte|part)\s*#?\s*(\d+)/i;
+        const innerM = afterDash.match(INNER_LABEL_RE);
+        if (innerM) {
+          label = `${innerM[1].toUpperCase()} ${innerM[2]}`;
+          namePart = afterDash.replace(INNER_LABEL_RE, '').trim();
+          // Not a bare numeric-prefix chapter (has its own label) → normal path.
+        } else {
+          // Bare "N-Título" (author numbered chapters this way, e.g. "1-La Biblia").
+          label = `CAPÍTULO ${parseInt(dashM[1], 10)}`;
+          namePart = afterDash;
+          hasNumericPrefix = true;
+        }
+      }
+      if (namePart.length >= 4) { tocKeys.add(norm(namePart)); tocEntryData.push({ name: namePart, label, hasNumericPrefix }); }
+      else tocEntryData.push({ name: raw, label, hasNumericPrefix });
     }
     // Stopwords include possessives (mi/su/tu…): the index may say "Mi
     // Propósito" while the body titles it "Su Propósito".
     const STOP = new Set(['el','la','los','las','un','una','de','del','y','o','a','en','para','por','con','al','su','mi','tu','sus','mis','tus','nuestro','nuestra','the','of','and','to','for','my','your','his','her']);
     const contentTokens = (s) => norm(s).split(' ').filter(w => w.length > 1 && !STOP.has(w));
     // One token set per TOC ENTRY so each chapter matches at most once.
+    // Entries need ≥2 significant tokens for fuzzy matching. EXCEPTION: an entry
+    // with an explicit numeric prefix ("9-La Santidad") is a real chapter with
+    // high confidence, so we keep it even with 1 token — but it's marked
+    // strictExactOnly (exact match only, never fuzzy) so a bare word like
+    // "biblia" can't fuzzy-match unrelated body lines.
     const tocEntries = tocEntryData
-      .map(e => ({ toks: new Set(contentTokens(e.name)), norm: norm(e.name), label: e.label, used: false }))
-      .filter(e => e.toks.size >= 2);
+      .map(e => {
+        const toks = new Set(contentTokens(e.name));
+        return {
+          toks, norm: norm(e.name), label: e.label,
+          // Only SINGLE-token numeric-prefix entries are exact-only (a bare word
+          // like "biblia" must not fuzzy-match unrelated lines). Multi-token
+          // numeric-prefix entries ("Las Ofrendas", "Santa Cena") keep fuzzy.
+          strictExactOnly: e.hasNumericPrefix && toks.size < 2,
+          used: false,
+        };
+      })
+      .filter(e => e.toks.size >= 2 || (e.toks.size >= 1 && e.strictExactOnly));
+
+    // Does the author's index use explicit numbers (1-…, 2-…)? When it does, the
+    // author's numbering is authoritative and we apply it even to headings the
+    // ALL-CAPS heuristic already approved (overriding auto LECCIÓN numbers).
+    const hasNumericToc = tocEntryData.some(e => e.hasNumericPrefix);
 
     const jaccard = (a, b) => {
       let inter = 0;
@@ -395,15 +449,44 @@ export const parseHtmlContent = (htmlContent) => {
 
     const tocEnd = Math.max(...skipIndices);
     for (let i = tocEnd + 1; i < topChildren.length; i++) {
-      if (approvedHeadings.has(i)) continue;
+      // Pre-approved headings (found by the ALL-CAPS/heading heuristic): we no
+      // longer skip them outright. If the author's numeric index has an entry
+      // for this heading, we still want to stamp the author's number on it
+      // (CAPÍTULO N) instead of the auto-generated LECCIÓN. So: skip only when
+      // there are NO numeric-prefix TOC entries to apply.
+      const alreadyApproved = approvedHeadings.has(i);
+      if (alreadyApproved && !hasNumericToc) continue;
       const t = topChildren[i].textContent?.trim() || '';
       if (!t || t.length > 90) continue;
       const nt = norm(t);
       const lineToks = new Set(contentTokens(t));
-      if (lineToks.size < 2) continue;
+      // 1-token lines are allowed ONLY for exact matching (against numeric-prefix
+      // TOC entries). Fuzzy still requires ≥2 tokens on both sides (unchanged).
+      if (lineToks.size < 1) continue;
 
-      // Exact normalized match first.
+      // Exact normalized match first (full normalized string).
       let matched = tocEntries.find(e => !e.used && e.norm === nt);
+      let matchIsExact = !!matched;
+
+      // Token-set exact match: the index says "Las Ofrendas" but the body says
+      // "OFRENDAS" (article dropped) — same SIGNIFICANT words. Safe only for
+      // numeric-prefix entries (strictExactOnly), where the author's number
+      // gives high confidence this is a real chapter.
+      if (!matched && lineToks.size >= 1) {
+        matched = tocEntries.find(e =>
+          !e.used && e.strictExactOnly && e.toks.size === lineToks.size
+          && [...e.toks].every(w => lineToks.has(w)));
+        if (matched) matchIsExact = true;
+      }
+
+      // For a heading the ALL-CAPS heuristic ALREADY approved, we only OVERRIDE
+      // its label from the index on an EXACT/token-set match (high confidence).
+      // Fuzzy is too loose to renumber an already-detected chapter (it mislabels
+      // "Lo que nadie…": the index rows are position numbers, not chapter numbers).
+      if (alreadyApproved && !matchIsExact) continue;
+
+      // 1-token body line → exact-only (never fuzzy).
+      const fuzzyEligible = !matched && lineToks.size >= 2;
 
       // Fuzzy: SYMMETRIC similarity (Jaccard ≥ 0.6). Both directions must
       // agree, which rejects a subtitle that is only a FRAGMENT of the index
@@ -416,10 +499,10 @@ export const parseHtmlContent = (htmlContent) => {
       // matching can only mint ghosts — in El Traslado an inner subtitle
       // "LA SEMANA SETENTA DE DANIEL" hit 0.75 against the index entry
       // "EVENTOS SEMANA SETENTA DE DANIEL" and split chapter 6 in half.
-      if (!matched && bareLabelIdx.length < 3) {
+      if (fuzzyEligible && bareLabelIdx.length < 3) {
         let best = null, bestSim = 0;
         for (const e of tocEntries) {
-          if (e.used) continue;
+          if (e.used || e.strictExactOnly) continue; // numeric-prefix entries: exact only
           const sim = jaccard(lineToks, e.toks);
           if (sim > bestSim) { bestSim = sim; best = e; }
         }
@@ -428,7 +511,9 @@ export const parseHtmlContent = (htmlContent) => {
 
       if (matched) {
         matched.used = true;
-        approvedHeadings.add(i);
+        approvedHeadings.add(i); // no-op if already approved
+        // Stamp the author's label. For an already-approved heading this is the
+        // whole point: replace its auto LECCIÓN with the author's CAPÍTULO N.
         if (matched.label) headingLabels.set(i, matched.label);
       }
     }

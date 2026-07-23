@@ -450,3 +450,41 @@ describe('parseHtmlContent con imágenes (B2)', () => {
     expect(chapters.map(c => c.html).join('')).toContain(SRC);
   });
 });
+
+describe('parseHtmlContent con índice numérico "N-Título"', () => {
+  const CUERPO = 'Tarde o temprano, todos nos preguntamos cuál es la razón de nuestra existencia sobre esta tierra desde el principio de los tiempos y más allá.';
+
+  it('respeta el número del autor (N-Título) y matchea aunque el cuerpo omita el artículo', () => {
+    const html = [
+      '<p>Índice</p>',
+      '<p>1-La Introducción General</p>',
+      '<p>2-La Oración</p>',
+      '<p>3-Las Ofrendas</p>',
+      '<p>INTRODUCCIÓN</p>', `<p>${CUERPO}</p>`,   // front matter separa índice de cuerpo (como libros reales)
+      '<p>LA ORACIÓN</p>', `<p>${CUERPO}</p>`,
+      '<p>OFRENDAS</p>', `<p>${CUERPO}</p>`,        // índice dice "Las Ofrendas" (artículo omitido en cuerpo)
+    ].join('');
+    const { chapters } = parseHtmlContent(html);
+    const byTitle = (re) => chapters.find(c => re.test(c.title || ''));
+    // El número del autor se respeta (2 y 3), y "OFRENDAS" matchea "Las Ofrendas".
+    expect(byTitle(/LA ORACIÓN/)?.chapterLabel).toBe('CAPÍTULO 2');
+    expect(byTitle(/OFRENDAS/)?.chapterLabel).toBe('CAPÍTULO 3');
+  });
+
+  it('un índice "N.- Capítulo # M Título" usa el número INTERNO (M), no la fila N', () => {
+    const html = [
+      '<p>ÍNDICE</p>',
+      '<p>1.- Bienvenida</p>',
+      '<p>2.- Introducción</p>',
+      '<p>3.- Capítulo # 1 Como Se Forma Un Apóstol</p>',
+      '<p>4.- Capítulo # 2 Equipos Apostólicos En La Región</p>',
+      '<p>INTRODUCCIÓN</p>', `<p>${CUERPO}</p>`,
+      '<p>Como Se Forma Un Apóstol</p>', `<p>${CUERPO}</p>`,
+      '<p>Equipos Apostólicos En La Región</p>', `<p>${CUERPO}</p>`,
+    ].join('');
+    const { chapters } = parseHtmlContent(html);
+    const forma = chapters.find(c => /Como Se Forma/i.test(c.title || ''));
+    // Debe ser CAPÍTULO 1 (número interno "# 1"), NO CAPÍTULO 3 (fila del índice).
+    expect(forma?.chapterLabel).toBe('CAPÍTULO 1');
+  });
+});
