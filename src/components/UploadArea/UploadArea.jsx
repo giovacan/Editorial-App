@@ -62,13 +62,10 @@ function UploadArea({ onContentLoaded, onChaptersDetected, bookId = null }) {
       }
       try {
         setIsImporting(true);
-        const _t0 = performance.now();
         // Decode the .docx in a Worker (off the main thread) so the UI stays
         // responsive during the heavy ~9-16s convert on image-heavy books.
         const rawHtml = await docxToHtml(file);
         if (!rawHtml?.trim()) { toast.error('El documento DOCX está vacío o no se pudo leer.'); return; }
-        console.log(`[import] mammoth ${(performance.now() - _t0).toFixed(0)}ms · ${(rawHtml.length/1024).toFixed(0)}KB · ${(rawHtml.match(/<img/gi)||[]).length} imgs`);
-        const _tDlg = performance.now();
         const hasImages = rawHtml.indexOf('<img') !== -1;
         hadImagesRef.current = hasImages;
 
@@ -99,7 +96,6 @@ function UploadArea({ onContentLoaded, onChaptersDetected, bookId = null }) {
           ? rawHtml.replace(/<img\b[^>]*>/gi, '<img>')
           : rawHtml;
         handleHtmlContent(detectHtml);
-        console.log(`[import] detección+diálogo ${(performance.now() - _tDlg).toFixed(0)}ms`);
       } catch (error) {
         toast.error('Error al leer el archivo DOCX: ' + error.message);
       } finally {

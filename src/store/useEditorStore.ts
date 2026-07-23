@@ -558,11 +558,23 @@ const useEditorStore = create<EditorState>()(
     }),
 
     loadBook: (document) => set((state) => {
+      // If the incoming cloud chapters are content-identical to what we already
+      // have (e.g. right after promoting a local book to the cloud), REUSE the
+      // existing chapters array so bookData identity doesn't churn — that churn
+      // cancelled the first ~4 pagination runs before it converged.
+      const cur = state.bookData.chapters || [];
+      const inc = document.chapters || [];
+      const sameChapters = cur.length === inc.length
+        && cur.every((c, i) => c.id === inc[i]?.id && c.html === inc[i]?.html);
+      const chapters = sameChapters ? cur : inc;
+      const activeStillThere = chapters.some((c: Chapter) => c.id === state.editing.activeChapterId);
       const newState = {
-        bookData: document,
+        bookData: { ...document, chapters },
         editing: {
           ...state.editing,
-          activeChapterId: document.chapters[0]?.id || null,
+          activeChapterId: activeStillThere
+            ? state.editing.activeChapterId
+            : (chapters[0]?.id || null),
           isDirty: false
         },
         ui: { ...state.ui, showUpload: false, showPreview: true }

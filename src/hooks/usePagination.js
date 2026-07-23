@@ -521,7 +521,7 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
         useEditorStore.getState().setLayoutDims(dimsSnapshot);
         setPages(validatedPages);
         useEditorStore.getState().setPaginatedPages(validatedPages);
-        
+
         // TOC/front matter is cosmetic relative to the pages themselves: a
         // failure here must NEVER strand the UI mid-pagination (the pages are
         // already in the store — reported as "the bar finishes and nothing
