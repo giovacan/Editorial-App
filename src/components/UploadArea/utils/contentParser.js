@@ -570,6 +570,24 @@ export const parseHtmlContent = (htmlContent) => {
   topChildren.forEach((el, index) => {
     if (skipIndices.has(index)) return; // documento's own TOC — omitted
     const text = el.textContent?.trim() || '';
+    // B2: images carry NO text. mammoth emits them as <p><img …></p> (or a bare
+    // <img>), so the `!text` bail below would silently drop them at import,
+    // before they ever reach the store/engine. Route image-only blocks to the
+    // current chapter's body instead. (Text blocks that ALSO contain an image
+    // fall through to the normal path, which keeps their innerHTML intact.)
+    if (!text) {
+      const isImg = el.tagName === 'IMG' || el.querySelector?.('img');
+      if (isImg) {
+        flushAll();
+        // Body before any heading → implicit front-matter chapter (as below).
+        if (!currentChapter) {
+          currentChapter = { id: makeChapterId(chapters.length), type: 'chapter', title: '', html: '', wordCount: 0 };
+        }
+        const imgHtml = el.tagName === 'IMG' ? el.outerHTML : el.innerHTML;
+        addToChapter(imgHtml);
+        return;
+      }
+    }
     if (!text || text.length < 2) return;
 
     // Drop the standalone book-title line from the body (it moves to the

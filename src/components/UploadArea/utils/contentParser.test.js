@@ -421,3 +421,32 @@ describe('reorden canónico de front/back matter', () => {
     expect(chapters.length).toBe(6);
   });
 });
+
+describe('parseHtmlContent con imágenes (B2)', () => {
+  const CUERPO = 'Tarde o temprano, todos nos preguntamos cuál es la razón de nuestra existencia sobre esta tierra desde el principio de los tiempos.';
+  const SRC = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
+  it('imagen envuelta en <p> (salida de mammoth) sobrevive al parse', () => {
+    const html = [
+      '<p>CAPÍTULO 1</p>',
+      `<p>${CUERPO}</p>`,
+      `<p><img src="${SRC}" alt="foto"></p>`,
+      `<p>${CUERPO}</p>`,
+    ].join('');
+    const { chapters } = parseHtmlContent(html);
+    const allHtml = chapters.map(c => c.html).join('');
+    expect(allHtml).toContain('<img');
+    expect(allHtml).toContain(SRC);
+  });
+
+  it('imagen suelta (bare <img>) también sobrevive', () => {
+    const html = [
+      '<p>CAPÍTULO 1</p>',
+      `<p>${CUERPO}</p>`,
+      `<img src="${SRC}" alt="foto">`,
+      `<p>${CUERPO}</p>`,
+    ].join('');
+    const { chapters } = parseHtmlContent(html);
+    expect(chapters.map(c => c.html).join('')).toContain(SRC);
+  });
+});
