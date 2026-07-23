@@ -816,6 +816,29 @@ const drawPassthrough = (doc, desc, engineCtx, xMm, widthMm, yMm, mmPerPx,
     }
   }
 
+  // Image (B2): draw the embedded/linked image at the engine-sized box.
+  if (tag === 'IMG' || /^<img[\s>]/i.test(html)) {
+    const src = (html.match(/\bsrc="([^"]+)"/i) || [])[1];
+    const wPx = parseFloat((html.match(/width:\s*([\d.]+)px/i) || [])[1] || 0);
+    const hPx = parseFloat((html.match(/height:\s*([\d.]+)px/i) || [])[1] || 0);
+    if (src && wPx > 0 && hPx > 0) {
+      const wMm = wPx * mmPerPx;
+      const hMm = hPx * mmPerPx;
+      // Center within the column (align was baked into the margin, but the PDF
+      // draws from an x; center by default like the preview's margin:auto).
+      const alignM = html.match(/margin:\s*[\d.]+em\s+(auto|0)/i);
+      const imgX = alignM && alignM[1] === 'auto' ? xMm + (widthMm - wMm) / 2 : xMm;
+      const topGapMm = lineHeightMm * 0.5; // matches the 0.5em top margin
+      try {
+        const fmt = /^data:image\/jpe?g/i.test(src) ? 'JPEG' : 'PNG';
+        doc.addImage(src, fmt, imgX, yMm + topGapMm, wMm, hMm);
+      } catch { /* unsupported src → skip rather than crash the export */ }
+      return yMm + topGapMm + hMm + topGapMm;
+    }
+    // No usable dims → skip (don't fall through to a text draw of the tag).
+    return yMm + lineHeightMm;
+  }
+
   if (tag === 'TABLE' || /^<table[\s>]/i.test(html)) {
     const below = drawTable(doc, html, engineCtx, xMm, yMm, mmPerPx);
     if (below != null) return below;

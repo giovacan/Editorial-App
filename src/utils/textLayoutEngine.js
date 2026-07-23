@@ -43,6 +43,7 @@ import {
   parseMultiElementHtmlWorker,
   parseHtmlElement,
 } from './textPreprocess.js';
+import { readImageDims, scaleImage } from './images.js';
 import {
   countLines,
   countLinesFromRuns,
@@ -67,12 +68,26 @@ const calculateElementHeight = (parsed, layoutCtx) => {
 
   // --- Block replaced elements (img, video, etc.) ---
   if (REPLACED_TAGS.has(tag)) {
-    // Use explicit height/width from style, or a sensible default
-    const h = styles.minHeight
-      ? resolveSize(styles.minHeight, styles.minHeightUnit, baseFontSizePx)
-      : baseFontSizePx * baseLineHeight * 4; // default: 4 lines
     const marginTopPx = resolveSize(styles.marginTop, styles.marginTopUnit, baseFontSizePx);
     const marginBottomPx = resolveSize(styles.marginBottom, styles.marginBottomUnit, baseFontSizePx);
+    // IMG (B2): prefer an explicit height (px) — paginateChapters pre-sizes the
+    // image via scaleImage and emits width/height so measured == drawn. Else
+    // scale from the precomputed intrinsic dims (data-w/data-h) here.
+    if (tag === 'IMG') {
+      if (styles.height) {
+        const hPx = resolveSize(styles.height, styles.heightUnit, baseFontSizePx);
+        if (hPx > 0) return marginTopPx + hPx + marginBottomPx;
+      }
+      const dims = parsed.outerHtml ? readImageDims(parsed.outerHtml) : null;
+      if (dims || !styles.minHeight) {
+        const box = scaleImage(dims, contentWidth, layoutCtx.images || {}, layoutCtx.contentHeight || 0);
+        return marginTopPx + box.height + marginBottomPx;
+      }
+    }
+    // Explicit min-height, or the legacy 4-line default (video/svg/unknown dims).
+    const h = styles.minHeight
+      ? resolveSize(styles.minHeight, styles.minHeightUnit, baseFontSizePx)
+      : baseFontSizePx * baseLineHeight * 4;
     return marginTopPx + h + marginBottomPx;
   }
 

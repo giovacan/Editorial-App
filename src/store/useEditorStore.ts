@@ -124,6 +124,14 @@ const initialState = {
       separator: 'partial' as const,  // ⅓-column rule above the notes
       numbering: 'per-chapter' as const,
     },
+    // Images (roadmap B2): sizing/placement for block images. Images are always
+    // measured/drawn now; these only tune the box.
+    images: {
+      maxWidthFrac: 0.9,        // ≤ 90% of the column
+      maxHeightFrac: 0.85,      // ≤ 85% of the page (tall images cap here)
+      align: 'center' as 'center' | 'left' | 'right',
+      caption: false,
+    },
     chapterTitle: {
       align: 'center' as const,
       bold: true,

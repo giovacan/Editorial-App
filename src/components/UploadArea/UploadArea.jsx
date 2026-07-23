@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { toast } from '../../utils/toast';
+import { precomputeImageDims } from '../../utils/images';
 import ChapterDetectionDialog from '../ChapterDetectionDialog/ChapterDetectionDialog';
 import useEditorStore from '../../store/useEditorStore';
 import { detectChaptersLocal } from './utils/chapterDetection';
@@ -54,7 +55,10 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
         const arrayBuffer = await file.arrayBuffer();
         const result = await window.mammoth.convertToHtml({ arrayBuffer });
         if (!result.value?.trim()) { toast.error('El documento DOCX está vacío o no se pudo leer.'); return; }
-        handleHtmlContent(result.value);
+        // B2: precompute image intrinsic dimensions (main thread) so the engine
+        // can size images deterministically without DOM.
+        const withDims = await precomputeImageDims(result.value);
+        handleHtmlContent(withDims);
       } catch (error) {
         toast.error('Error al leer el archivo DOCX: ' + error.message);
       }

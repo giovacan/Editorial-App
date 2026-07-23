@@ -105,6 +105,7 @@ import {
 import { optimalPaginate } from './optimalPaginate.js';
 import { buildNativeTableElement, splitTableByRows } from '../tableLayoutEngine.js';
 import { makeFootnoteCtx } from '../footnotes.js';
+import { readImageDims, scaleImage } from '../images.js';
 
 import {
   repairMissingIndents,
@@ -274,7 +275,9 @@ export const paginateChapters = (chapters, layoutCtx, measureDiv, safeConfig, op
     // Footnotes: only affects output when enabled; part of the fingerprint so
     // toggling/retuning notes invalidates the cache and repaginates.
     safeConfig?.footnotes?.enabled ? `fn1-${safeConfig.footnotes.fontScale}-${safeConfig.footnotes.lineHeight}` : 'fn0',
-    'v79-footnotes' // bump to force cache invalidation after algorithm changes
+    // Image sizing affects block heights → part of the fingerprint.
+    `img-${safeConfig?.images?.maxWidthFrac ?? 0.9}-${safeConfig?.images?.maxHeightFrac ?? 0.85}-${safeConfig?.images?.align ?? 'center'}`,
+    'v80-images' // bump to force cache invalidation after algorithm changes
   ].join('|'));
 
   // 'optimal' (default): global DP pagination per chapter — no fill-pass needed.
@@ -797,7 +800,9 @@ export const flattenChapterElements = (chapter, layoutCtx, canvasCtx, measureDiv
     }
   }
   const filtered = allChildren.filter(
-    el => el.textContent.trim() || el.tag === 'HR'
+    // Keep text blocks, rules, AND images (B2): an <img> has no text but must
+    // survive to be measured/paginated/drawn. Without this it was dropped here.
+    el => el.textContent.trim() || el.tag === 'HR' || el.tag === 'IMG'
   );
 
   // Tables: try NATIVE grid layout first (tableLayoutEngine measures cell
@@ -843,6 +848,26 @@ export const flattenChapterElements = (chapter, layoutCtx, canvasCtx, measureDiv
       });
       assignBlockId(elements[elements.length - 1], chapterId, elements.length - 1);
       continue;
+    }
+    // Image block (B2): size it deterministically from data-w/data-h scaled to
+    // the column (scaleImage), emitting EXPLICIT px so the drawn box equals the
+    // measured height. Bypasses buildParagraphHtml (which would wrap it in <p>).
+    if (el.tag === 'IMG') {
+      const outer = el.outerHtml || '';
+      const srcM = outer.match(/\bsrc="([^"]*)"/i);
+      if (srcM) {
+        const dims = readImageDims(outer);
+        const box = scaleImage(dims, canvasCtx.contentWidth, safeConfig.images || {}, contentHeight);
+        const align = safeConfig.images?.align || 'center';
+        const marginX = align === 'right' ? '0 0 0 auto' : align === 'left' ? '0' : 'auto';
+        const wAttr = dims ? ` data-w="${dims.w}" data-h="${dims.h}"` : '';
+        const altM = outer.match(/\balt="([^"]*)"/i);
+        const imgHtml = `<img src="${srcM[1]}"${wAttr}${altM ? ` alt="${altM[1]}"` : ''} style="display:block;width:${box.width}px;height:${box.height}px;margin:0.5em ${marginX};" />`;
+        const imgH = measureHtmlHeight(imgHtml, canvasCtx);
+        elements.push({ html: imgHtml, height: imgH, isTitle: false, tag: 'IMG', textContent: '', isBold: false });
+        assignBlockId(elements[elements.length - 1], chapterId, elements.length - 1);
+        continue;
+      }
     }
     const originalIdx = allChildren.indexOf(el);
     const isFirstParagraph = originalIdx === firstParagraphIdx;

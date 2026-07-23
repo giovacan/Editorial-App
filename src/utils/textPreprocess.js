@@ -86,6 +86,8 @@ export const BLOCK_TAGS = new Set([
 ]);
 
 export const REPLACED_TAGS = new Set(['IMG', 'VIDEO', 'CANVAS', 'SVG', 'IFRAME']);
+// HTML void elements: no closing tag, treated as atomic blocks by the parser.
+export const VOID_TAGS = new Set(['IMG', 'HR', 'BR', 'INPUT', 'AREA', 'COL', 'EMBED', 'SOURCE', 'TRACK', 'WBR']);
 
 // ─── Inline text runs extractor ─────────────────────────────────────
 // Walks the DOM tree of an element and produces a flat array of "runs":
@@ -293,6 +295,9 @@ export const parseStyleString = (cssText) => {
     display: get('display') || '',
     minHeight: parseFloat(get('min-height')) || 0,
     minHeightUnit: (get('min-height') || '').replace(/[\d.-]/g, '') || 'px',
+    // Explicit height (used for pre-sized images, B2).
+    height: parseFloat(get('height')) || 0,
+    heightUnit: (get('height') || '').replace(/[\d.-]/g, '') || 'px',
   };
 };
 
@@ -413,8 +418,21 @@ export const parseMultiElementHtmlWorker = (html) => {
     const tagNameMatch = openTag.match(/^<([a-zA-Z][^\s/>]*)/);
     if (!tagNameMatch) { i = tagEnd + 1; continue; }
     const tagName = tagNameMatch[1].toUpperCase();
-    // Self-closing
-    if (openTag.endsWith('/>')) { i = tagEnd + 1; continue; }
+    // Void / self-closing elements (IMG, HR, BR…) have no closing tag. Emit them
+    // as atomic elements carrying their full markup (outerHtml) so replaced
+    // content — images with src/data-w/data-h — survives measurement + render.
+    // (Previously an <img> without /> ran the close-tag scan to EOF and swallowed
+    // the rest of the chapter; a self-closing <img/> was dropped entirely.)
+    const isVoid = VOID_TAGS.has(tagName);
+    if (isVoid || openTag.endsWith('/>')) {
+      const styleMatch0 = openTag.match(/\bstyle="([^"]*)"/i);
+      elements.push({
+        text: '', tag: tagName, styles: parseStyleString(styleMatch0 ? styleMatch0[1] : ''),
+        runs: null, innerHTML: '', outerHtml: openTag,
+      });
+      i = tagEnd + 1;
+      continue;
+    }
     // Find matching close tag
     const closeTag = `</${tagNameMatch[1]}`;
     let depth = 1;
