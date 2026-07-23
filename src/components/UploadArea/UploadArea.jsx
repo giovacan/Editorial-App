@@ -5,6 +5,7 @@ import ChapterDetectionDialog from '../ChapterDetectionDialog/ChapterDetectionDi
 import useEditorStore from '../../store/useEditorStore';
 import { detectChaptersLocal } from './utils/chapterDetection';
 import { parseTextContent, parseHtmlContent } from './utils/contentParser';
+import { useAuth } from '../../contexts/AuthContext';
 import './UploadArea.css';
 
 function UploadArea({ onContentLoaded, onChaptersDetected, bookId = null }) {
@@ -20,6 +21,7 @@ function UploadArea({ onContentLoaded, onChaptersDetected, bookId = null }) {
 
   const setConfirmedChapterTitles = useEditorStore(s => s.setConfirmedChapterTitles);
   const paginationActive = useEditorStore(s => s.paginationProgress.isActive);
+  const { user } = useAuth();
 
   // Lazy-load mammoth for DOCX support
   useEffect(() => {
@@ -65,6 +67,12 @@ function UploadArea({ onContentLoaded, onChaptersDetected, bookId = null }) {
           htmlToLoad = await extractImagesFromHtml(result.value, bookId);
         } catch (e) {
           console.warn('extractImagesFromHtml falló, importando sin extraer:', e);
+        }
+        // Anonymous user + images extracted: warn that images live only in this
+        // browser (IndexedDB) and offer login to save them to the cloud. Login
+        // migration to Firebase Storage lands in PR-B.
+        if (!user && /\bdata-img-id="/.test(htmlToLoad)) {
+          toast.info('Tu libro tiene imágenes guardadas solo en este navegador. Inicia sesión para guardarlas en la nube y no perderlas.');
         }
         handleHtmlContent(htmlToLoad);
       } catch (error) {
