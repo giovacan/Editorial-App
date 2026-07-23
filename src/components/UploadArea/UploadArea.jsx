@@ -86,9 +86,16 @@ function UploadArea({ onContentLoaded, onChaptersDetected, bookId = null }) {
           toast.info('Tu libro tiene imágenes guardadas solo en este navegador. Inicia sesión para guardarlas en la nube y no perderlas.');
         }
 
-        // Detect chapters from the RAW html now (fast) → show the dialog. The
-        // final store insert uses the extracted html (see handleChaptersConfirm).
-        handleHtmlContent(rawHtml);
+        // Detect chapters now → show the dialog. Detection reads text headings
+        // only, so strip the base64 first: parsing 19MB of image data into the
+        // DOM cost ~3s. Replace each <img …base64…> with a tiny placeholder
+        // (keeps the tag so image-only paragraphs still count structurally) —
+        // the megabytes vanish and detection drops to milliseconds. The full
+        // rawHtml is still what gets extracted in the background above.
+        const detectHtml = hasImages
+          ? rawHtml.replace(/<img\b[^>]*>/gi, '<img>')
+          : rawHtml;
+        handleHtmlContent(detectHtml);
         console.log(`[import] detección+diálogo ${(performance.now() - _tDlg).toFixed(0)}ms`);
       } catch (error) {
         toast.error('Error al leer el archivo DOCX: ' + error.message);
