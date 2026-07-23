@@ -867,14 +867,19 @@ export const flattenChapterElements = (chapter, layoutCtx, canvasCtx, measureDiv
     if (el.tag === 'IMG') {
       const outer = el.outerHtml || '';
       const srcM = outer.match(/\bsrc="([^"]*)"/i);
-      if (srcM) {
+      const idM = outer.match(/\bdata-img-id="([^"]*)"/i);
+      // An image is drawable if it has EITHER a src (legacy/linked) OR a
+      // data-img-id (B2 content-addressed store, resolved to a src at render).
+      if (srcM || idM) {
         const dims = readImageDims(outer);
         const box = scaleImage(dims, canvasCtx.contentWidth, safeConfig.images || {}, contentHeight);
         const align = safeConfig.images?.align || 'center';
         const marginX = align === 'right' ? '0 0 0 auto' : align === 'left' ? '0' : 'auto';
         const wAttr = dims ? ` data-w="${dims.w}" data-h="${dims.h}"` : '';
+        const srcAttr = srcM ? ` src="${srcM[1]}"` : '';
+        const idAttr = idM ? ` data-img-id="${idM[1]}"` : '';
         const altM = outer.match(/\balt="([^"]*)"/i);
-        const imgHtml = `<img src="${srcM[1]}"${wAttr}${altM ? ` alt="${altM[1]}"` : ''} style="display:block;width:${box.width}px;height:${box.height}px;margin:0.5em ${marginX};" />`;
+        const imgHtml = `<img${srcAttr}${idAttr}${wAttr}${altM ? ` alt="${altM[1]}"` : ''} style="display:block;width:${box.width}px;height:${box.height}px;margin:0.5em ${marginX};" />`;
         const imgH = measureHtmlHeight(imgHtml, canvasCtx);
         elements.push({ html: imgHtml, height: imgH, isTitle: false, tag: 'IMG', textContent: '', isBold: false });
         assignBlockId(elements[elements.length - 1], chapterId, elements.length - 1);

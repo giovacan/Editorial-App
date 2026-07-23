@@ -230,7 +230,7 @@ function Layout() {
             onGoToMatch={handleSearchGoToMatch}
           />
           {showUpload ? (
-            <UploadArea onContentLoaded={handleContentLoaded} />
+            <UploadArea onContentLoaded={handleContentLoaded} bookId={bookId || bookData?.id || null} />
           ) : (
             <Editor pushChange={pushChange} onContentChange={(time) => setLastSaveTime(time)} />
           )}

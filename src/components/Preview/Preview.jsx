@@ -18,6 +18,7 @@ import PaginationProgressBar from '../PaginationProgressBar/PaginationProgressBa
 import { useLayoutVerification, formatLayoutAuditText } from '../../hooks/useLayoutVerification';
 import { renderPageAsEngineLines } from '../../utils/lineRenderer';
 import { buildFootnoteBlockHtml } from '../../utils/footnotes';
+import { resolveImageSrc } from '../../utils/imageStore';
 import './Preview.css';
 
 const PX_PER_MM = 3.7795;
@@ -234,6 +235,25 @@ function Preview() {
     adjustWordSpacing(previewContentRef.current);
     adjustWordSpacing(magnifierContentRef.current);
   }, [currentPage, debugHtml, isFrontMatterPage, safeConfig.paragraph?.align]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // B2: images live in the content-addressed store, not in the HTML (only a
+  // `data-img-id` ref survives). After the page renders, resolve each id to an
+  // objectURL and set the <img> src. Async (blob may come from IndexedDB); runs
+  // whenever the page content changes.
+  useEffect(() => {
+    let cancelled = false;
+    const hydrate = async (root) => {
+      if (!root) return;
+      const imgs = root.querySelectorAll('img[data-img-id]:not([src])');
+      await Promise.all([...imgs].map(async (img) => {
+        const url = await resolveImageSrc(img.getAttribute('data-img-id'));
+        if (!cancelled && url) img.src = url;
+      }));
+    };
+    hydrate(previewContentRef.current);
+    hydrate(magnifierContentRef.current);
+    return () => { cancelled = true; };
+  }, [currentPage, renderedHtml]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const {
     pageWidthPx, pageHeightPx,

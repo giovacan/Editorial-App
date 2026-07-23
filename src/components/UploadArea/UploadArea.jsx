@@ -1,13 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { toast } from '../../utils/toast';
-import { precomputeImageDims } from '../../utils/images';
+import { extractImagesFromHtml } from '../../utils/extractImages';
 import ChapterDetectionDialog from '../ChapterDetectionDialog/ChapterDetectionDialog';
 import useEditorStore from '../../store/useEditorStore';
 import { detectChaptersLocal } from './utils/chapterDetection';
 import { parseTextContent, parseHtmlContent } from './utils/contentParser';
 import './UploadArea.css';
 
-function UploadArea({ onContentLoaded, onChaptersDetected }) {
+function UploadArea({ onContentLoaded, onChaptersDetected, bookId = null }) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [mammothReady, setMammothReady] = useState(() => !!window.mammoth);
@@ -55,15 +55,16 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
         const arrayBuffer = await file.arrayBuffer();
         const result = await window.mammoth.convertToHtml({ arrayBuffer });
         if (!result.value?.trim()) { toast.error('El documento DOCX está vacío o no se pudo leer.'); return; }
-        // B2: precompute image intrinsic dimensions (main thread) so the engine
-        // can size images without DOM. NEVER let this block the import — on any
-        // failure/timeout, fall back to the raw HTML (the engine uses a default
-        // aspect for images without data-w/data-h).
+        // B2: pull base64 images OUT of the HTML into the content-addressed image
+        // store, leaving only lightweight data-img-id refs. This keeps the HTML
+        // small (localStorage, the pagination worker and Firestore all choke on
+        // multi-MB base64). Also measures each image's dimensions in one pass.
+        // NEVER let this block the import — on any failure, fall back to raw HTML.
         let htmlToLoad = result.value;
         try {
-          htmlToLoad = await precomputeImageDims(result.value);
+          htmlToLoad = await extractImagesFromHtml(result.value, bookId);
         } catch (e) {
-          console.warn('precomputeImageDims falló, importando sin dimensiones:', e);
+          console.warn('extractImagesFromHtml falló, importando sin extraer:', e);
         }
         handleHtmlContent(htmlToLoad);
       } catch (error) {

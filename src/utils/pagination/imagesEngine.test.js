@@ -87,4 +87,20 @@ describe('images engine (B2)', () => {
     const b = paginate(chapterWithImg(800, 600));
     expect(a.length).toBe(b.length);
   });
+
+  it('imagen por data-img-id (sin src, tras extractImages) sobrevive y se mide', () => {
+    // Tras PR-A el <img> ya no trae base64: sólo data-img-id + data-w/data-h.
+    // El motor no necesita el src — mide por data-w/data-h.
+    const chapter = {
+      id: 'ch1', type: 'chapter', title: 'Capítulo 1',
+      html: `<p>${PARA}</p><p><img data-img-id="img_abc123" data-w="800" data-h="600" alt="foto"></p><p>${PARA}</p>`,
+      wordCount: 100,
+    };
+    const pages = paginate(chapter);
+    const html = allHtml(pages);
+    expect(html).toContain('data-img-id="img_abc123"');
+    // el bloque de imagen recibió una caja explícita (medido == dibujado)
+    expect(html).toMatch(/width:\d+px;height:\d+px/);
+    expect((html.match(/La memoria del tiempo/g) || []).length).toBe(2);
+  });
 });
