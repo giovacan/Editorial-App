@@ -18,6 +18,11 @@ function UploadArea({ onContentLoaded, onChaptersDetected, bookId = null }) {
   const [showChapterDetection, setShowChapterDetection] = useState(false);
   const [chapterDetectionConfirmed, setChapterDetectionConfirmed] = useState(false);
   const fileInputRef = useRef(null);
+  // B2 perf: image extraction runs in the background while the chapter dialog is
+  // shown. extractionRef holds that promise; hadImagesRef tells confirm whether
+  // to re-parse the extracted html (images) or use the already-parsed chapters.
+  const extractionRef = useRef(null);
+  const hadImagesRef = useRef(false);
 
   const setConfirmedChapterTitles = useEditorStore(s => s.setConfirmedChapterTitles);
   const paginationActive = useEditorStore(s => s.paginationProgress.isActive);
@@ -54,27 +59,37 @@ function UploadArea({ onContentLoaded, onChaptersDetected, bookId = null }) {
         return;
       }
       try {
+        const _t0 = performance.now();
         const arrayBuffer = await file.arrayBuffer();
         const result = await window.mammoth.convertToHtml({ arrayBuffer });
         if (!result.value?.trim()) { toast.error('El documento DOCX está vacío o no se pudo leer.'); return; }
-        // B2: pull base64 images OUT of the HTML into the content-addressed image
-        // store, leaving only lightweight data-img-id refs. This keeps the HTML
-        // small (localStorage, the pagination worker and Firestore all choke on
-        // multi-MB base64). Also measures each image's dimensions in one pass.
-        // NEVER let this block the import — on any failure, fall back to raw HTML.
-        let htmlToLoad = result.value;
-        try {
-          htmlToLoad = await extractImagesFromHtml(result.value, bookId);
-        } catch (e) {
-          console.warn('extractImagesFromHtml falló, importando sin extraer:', e);
-        }
-        // Anonymous user + images extracted: warn that images live only in this
-        // browser (IndexedDB) and offer login to save them to the cloud. Login
-        // migration to Firebase Storage lands in PR-B.
-        if (!user && /\bdata-img-id="/.test(htmlToLoad)) {
+        const rawHtml = result.value;
+        console.log(`[import] mammoth ${(performance.now() - _t0).toFixed(0)}ms · ${(rawHtml.length/1024).toFixed(0)}KB · ${(rawHtml.match(/<img/gi)||[]).length} imgs`);
+        const _tDlg = performance.now();
+        const hasImages = rawHtml.indexOf('<img') !== -1;
+        hadImagesRef.current = hasImages;
+
+        // B2 perf: image extraction (decode + measure every image) is the slow
+        // part (~7s for 100+ images) and the chapter-detection dialog DOESN'T
+        // need it — detection reads text headings only. So kick off extraction
+        // in the BACKGROUND and show the dialog immediately; we await the result
+        // when the user confirms (by then it's usually done). Falls back to raw
+        // HTML if extraction fails. No images → skip entirely (raw == final).
+        extractionRef.current = hasImages
+          ? extractImagesFromHtml(rawHtml, bookId).catch((e) => {
+              console.warn('extractImagesFromHtml falló, importando sin extraer:', e);
+              return rawHtml;
+            })
+          : Promise.resolve(rawHtml);
+
+        if (!user && hasImages) {
           toast.info('Tu libro tiene imágenes guardadas solo en este navegador. Inicia sesión para guardarlas en la nube y no perderlas.');
         }
-        handleHtmlContent(htmlToLoad);
+
+        // Detect chapters from the RAW html now (fast) → show the dialog. The
+        // final store insert uses the extracted html (see handleChaptersConfirm).
+        handleHtmlContent(rawHtml);
+        console.log(`[import] detección+diálogo ${(performance.now() - _tDlg).toFixed(0)}ms`);
       } catch (error) {
         toast.error('Error al leer el archivo DOCX: ' + error.message);
       }
@@ -106,15 +121,44 @@ function UploadArea({ onContentLoaded, onChaptersDetected, bookId = null }) {
       setPendingBookTitle(bookTitle || '');
       setShowChapterDetection(true);
     } else {
+      // No chapter dialog → load directly. Still swap in the extracted html so
+      // base64 never reaches the store (await the background extraction first).
       setConfirmedChapterTitles([]);
-      onContentLoaded(chapters, bookTitle || '');
+      if (hadImagesRef.current && extractionRef.current) {
+        extractionRef.current.then((extractedHtml) => {
+          const parsed = parseHtmlContent(extractedHtml);
+          extractionRef.current = null; hadImagesRef.current = false;
+          onContentLoaded(parsed.chapters?.length ? parsed.chapters : chapters, parsed.bookTitle || bookTitle || '');
+        });
+      } else {
+        onContentLoaded(chapters, bookTitle || '');
+      }
     }
   };
 
-  const handleChaptersConfirm = (confirmedList) => {
+  const handleChaptersConfirm = async (confirmedList) => {
     setConfirmedChapterTitles(confirmedList.filter(ch => ch.confirmed).map(ch => ch.detectedTitle));
     if (onChaptersDetected) onChaptersDetected(confirmedList);
-    if (pendingChapters) { onContentLoaded(pendingChapters, pendingBookTitle); setPendingChapters(null); setPendingBookTitle(''); }
+
+    // The dialog was shown from chapters parsed off the RAW html (fast, but with
+    // base64 still inline). Before storing, swap in the chapters parsed from the
+    // EXTRACTED html (images pulled out → data-img-id). Await the background
+    // extraction that started at import (usually already done by now).
+    let chaptersToLoad = pendingChapters;
+    let titleToLoad = pendingBookTitle;
+    if (hadImagesRef.current && extractionRef.current) {
+      try {
+        const extractedHtml = await extractionRef.current;
+        const parsed = parseHtmlContent(extractedHtml);
+        if (parsed.chapters?.length) { chaptersToLoad = parsed.chapters; titleToLoad = parsed.bookTitle || titleToLoad; }
+      } catch (e) {
+        console.warn('No se pudo re-parsear el html con imágenes extraídas:', e);
+      }
+    }
+    extractionRef.current = null;
+    hadImagesRef.current = false;
+
+    if (chaptersToLoad) { onContentLoaded(chaptersToLoad, titleToLoad); setPendingChapters(null); setPendingBookTitle(''); }
     // Dialog stays open — closes automatically when pagination finishes
     setChapterDetectionConfirmed(true);
   };
