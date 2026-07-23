@@ -22,6 +22,7 @@ import SubheadersPanel from './config/SubheadersPanel';
 import ParagraphPanel from './config/ParagraphPanel';
 import QuotePanel from './config/QuotePanel';
 import HeaderPanel from './config/HeaderPanel';
+import FootnotesPanel from './config/FootnotesPanel';
 import PaginationPanel from './config/PaginationPanel';
 import OptimizationPanel from './config/OptimizationPanel';
 import './SidebarLeft.css';
@@ -310,6 +311,17 @@ function SidebarLeft() {
       icon: <IconBookmark />,
       content: (
         <HeaderPanel
+          safeConfig={safeConfig}
+          setConfig={setConfig}
+        />
+      )
+    },
+    {
+      id: 'notas',
+      title: 'Notas al Pie',
+      icon: <IconHash />,
+      content: (
+        <FootnotesPanel
           safeConfig={safeConfig}
           setConfig={setConfig}
         />
