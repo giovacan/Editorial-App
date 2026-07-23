@@ -20,7 +20,7 @@ export const docxToHtml = async (file) => {
   return new Promise((resolve, reject) => {
     let worker;
     try {
-      worker = new Worker(new URL('../workers/mammothWorker.js', import.meta.url));
+      worker = new Worker(new URL('../workers/mammothWorker.js', import.meta.url), { type: 'module' });
     } catch {
       fallback(file).then(resolve, reject);
       return;
