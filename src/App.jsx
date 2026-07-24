@@ -18,6 +18,7 @@ import AdminConfig from './pages/admin/AdminConfig';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminPlans from './pages/admin/AdminPlans';
 import AdminStats from './pages/admin/AdminStats';
+import CoverDemos from './pages/demos/CoverDemos';
 import './App.css';
 
 function App() {
@@ -30,6 +31,7 @@ function App() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/app" element={<Layout />} />
+        <Route path="/demos/portadas" element={<CoverDemos />} />
 
         {/* Protected routes - requires authentication */}
         <Route element={<ProtectedRoute />}>
