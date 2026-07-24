@@ -11,6 +11,7 @@ import { calculateContentDimensions } from '../../utils/textMeasurer';
 import PageLayoutView from '../PageLayoutView/PageLayoutView';
 import { findNthMatchInDoc } from '../../utils/editorSearch';
 import { footnoteRefsIn } from '../../utils/footnotes';
+import { toast } from '../../utils/toast';
 import { nanoid } from 'nanoid';
 import FootnoteMark from './extensions/FootnoteMark';
 import FootnoteBubbleMenu from './FootnoteBubbleMenu';
@@ -380,7 +381,7 @@ function Editor({ pushChange, onContentChange }) {
     let cut = selection.from;
     try { cut = $from.before(1); } catch { /* use raw from */ }
     if (cut <= 0 || cut >= doc.content.size) {
-      alert('Coloca el cursor donde quieres que empiece el nuevo capítulo (no al inicio ni al final del texto).');
+      toast.info('Coloca el cursor donde quieres que empiece el nuevo capítulo (no al inicio ni al final del texto).');
       return;
     }
     // Serialize the two halves to HTML via the schema's DOM serializer.
@@ -548,11 +549,13 @@ function Editor({ pushChange, onContentChange }) {
 
         <div className="toolbar-group">
           <button
+            type="button"
             className="btn btn-icon"
+            aria-label="Dividir capítulo en el cursor"
             title="Dividir capítulo aquí (crea un capítulo nuevo desde el cursor)"
             onClick={handleSplitHere}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M8 3v18"/><path d="M3 12h5"/><path d="M16 3v18"/><path d="M21 12h-5"/>
               <path d="M12 8v8" strokeDasharray="2 2"/>
             </svg>

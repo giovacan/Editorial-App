@@ -5,6 +5,14 @@
   background: #f9fafb;
   display: flex;
   flex-direction: column;
+  overscroll-behavior: contain;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+/* Shared visible focus for all interactive controls in the review. */
+.chreview-overlay :focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+  border-radius: 6px;
 }
 
 /* Header */
@@ -61,9 +69,10 @@
   border: 1px solid #e5e7eb;
   border-radius: 10px;
   margin-bottom: 8px;
-  cursor: pointer;
   background: #fff;
   transition: border-color 0.15s, box-shadow 0.15s;
+  user-select: none; /* don't select text while dragging to reorder */
+  touch-action: manipulation;
 }
 .chreview-item:hover { border-color: #c7d2fe; }
 .chreview-item.active {
@@ -89,10 +98,15 @@
   place-items: center;
   background: #eef2ff;
   color: #4f46e5;
+  border: none;
   border-radius: 6px;
   font-size: 0.7rem;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  padding: 0;
 }
+.chreview-num:hover { background: #e0e7ff; }
 .chreview-fields {
   display: flex;
   flex-direction: column;
@@ -150,6 +164,7 @@
   margin: 4px 0 0 30px;
   font-size: 0.7rem;
   color: #9ca3af;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Right preview */
@@ -200,6 +215,8 @@
   font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
+  touch-action: manipulation;
+  font-variant-numeric: tabular-nums;
 }
 .chreview-continue:hover:not(:disabled) { background: #4338ca; }
 .chreview-continue:disabled { cursor: default; }
@@ -216,4 +233,9 @@
   .chreview-body { grid-template-columns: 1fr; }
   .chreview-preview { display: none; }
   .chreview-list { border-right: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chreview-item,
+  .chreview-progress-fill { transition: none; }
 }

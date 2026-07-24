@@ -39,6 +39,15 @@ function ChapterReview({ chapters, bookTitle, onConfirm, onCancel }) {
     return () => { cancelled = true; };
   }, [selected?.id, selected?.html]);
 
+  // Esc = skip review (load as detected), unless pagination already started.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape' && !paginationActive) onCancel(chapters, bookTitle);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [paginationActive, chapters, bookTitle, onCancel]);
+
   const fieldsOf = (c) => {
     const s = parseLabelAndName(c.title);
     return { label: c.chapterLabel ?? s.label, name: c.chapterName ?? s.name };
@@ -101,43 +110,54 @@ function ChapterReview({ chapters, bookTitle, onConfirm, onCancel }) {
                 key={c.id}
                 role="listitem"
                 className={`chreview-item ${isActive ? 'active' : ''}`}
-                onClick={() => setSelectedId(c.id)}
+                aria-current={isActive ? 'true' : undefined}
                 draggable
                 onDragStart={() => { dragIndex.current = index; }}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={() => handleDrop(index)}
               >
                 <div className="chreview-item-row">
-                  <span className="chreview-drag" title="Arrastrar para reordenar">⋮⋮</span>
-                  <span className="chreview-num">{index + 1}</span>
-                  <div className="chreview-fields" onClick={(e) => e.stopPropagation()}>
+                  <span className="chreview-drag" aria-hidden="true">⋮⋮</span>
+                  <button
+                    type="button"
+                    className="chreview-num"
+                    onClick={() => setSelectedId(c.id)}
+                    aria-label={`Ver capítulo ${index + 1}: ${name || c.title}`}
+                    title="Ver contenido"
+                  >
+                    {index + 1}
+                  </button>
+                  <div className="chreview-fields">
                     <input
                       className="chreview-label-input"
                       value={label}
-                      placeholder="Nº / etiqueta"
+                      placeholder="Nº / etiqueta…"
+                      aria-label={`Número o etiqueta del capítulo ${index + 1}`}
+                      spellCheck={false}
                       onChange={(e) => doUpdate(c.id, { label: e.target.value })}
                       title="Número o etiqueta (ej. CAPÍTULO 2)"
                     />
                     <input
                       className="chreview-name-input"
                       value={name}
-                      placeholder="Nombre del capítulo"
+                      placeholder="Nombre del capítulo…"
+                      aria-label={`Nombre del capítulo ${index + 1}`}
                       onChange={(e) => doUpdate(c.id, { name: e.target.value })}
                     />
                   </div>
-                  <div className="chreview-actions" onClick={(e) => e.stopPropagation()}>
-                    <button className="chreview-btn" title="Fusionar con el capítulo anterior"
+                  <div className="chreview-actions">
+                    <button className="chreview-btn" type="button" aria-label="Fusionar con el capítulo anterior" title="Fusionar con el capítulo anterior"
                       disabled={index === 0}
-                      onClick={() => doMerge(c.id)}>⭱</button>
-                    <button className="chreview-btn" title="Subir"
+                      onClick={() => doMerge(c.id)}><span aria-hidden="true">⭱</span></button>
+                    <button className="chreview-btn" type="button" aria-label="Subir capítulo" title="Subir"
                       disabled={index === 0}
-                      onClick={() => doMove(index, index - 1)}>↑</button>
-                    <button className="chreview-btn" title="Bajar"
+                      onClick={() => doMove(index, index - 1)}><span aria-hidden="true">↑</span></button>
+                    <button className="chreview-btn" type="button" aria-label="Bajar capítulo" title="Bajar"
                       disabled={index === draft.length - 1}
-                      onClick={() => doMove(index, index + 1)}>↓</button>
-                    <button className="chreview-btn chreview-btn-danger" title="Eliminar capítulo"
+                      onClick={() => doMove(index, index + 1)}><span aria-hidden="true">↓</span></button>
+                    <button className="chreview-btn chreview-btn-danger" type="button" aria-label="Eliminar capítulo" title="Eliminar capítulo"
                       disabled={draft.length <= 1}
-                      onClick={() => doRemove(c.id)}>✕</button>
+                      onClick={() => doRemove(c.id)}><span aria-hidden="true">✕</span></button>
                   </div>
                 </div>
                 <span className="chreview-meta">{c.wordCount || 0} palabras</span>
@@ -147,10 +167,12 @@ function ChapterReview({ chapters, bookTitle, onConfirm, onCancel }) {
         </div>
 
         {/* Right: reading preview of the selected chapter */}
-        <div className="chreview-preview">
+        <div className="chreview-preview" aria-live="polite">
           {selected ? (
             <>
               <div className="chreview-preview-title">{selected.title || 'Sin título'}</div>
+              {/* NOTE: content comes from the imported .docx; sanitization is the
+                  deferred security pass (PR-SEC). */}
               <div className="chreview-preview-body" dangerouslySetInnerHTML={{ __html: previewHtml }} />
             </>
           ) : (
