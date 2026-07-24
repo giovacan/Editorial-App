@@ -68,3 +68,38 @@ describe('mergeChapterIntoPrevious', () => {
     expect(useEditorStore.getState().editing.activeChapterId).toBe('c1');
   });
 });
+
+describe('splitChapter', () => {
+  it('parte el capítulo: el actual conserva htmlBefore, uno nuevo con htmlAfter', () => {
+    loadChapters([chapter('c1', 'Cap 1', '<p>uno</p><p>dos</p><p>tres</p>')]);
+    useEditorStore.getState().splitChapter('c1', '<p>uno</p>', '<p>dos</p><p>tres</p>', 'Segundo Tema');
+    const chs = useEditorStore.getState().bookData.chapters;
+    expect(chs.length).toBe(2);
+    expect(chs[0].id).toBe('c1');
+    expect(chs[0].html).toBe('<p>uno</p>');
+    expect(chs[1].html).toBe('<p>dos</p><p>tres</p>');
+    expect(chs[1].title).toBe('Segundo Tema');
+    // el nuevo capítulo queda activo
+    expect(useEditorStore.getState().editing.activeChapterId).toBe(chs[1].id);
+  });
+
+  it('recalcula wordCount de ambas mitades', () => {
+    loadChapters([chapter('c1', 'Cap 1', '<p>a b c</p><p>d e</p>')]);
+    useEditorStore.getState().splitChapter('c1', '<p>a b c</p>', '<p>d e</p>', 'Nuevo');
+    const chs = useEditorStore.getState().bookData.chapters;
+    expect(chs[0].wordCount).toBe(3);
+    expect(chs[1].wordCount).toBe(2);
+  });
+
+  it('el nuevo capítulo se inserta JUSTO después del actual', () => {
+    loadChapters([
+      chapter('c1', 'Cap 1', '<p>x</p><p>y</p>'),
+      chapter('c2', 'Cap 2', '<p>z</p>'),
+    ]);
+    useEditorStore.getState().splitChapter('c1', '<p>x</p>', '<p>y</p>', 'Nuevo');
+    const ids = useEditorStore.getState().bookData.chapters.map((c) => c.id);
+    expect(ids[0]).toBe('c1');
+    expect(ids[2]).toBe('c2'); // el nuevo quedó en medio (índice 1)
+    expect(ids.length).toBe(3);
+  });
+});

@@ -300,6 +300,7 @@ export interface EditorState {
   loadContent: (chapters: Chapter[]) => void;
   syncChaptersFromCloud: (chapters: Chapter[]) => void;
   mergeChapterIntoPrevious: (id: string) => void;
+  splitChapter: (id: string, htmlBefore: string, htmlAfter: string, newTitle: string) => void;
   newProject: () => void;
   getStats: () => Stats;
   setConfirmedChapterTitles: (titles: string[]) => void;

@@ -511,6 +511,37 @@ const useEditorStore = create<EditorState>()(
       return newState;
     }),
 
+    // Split a chapter in two at a chosen point (fix for "detector missed a
+    // chapter"): the current chapter keeps htmlBefore; a NEW chapter with
+    // htmlAfter is inserted right after it and becomes active. Used from the text
+    // editor ("dividir aquí" at the cursor).
+    splitChapter: (id, htmlBefore, htmlAfter, newTitle) => set((state) => {
+      const chapters = [...(state.bookData?.chapters || [])];
+      const idx = chapters.findIndex((c) => c.id === id);
+      if (idx === -1) return state;
+      const cur = chapters[idx];
+      const words = (html: string) =>
+        (html || '').replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+      const newId = `chapter-${Date.now()}`;
+      const newChapter = {
+        id: newId,
+        type: 'chapter' as const,
+        title: (newTitle || 'Nuevo capítulo').trim(),
+        chapterName: (newTitle || 'Nuevo capítulo').trim(),
+        chapterLabel: '',
+        html: htmlAfter || '',
+        wordCount: words(htmlAfter),
+      };
+      chapters[idx] = { ...cur, html: htmlBefore || '', wordCount: words(htmlBefore) };
+      chapters.splice(idx + 1, 0, newChapter);
+      const newState = {
+        bookData: { ...state.bookData, chapters },
+        editing: { ...state.editing, activeChapterId: newId, isDirty: true },
+      };
+      saveToStorage(newState as EditorState);
+      return newState;
+    }),
+
     setActiveChapter: (id) => set((state) => ({
       editing: { ...state.editing, activeChapterId: id }
     })),
