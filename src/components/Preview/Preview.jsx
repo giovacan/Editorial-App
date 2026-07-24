@@ -18,6 +18,7 @@ import PaginationProgressBar from '../PaginationProgressBar/PaginationProgressBa
 import { useLayoutVerification, formatLayoutAuditText } from '../../hooks/useLayoutVerification';
 import { renderPageAsEngineLines } from '../../utils/lineRenderer';
 import { buildFootnoteBlockHtml } from '../../utils/footnotes';
+import { useHydratedHtml } from '../../hooks/useHydratedHtml';
 import './Preview.css';
 
 const PX_PER_MM = 3.7795;
@@ -261,7 +262,7 @@ function Preview() {
   // own alignment). The browser cannot re-wrap them — engine↔DOM divergence
   // is impossible by construction. Disable with config.render.engineLines=false.
   const engineLinesOn = safeConfig.render?.engineLines !== false;
-  const renderedHtml = useMemo(() => {
+  const renderedHtmlRaw = useMemo(() => {
     if (isFrontMatterPage || debugConfig.enabled || !engineLinesOn || !layoutDims?.contentWidth) {
       return debugHtml;
     }
@@ -271,6 +272,11 @@ function Preview() {
       fontFamily: layoutDims.fontFamily,
     });
   }, [debugHtml, isFrontMatterPage, engineLinesOn, layoutDims]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // B2: bake image srcs (data-img-id → objectURL) INTO the html string, so they
+  // survive every re-render (hover/magnifier) instead of being set on the DOM
+  // post-render and wiped by the next innerHTML injection.
+  const renderedHtml = useHydratedHtml(renderedHtmlRaw);
 
   const { showMagnifier, setShowMagnifier, magnifierZoom, setMagnifierZoom, magnifierPanelRef,
     magnifierPos, updateMagnifierPosition, handleMouseEnterPreview, handleMouseLeavePreview,

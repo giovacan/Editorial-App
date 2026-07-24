@@ -45,6 +45,7 @@ function SidebarLeft() {
   const setActiveChapter = useEditorStore((s) => s.setActiveChapter);
   const deleteChapter = useEditorStore((s) => s.deleteChapter);
   const moveChapter = useEditorStore((s) => s.moveChapter);
+  const mergeChapterIntoPrevious = useEditorStore((s) => s.mergeChapterIntoPrevious);
 
   const safeBookData = { title: bookTitle || '', author: bookAuthor || '', chapters: chapters || [], bookType: bookType || 'novela' };
 
@@ -441,7 +442,9 @@ function SidebarLeft() {
           onSelectChapter={setActiveChapter}
           onDeleteChapter={deleteChapter}
           onMoveChapter={moveChapter}
+          onMergeChapter={mergeChapterIntoPrevious}
           onChapterTitleChange={handleTitleChange}
+          onUpdateChapter={updateChapter}
         />
       )}
 

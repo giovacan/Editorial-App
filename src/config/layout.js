@@ -56,6 +56,8 @@ export const DEFAULT_CONFIG = {
   pagination: { minOrphanLines: 2, minWidowLines: 2, splitLongParagraphs: true, targetFillPct: 0.92 },
   // Footnotes (roadmap B1). OFF by default → engine identical to before.
   footnotes: { enabled: false, fontScale: 0.72, lineHeight: 1.4, separator: 'partial', numbering: 'per-chapter' },
+  // Images (roadmap B2): box sizing/placement.
+  images: { maxWidthFrac: 0.9, maxHeightFrac: 0.85, align: 'center', caption: false },
   header: {
     enabled: false,
     template: 'classic',

@@ -1,24 +1,28 @@
 import { useState, useRef, useEffect } from 'react';
 import { toast } from '../../utils/toast';
-import ChapterDetectionDialog from '../ChapterDetectionDialog/ChapterDetectionDialog';
+import { extractImagesFromHtml } from '../../utils/extractImages';
+import { docxToHtml } from '../../utils/docxToHtml';
+import ChapterReview from '../ChapterReview/ChapterReview';
 import useEditorStore from '../../store/useEditorStore';
 import { detectChaptersLocal } from './utils/chapterDetection';
 import { parseTextContent, parseHtmlContent } from './utils/contentParser';
+import { useAuth } from '../../contexts/AuthContext';
 import './UploadArea.css';
 
-function UploadArea({ onContentLoaded, onChaptersDetected }) {
+function UploadArea({ onContentLoaded, onChaptersDetected, bookId = null }) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [mammothReady, setMammothReady] = useState(() => !!window.mammoth);
-  const [detectedChaptersLocal, setDetectedChaptersLocal] = useState([]);
   const [pendingChapters, setPendingChapters] = useState(null);
   const [pendingBookTitle, setPendingBookTitle] = useState('');
   const [showChapterDetection, setShowChapterDetection] = useState(false);
   const [chapterDetectionConfirmed, setChapterDetectionConfirmed] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef(null);
 
   const setConfirmedChapterTitles = useEditorStore(s => s.setConfirmedChapterTitles);
   const paginationActive = useEditorStore(s => s.paginationProgress.isActive);
+  const { user } = useAuth();
 
   // Lazy-load mammoth for DOCX support
   useEffect(() => {
@@ -33,8 +37,8 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
   const showDetectionDialog = (chapters) => {
     const detected = detectChaptersLocal(chapters);
     if (detected.length > 0) {
-      setDetectedChaptersLocal(detected);
       setPendingChapters(chapters);
+      setPendingBookTitle('');
       setShowChapterDetection(true);
     } else {
       setConfirmedChapterTitles([]);
@@ -51,12 +55,30 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
         return;
       }
       try {
-        const arrayBuffer = await file.arrayBuffer();
-        const result = await window.mammoth.convertToHtml({ arrayBuffer });
-        if (!result.value?.trim()) { toast.error('El documento DOCX está vacío o no se pudo leer.'); return; }
-        handleHtmlContent(result.value);
+        setIsImporting(true);
+        // Decode the .docx in a Worker (off the main thread) so the UI stays
+        // responsive during the heavy ~9-16s convert on image-heavy books.
+        const rawHtml = await docxToHtml(file);
+        if (!rawHtml?.trim()) { toast.error('El documento DOCX está vacío o no se pudo leer.'); return; }
+        const hasImages = rawHtml.indexOf('<img') !== -1;
+
+        // Extract images (base64 → data-img-id in the content store) BEFORE the
+        // review, so the review's preview shows real images and the html that
+        // enters the store is already lightweight. This runs during the
+        // "Procesando documento…" spinner. Falls back to raw html on failure.
+        let finalHtml = rawHtml;
+        if (hasImages) {
+          try { finalHtml = await extractImagesFromHtml(rawHtml, bookId); }
+          catch (e) { console.warn('extractImagesFromHtml falló, importando sin extraer:', e); }
+          if (!user) {
+            toast.info('Tu libro tiene imágenes guardadas solo en este navegador. Inicia sesión para guardarlas en la nube y no perderlas.');
+          }
+        }
+        handleHtmlContent(finalHtml);
       } catch (error) {
         toast.error('Error al leer el archivo DOCX: ' + error.message);
+      } finally {
+        setIsImporting(false);
       }
       return;
     }
@@ -75,38 +97,38 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
   };
 
   const handleHtmlContent = (htmlContent) => {
+    // htmlContent already has images extracted (data-img-id) if there were any.
     const { chapters, detectedHeadings, bookTitle } = parseHtmlContent(htmlContent);
     if (detectedHeadings.length > 0) {
-      const chapterDetections = chapters.map((ch, idx) => ({
-        chapterId: ch.id, chapterIndex: idx,
-        chapterTitle: ch.title, detectedTitle: ch.title, confirmed: true
-      }));
-      setDetectedChaptersLocal(chapterDetections);
+      // Open the full-screen "Revisa tus capítulos" step over the REAL chapters.
       setPendingChapters(chapters);
       setPendingBookTitle(bookTitle || '');
       setShowChapterDetection(true);
     } else {
+      // No chapters detected → load directly into the editor.
       setConfirmedChapterTitles([]);
       onContentLoaded(chapters, bookTitle || '');
     }
   };
 
-  const handleChaptersConfirm = (confirmedList) => {
-    setConfirmedChapterTitles(confirmedList.filter(ch => ch.confirmed).map(ch => ch.detectedTitle));
-    if (onChaptersDetected) onChaptersDetected(confirmedList);
-    if (pendingChapters) { onContentLoaded(pendingChapters, pendingBookTitle); setPendingChapters(null); setPendingBookTitle(''); }
-    // Dialog stays open — closes automatically when pagination finishes
+  // Continue: load the chapters the user edited in the review.
+  const handleReviewConfirm = (editedChapters, reviewBookTitle) => {
+    if (onChaptersDetected) onChaptersDetected(editedChapters);
+    onContentLoaded(editedChapters, reviewBookTitle || pendingBookTitle || '');
+    setPendingChapters(null);
+    // Review stays open (shows the progress bar) — closes when pagination ends.
     setChapterDetectionConfirmed(true);
   };
 
-  const handleChaptersCancel = () => {
-    setShowChapterDetection(false);
-    setChapterDetectionConfirmed(false);
-    setPendingChapters(null);
+  // Omitir revisión: load the chapters as detected, no edits.
+  const handleReviewCancel = (originalChapters, reviewBookTitle) => {
     setConfirmedChapterTitles([]);
+    onContentLoaded(originalChapters, reviewBookTitle || pendingBookTitle || '');
+    setPendingChapters(null);
+    setChapterDetectionConfirmed(true);
   };
 
-  // Close dialog automatically when pagination finishes (after confirm was clicked)
+  // Close the review automatically when pagination finishes (after confirm).
   useEffect(() => {
     if (!paginationActive && chapterDetectionConfirmed && showChapterDetection) {
       setShowChapterDetection(false);
@@ -121,40 +143,51 @@ function UploadArea({ onContentLoaded, onChaptersDetected }) {
 
   return (
     <>
-      {showChapterDetection && (
-        <ChapterDetectionDialog
-          chapters={detectedChaptersLocal}
-          onConfirm={handleChaptersConfirm}
-          onCancel={handleChaptersCancel}
+      {showChapterDetection && pendingChapters && (
+        <ChapterReview
+          chapters={pendingChapters}
+          bookTitle={pendingBookTitle}
+          onConfirm={handleReviewConfirm}
+          onCancel={handleReviewCancel}
         />
       )}
       <div className="upload-area" role="region" aria-label="Área de carga de archivos">
         <div className="upload-column">
           <div
-            className={`upload-box ${isDragOver ? 'drag-over' : ''}`}
-            onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+            className={`upload-box ${isDragOver ? 'drag-over' : ''} ${isImporting ? 'is-importing' : ''}`}
+            onDragOver={(e) => { if (isImporting) return; e.preventDefault(); setIsDragOver(true); }}
             onDragLeave={() => setIsDragOver(false)}
-            onDrop={(e) => { e.preventDefault(); setIsDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+            onDrop={(e) => { e.preventDefault(); setIsDragOver(false); if (isImporting) return; const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
           >
-            <svg className="upload-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="17 8 12 3 7 8"/>
-              <line x1="12" y1="3" x2="12" y2="15"/>
-            </svg>
-            <h2 className="upload-title">Importar manuscrito</h2>
-            <p className="upload-subtitle">Arrastra un archivo o haz clic para seleccionar</p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".txt,.md,.html,.docx"
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
-              hidden
-              aria-label="Seleccionar archivo"
-            />
-            <button className="btn btn-primary" onClick={() => fileInputRef.current?.click()}>
-              Seleccionar archivo
-            </button>
-            <p className="upload-formats">Formatos: <strong>TXT, MD, HTML, DOCX</strong></p>
+            {isImporting ? (
+              <>
+                <div className="upload-spinner" aria-hidden="true" />
+                <h2 className="upload-title">Procesando documento…</h2>
+                <p className="upload-subtitle">Leyendo el archivo y sus imágenes. Esto puede tardar unos segundos en libros grandes.</p>
+              </>
+            ) : (
+              <>
+                <svg className="upload-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <h2 className="upload-title">Importar manuscrito</h2>
+                <p className="upload-subtitle">Arrastra un archivo o haz clic para seleccionar</p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".txt,.md,.html,.docx"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+                  hidden
+                  aria-label="Seleccionar archivo"
+                />
+                <button className="btn btn-primary" onClick={() => fileInputRef.current?.click()}>
+                  Seleccionar archivo
+                </button>
+                <p className="upload-formats">Formatos: <strong>TXT, MD, HTML, DOCX</strong></p>
+              </>
+            )}
           </div>
           <div className="upload-info">
             <h3>Formatos detectados como capítulos</h3>

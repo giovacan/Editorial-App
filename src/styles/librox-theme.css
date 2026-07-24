@@ -1,0 +1,62 @@
+/* src/styles/librox-theme.css
+ * Tema LIBROX — fuente única de verdad de color/tipografía/espaciado.
+ * Coexiste con la UI clásica: los tokens viven en :root como fallback y se
+ * refuerzan bajo [data-theme="librox"]. Ningún componente clásico usa --lx-*,
+ * así que definir estas variables NO altera la UI actual.
+ */
+:root,
+:root[data-theme="librox"] {
+  /* Superficies */
+  --lx-bg: #FBFAF7;
+  --lx-surface: #FFFFFF;
+  --lx-surface-2: #F4F2EC;
+  --lx-border: #E7E3DA;
+
+  /* Texto */
+  --lx-text: #211D17;
+  --lx-text-muted: #6E675C;
+  --lx-text-faint: #9A9284;
+
+  /* Acento editorial cálido (terracota / ámbar quemado) */
+  --lx-accent: #B5642E;
+  --lx-accent-hover: #9A5324;
+  --lx-accent-soft: #F6E9DD;
+  --lx-on-accent: #FFFFFF;
+
+  /* Semánticos */
+  --lx-ink-blue: #2E4A62;
+  --lx-success: #3F7D5A;
+  --lx-danger: #B4432E;
+  --lx-danger-soft: #F7E7E2;
+  --lx-warning: #C6902B;
+
+  /* Tipografía */
+  --lx-font-display: "Gelasio", Georgia, "Times New Roman", serif;
+  --lx-font-ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Escala / radios / sombras / motion */
+  --lx-radius-sm: 6px;
+  --lx-radius: 10px;
+  --lx-radius-lg: 16px;
+  --lx-shadow-sm: 0 1px 2px rgba(33, 29, 23, 0.06);
+  --lx-shadow: 0 4px 16px rgba(33, 29, 23, 0.08);
+  --lx-shadow-lg: 0 12px 32px rgba(33, 29, 23, 0.12);
+  --lx-transition: 160ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Dark-first LIBROX (reservado para Fase E2; se activa con data-mode="dark") */
+:root[data-theme="librox"][data-mode="dark"] {
+  --lx-bg: #16130F;
+  --lx-surface: #1F1B16;
+  --lx-surface-2: #26221C;
+  --lx-border: #34302A;
+  --lx-text: #ECE7DE;
+  --lx-text-muted: #A39B8C;
+  --lx-text-faint: #7C7466;
+  --lx-accent: #D9873F;
+  --lx-accent-hover: #E69750;
+  --lx-accent-soft: #2E2318;
+  --lx-danger-soft: #2E1B17;
+  --lx-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  --lx-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
+}

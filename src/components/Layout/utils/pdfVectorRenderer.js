@@ -34,6 +34,7 @@ import { parseTableGrid, layoutTableGrid } from '../../../utils/tableLayoutEngin
 import { htmlToText } from '../../../utils/layoutIr';
 import { collapseWhitespace } from '../../../utils/textPreprocess';
 import { toast } from '../../../utils/toast';
+import { getImageBlob, cachedImageSrc } from '../../../utils/imageStore';
 
 // Gelasio static faces (Vite resolves ?url to a served asset URL).
 import gelasioRegularUrl    from '../../../assets/fonts/Gelasio-Regular.ttf?url';
@@ -332,6 +333,47 @@ const drawTable = (doc, tableHtml, engineCtx, xMm, yMm, mmPerPx) => {
   return tableBottomMm + px(marginV);
 };
 
+// ── Image prefetch (B2 PR-B) ──────────────────────────────────────────────────
+
+/** Blob → data:URL (jsPDF addImage needs embedded bytes, not a URL). */
+const blobToDataUrl = (blob) => new Promise((resolve) => {
+  try {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = () => resolve(null);
+    fr.readAsDataURL(blob);
+  } catch { resolve(null); }
+});
+
+/**
+ * Resolve every `data-img-id` referenced across the pages to a data:URL.
+ * Prefers the local IndexedDB blob; falls back to fetching the cloud URL (a
+ * signed-in export can read its own images). Returns Map(id → dataURL).
+ */
+const prefetchPageImages = async (pages) => {
+  const ids = new Set();
+  for (const p of pages || []) {
+    const html = p?.html || '';
+    for (const m of html.matchAll(/data-img-id="([^"]+)"/gi)) ids.add(m[1]);
+  }
+  const map = new Map();
+  await Promise.all([...ids].map(async (id) => {
+    try {
+      const blob = await getImageBlob(id);
+      if (blob) { const url = await blobToDataUrl(blob); if (url) map.set(id, url); return; }
+      // No local blob (e.g. book opened on another device) → fetch cloud URL.
+      const cloud = cachedImageSrc(id);
+      if (cloud && /^https?:/i.test(cloud)) {
+        const res = await fetch(cloud);
+        const b = await res.blob();
+        const url = await blobToDataUrl(b);
+        if (url) map.set(id, url);
+      }
+    } catch { /* skip this image rather than fail the export */ }
+  }));
+  return map;
+};
+
 // ── Main export ──────────────────────────────────────────────────────────────
 
 /**
@@ -397,6 +439,13 @@ export const exportPdfVector = async (bookData, config, paginatedPages, dims, on
   };
   // Line-layout ctx (same one Preview.jsx builds).
   const lineCtx = { contentWidth: contentWidthPx, baseFontSizePx, fontFamily };
+
+  // B2 PR-B: images live in the content-addressed store (data-img-id), not in
+  // the page HTML. jsPDF's addImage needs actual bytes, so PREFETCH every
+  // referenced image to a dataURL up front (local IndexedDB blob or cloud
+  // downloadURL) and hand the map to the IMG branch. Blocking here is fine — it
+  // runs once, before the page loop, and the export already requires a session.
+  engineCtx.imageData = await prefetchPageImages(paginatedPages);
 
   const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'portrait', compress: true });
   registerFonts(doc, vfs);
@@ -814,6 +863,35 @@ const drawPassthrough = (doc, desc, engineCtx, xMm, widthMm, yMm, mmPerPx,
     if (ct && ct.parts.length) {
       return drawChapterTitle(doc, ct, xMm, widthMm, yMm, mmPerPx, lineHeightMm);
     }
+  }
+
+  // Image (B2): draw the embedded/linked image at the engine-sized box.
+  if (tag === 'IMG' || /^<img[\s>]/i.test(html)) {
+    // Prefer an inline data-URI src; else resolve the content-addressed id from
+    // the prefetched map (PR-B: images live in the store, not the HTML).
+    let src = (html.match(/\bsrc="(data:[^"]+)"/i) || [])[1];
+    if (!src) {
+      const imgId = (html.match(/\bdata-img-id="([^"]+)"/i) || [])[1];
+      if (imgId && engineCtx?.imageData) src = engineCtx.imageData.get(imgId) || null;
+    }
+    const wPx = parseFloat((html.match(/width:\s*([\d.]+)px/i) || [])[1] || 0);
+    const hPx = parseFloat((html.match(/height:\s*([\d.]+)px/i) || [])[1] || 0);
+    if (src && wPx > 0 && hPx > 0) {
+      const wMm = wPx * mmPerPx;
+      const hMm = hPx * mmPerPx;
+      // Center within the column (align was baked into the margin, but the PDF
+      // draws from an x; center by default like the preview's margin:auto).
+      const alignM = html.match(/margin:\s*[\d.]+em\s+(auto|0)/i);
+      const imgX = alignM && alignM[1] === 'auto' ? xMm + (widthMm - wMm) / 2 : xMm;
+      const topGapMm = lineHeightMm * 0.5; // matches the 0.5em top margin
+      try {
+        const fmt = /^data:image\/jpe?g/i.test(src) ? 'JPEG' : 'PNG';
+        doc.addImage(src, fmt, imgX, yMm + topGapMm, wMm, hMm);
+      } catch { /* unsupported src → skip rather than crash the export */ }
+      return yMm + topGapMm + hMm + topGapMm;
+    }
+    // No usable dims/src → skip (don't fall through to a text draw of the tag).
+    return yMm + lineHeightMm;
   }
 
   if (tag === 'TABLE' || /^<table[\s>]/i.test(html)) {

@@ -18,7 +18,12 @@ import {
  * @param {string} bookId - The Firestore book ID to sync with
  */
 export function useBookSync(bookId) {
-  const store = useEditorStore();
+  // IMPORTANT: do NOT subscribe to the whole store (`useEditorStore()`), or this
+  // hook re-renders on EVERY state change and its subscribe effect (dep `store`)
+  // tears down + re-runs loadBook() constantly — which re-loaded the book on a
+  // loop, churning bookData identity so pagination never finished (stuck at 0)
+  // and the active chapter kept resetting. Read actions via getState() (stable)
+  // and subscribe reactively only to the specific fields the write effects need.
   const unsubscribeRefs = useRef({});
   const writeTimeoutRef = useRef({});
 
@@ -50,7 +55,7 @@ export function useBookSync(bookId) {
           };
 
           // Load into store
-          store.loadBook(bookWithChapters);
+          useEditorStore.getState().loadBook(bookWithChapters);
         } else {
           console.error(`Book ${bookId} not found`);
         }
@@ -66,10 +71,17 @@ export function useBookSync(bookId) {
     unsubscribeRefs.current.book = subscribeToBook(bookId, (updatedBook) => {
       if (!isMounted || !updatedBook) return;
 
-      // Update store with new metadata (but preserve chapters)
-      const currentBookData = store.bookData;
-      store.setBookData({
-        ...currentBookData,
+      // Update store with new metadata (but preserve chapters). Skip if nothing
+      // meaningful changed, so a self-echo metadata snapshot doesn't churn
+      // bookData identity (which would restart pagination).
+      const st = useEditorStore.getState();
+      const cur = st.bookData;
+      if (cur.title === updatedBook.title && cur.author === updatedBook.author
+        && cur.bookType === updatedBook.bookType && cur.pageFormat === updatedBook.pageFormat) {
+        return;
+      }
+      st.setBookData({
+        ...cur,
         title: updatedBook.title,
         author: updatedBook.author,
         bookType: updatedBook.bookType,
@@ -78,13 +90,14 @@ export function useBookSync(bookId) {
       });
     });
 
-    // Subscribe to real-time chapter changes
+    // Subscribe to real-time chapter changes. Use syncChaptersFromCloud (NOT
+    // loadContent) so a background snapshot only updates data and never flips
+    // the view — otherwise "Nuevo libro" flashes the UploadArea then hides it.
     unsubscribeRefs.current.chapters = subscribeToChapters(
       bookId,
       (updatedChapters) => {
         if (!isMounted) return;
-        // Update store with new chapters
-        store.loadContent(updatedChapters);
+        useEditorStore.getState().syncChaptersFromCloud(updatedChapters);
       }
     );
 
@@ -100,7 +113,16 @@ export function useBookSync(bookId) {
       // Cancel any pending writes
       Object.values(writeTimeoutRef.current).forEach(clearTimeout);
     };
-  }, [bookId, store]);
+  }, [bookId]);
+
+  // Reactive selectors — the ONLY store state this hook subscribes to. These
+  // drive the debounced writes without re-subscribing the whole hook.
+  const metaTitle = useEditorStore((s) => s.bookData.title);
+  const metaAuthor = useEditorStore((s) => s.bookData.author);
+  const metaBookType = useEditorStore((s) => s.bookData.bookType);
+  const metaPageFormat = useEditorStore((s) => s.bookData.pageFormat);
+  const metaMargins = useEditorStore((s) => s.bookData.margins);
+  const chaptersSel = useEditorStore((s) => s.bookData.chapters);
 
   /**
    * Debounced write to Firestore for book metadata
@@ -115,7 +137,7 @@ export function useBookSync(bookId) {
 
     // Debounce 1500ms before writing
     writeTimeoutRef.current.metadata = setTimeout(async () => {
-      const { title, author, bookType, pageFormat, margins } = store.bookData;
+      const { title, author, bookType, pageFormat, margins } = useEditorStore.getState().bookData;
 
       try {
         await updateBook(bookId, {
@@ -135,14 +157,7 @@ export function useBookSync(bookId) {
         clearTimeout(writeTimeoutRef.current.metadata);
       }
     };
-  }, [
-    bookId,
-    store.bookData.title,
-    store.bookData.author,
-    store.bookData.bookType,
-    store.bookData.pageFormat,
-    store.bookData.margins,
-  ]);
+  }, [bookId, metaTitle, metaAuthor, metaBookType, metaPageFormat, metaMargins]);
 
   /**
    * Debounced write to Firestore for chapters
@@ -158,7 +173,7 @@ export function useBookSync(bookId) {
 
     // Debounce 1500ms before writing
     writeTimeoutRef.current.chapters = setTimeout(async () => {
-      const { chapters } = store.bookData;
+      const { chapters } = useEditorStore.getState().bookData;
 
       try {
         await saveChapters(bookId, chapters);
@@ -172,7 +187,7 @@ export function useBookSync(bookId) {
         clearTimeout(writeTimeoutRef.current.chapters);
       }
     };
-  }, [bookId, store.bookData.chapters]);
+  }, [bookId, chaptersSel]);
 
   /**
    * Flush pending writes immediately (e.g., on save button click)
@@ -183,7 +198,7 @@ export function useBookSync(bookId) {
       Object.values(writeTimeoutRef.current).forEach(clearTimeout);
 
       const { title, author, bookType, pageFormat, margins, chapters } =
-        store.bookData;
+        useEditorStore.getState().bookData;
 
       try {
         await Promise.all([

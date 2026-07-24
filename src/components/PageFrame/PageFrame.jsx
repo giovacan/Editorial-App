@@ -16,6 +16,7 @@ import { computeFolioStyle, computeShowFolio, computeFolioFromEdge } from '../..
 import { getScaledSize } from '../../utils/transformes';
 import { renderPageAsEngineLines } from '../../utils/lineRenderer';
 import { buildFootnoteBlockHtml } from '../../utils/footnotes';
+import { useHydratedHtml } from '../../hooks/useHydratedHtml';
 // applyKpRendering removed — KP word-spacing now applied by the engine
 import './PageFrame.css';
 
@@ -89,7 +90,7 @@ export default function PageFrame({
   // and the vector PDF export do. Front-matter pages (flex TOC layout) and
   // blanks pass through untouched, and it's a no-op without engine layout dims.
   const engineLinesOn = config?.render?.engineLines !== false;
-  const html = useMemo(() => {
+  const htmlRaw = useMemo(() => {
     if (!engineLinesOn || isFrontMatterPage || isBlank || !renderCtx?.contentWidth) {
       return rawHtml;
     }
@@ -99,6 +100,9 @@ export default function PageFrame({
       fontFamily:    renderCtx.fontFamily,
     });
   }, [rawHtml, engineLinesOn, isFrontMatterPage, isBlank, renderCtx]);
+  // B2: bake image srcs (data-img-id → objectURL) into the html so the export
+  // modal's pages show images too (was only a frame before).
+  const html = useHydratedHtml(htmlRaw);
 
   // ── Header ──────────────────────────────────────────────────────────────────
   const headerHtml = buildHeaderHtmlPure(page, config, bookTitle, baseFontSize);

@@ -1,0 +1,32 @@
+rules_version = '2';
+
+// Firebase Storage security rules (B2 PR-B).
+// Images live at books/{bookId}/images/{imageId}. Only the owner of the book
+// (books/{bookId}.uid in Firestore) may read/write its images.
+//
+// SECURITY-HOOK (PR-SEC, deferred): when content scanning ships, tighten write
+// so clients can only upload images the scan pipeline confirmed (e.g. require a
+// custom metadata flag set by the Cloud Function, or route uploads through the
+// Admin SDK). For now the owner may write directly.
+//
+// SUPERADMIN (PR-SUPERADMIN, deferred): admins/superadmins (custom claim
+// `role`) will get read/delete on any book's images for moderation.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isBookOwner(bookId) {
+      return request.auth != null
+        && firestore.get(/databases/(default)/documents/books/$(bookId)).data.uid == request.auth.uid;
+    }
+
+    match /books/{bookId}/images/{imageId} {
+      allow read, write: if isBookOwner(bookId);
+    }
+
+    // Deny everything else.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -245,12 +245,13 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
 
       if (cancelled) return;
 
-      // Set hash AFTER async work completes and AFTER cancelled check passes.
-      // This way, if the effect was cancelled during font loading, the hash
-      // stays unset and the next effect run will re-execute pagination.
-      if (measureRef.current) {
-        measureRef.current._lastContentHash = contentHash;
-      }
+      // NOTE: _lastContentHash is set only AFTER pagination fully completes and
+      // setPages runs (see below). Setting it here — before the worker finishes —
+      // was a bug: if the effect got cancelled between here and setPages (common
+      // during the post-import bookData churn), the hash was marked "done" but
+      // `pages` never updated, so every later run early-returned on the hash
+      // guard and the preview stayed stuck on its old page count (4 = front
+      // matter only), even though the store had the full 253 pages.
 
       useEditorStore.getState().startPagination();
 
@@ -521,7 +522,13 @@ export const usePagination = (bookData, config, measureRef, externalPreviewScale
         useEditorStore.getState().setLayoutDims(dimsSnapshot);
         setPages(validatedPages);
         useEditorStore.getState().setPaginatedPages(validatedPages);
-        
+        // Mark this content+layout as fully paginated ONLY now that setPages has
+        // actually run. If we were cancelled earlier, the hash stays unset and
+        // the next run re-paginates (fixes the preview stuck at 4 pages).
+        if (measureRef.current) {
+          measureRef.current._lastContentHash = contentHash;
+        }
+
         // TOC/front matter is cosmetic relative to the pages themselves: a
         // failure here must NEVER strand the UI mid-pagination (the pages are
         // already in the store — reported as "the bar finishes and nothing

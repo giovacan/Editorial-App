@@ -13,7 +13,9 @@ function StructureTab({
   onSelectChapter,
   onDeleteChapter,
   onMoveChapter,
+  onMergeChapter,
   onChapterTitleChange,
+  onUpdateChapter,
 }) {
   const setShowTOCPanel = useEditorStore(s => s.setShowTOCPanel);
   return (
@@ -69,7 +71,9 @@ function StructureTab({
                 onSelect={onSelectChapter}
                 onDelete={onDeleteChapter}
                 onMove={onMoveChapter}
+                onMerge={onMergeChapter}
                 onTitleChange={onChapterTitleChange}
+                onUpdateChapter={onUpdateChapter}
                 totalChapters={bookData.chapters.length}
               />
             ))

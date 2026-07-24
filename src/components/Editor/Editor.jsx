@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useState, useRef, useMemo } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
+import { DOMSerializer } from '@tiptap/pm/model';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import useEditorStore from '../../store/useEditorStore';
@@ -10,6 +11,7 @@ import { calculateContentDimensions } from '../../utils/textMeasurer';
 import PageLayoutView from '../PageLayoutView/PageLayoutView';
 import { findNthMatchInDoc } from '../../utils/editorSearch';
 import { footnoteRefsIn } from '../../utils/footnotes';
+import { toast } from '../../utils/toast';
 import { nanoid } from 'nanoid';
 import FootnoteMark from './extensions/FootnoteMark';
 import FootnoteBubbleMenu from './FootnoteBubbleMenu';
@@ -38,6 +40,7 @@ function Editor({ pushChange, onContentChange }) {
   const isLoadingContentRef = useRef(false);
 
   const updateChapter = useEditorStore((s) => s.updateChapter);
+  const splitChapter = useEditorStore((s) => s.splitChapter);
   const config = useEditorStore((s) => s.config);
   const ui = useEditorStore((s) => s.ui);
   const setUi = useEditorStore((s) => s.setUi);
@@ -365,6 +368,43 @@ function Editor({ pushChange, onContentChange }) {
     editor.chain().focus().unsetBlockquote().run();
   }, [editor]);
 
+  // Split the current chapter at the cursor: everything before stays here, a new
+  // chapter is created with everything after. Fixes "the detector missed a
+  // chapter" — the user puts the cursor where the new chapter begins.
+  const handleSplitHere = useCallback(() => {
+    if (!editor || !activeChapter) return;
+    const { doc, selection } = editor.state;
+    // Split at the START of the block containing the cursor, so a heading/line
+    // isn't cut mid-way. $from.before(1) is the position before the top-level
+    // block; fall back to the raw cursor position.
+    const $from = selection.$from;
+    let cut = selection.from;
+    try { cut = $from.before(1); } catch { /* use raw from */ }
+    if (cut <= 0 || cut >= doc.content.size) {
+      toast.info('Coloca el cursor donde quieres que empiece el nuevo capítulo (no al inicio ni al final del texto).');
+      return;
+    }
+    // Serialize the two halves to HTML via the schema's DOM serializer.
+    const serializer = DOMSerializer.fromSchema(editor.schema);
+    const toHtml = (fragment) => {
+      const div = document.createElement('div');
+      div.appendChild(serializer.serializeFragment(fragment));
+      return div.innerHTML;
+    };
+    const beforeFrag = doc.slice(0, cut).content;
+    const afterFrag = doc.slice(cut, doc.content.size).content;
+    const htmlBefore = toHtml(beforeFrag);
+    const htmlAfter = toHtml(afterFrag);
+    if (!htmlAfter.trim()) return;
+    // Title for the new chapter = text of its first line.
+    const afterText = doc.slice(cut, doc.content.size).content.firstChild?.textContent?.trim() || '';
+    const newTitle = afterText.slice(0, 80) || 'Nuevo capítulo';
+    // splitChapter changes activeChapterId → the reload effect swaps the editor
+    // content to the new chapter (guarded by isLoadingContentRef). No manual
+    // guard needed here.
+    splitChapter(activeChapter.id, htmlBefore, htmlAfter, newTitle);
+  }, [editor, activeChapter, splitChapter]);
+
   if (!activeChapter) {
     return (
       <div className="editor-area">
@@ -506,7 +546,24 @@ function Editor({ pushChange, onContentChange }) {
         </div>
         
         <div className="toolbar-separator"></div>
-        
+
+        <div className="toolbar-group">
+          <button
+            type="button"
+            className="btn btn-icon"
+            aria-label="Dividir capítulo en el cursor"
+            title="Dividir capítulo aquí (crea un capítulo nuevo desde el cursor)"
+            onClick={handleSplitHere}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M8 3v18"/><path d="M3 12h5"/><path d="M16 3v18"/><path d="M21 12h-5"/>
+              <path d="M12 8v8" strokeDasharray="2 2"/>
+            </svg>
+          </button>
+        </div>
+
+        <div className="toolbar-separator"></div>
+
         <div className="toolbar-group">
           <button
             className={`btn btn-icon ${showPageBreaks ? 'active' : ''}`}

@@ -637,6 +637,20 @@ export const buildParagraphHtml = (el, config, baseFontSize, baseLineHeight, tex
     return '<hr style="border:none;border-top:1px solid #999;margin:1em 0;">';
   } else if (tag === 'BR') {
     return '<br>';
+  } else if (tag === 'IMG') {
+    // Image block (B2): keep the original tag (src + data-w/data-h) and make it
+    // scale to the column. The engine measured its box from data-w/data-h +
+    // contentWidth; max-width:100% + a preserved aspect ratio make the browser
+    // draw it at that same height. align from config.images.
+    const align = config.images?.align || 'center';
+    const srcM = outerHtmlStr.match(/\bsrc="([^"]*)"/i);
+    const wM = outerHtmlStr.match(/\bdata-w="([\d.]+)"/i);
+    const hM = outerHtmlStr.match(/\bdata-h="([\d.]+)"/i);
+    const altM = outerHtmlStr.match(/\balt="([^"]*)"/i);
+    if (!srcM) return '';
+    const dimsAttr = (wM && hM) ? ` data-w="${wM[1]}" data-h="${hM[1]}"` : '';
+    const marginX = align === 'center' ? 'auto' : (align === 'right' ? '0 0 0 auto' : '0');
+    return `<img src="${srcM[1]}"${dimsAttr}${altM ? ` alt="${altM[1]}"` : ''} style="display:block;max-width:100%;height:auto;margin:0.5em ${marginX};" />`;
   }
   return `<p style="margin:0;padding:0;text-align:${textAlign};text-indent:1.5em;text-justify:inter-word;hyphens:none;text-align-last:left;overflow-wrap:break-word;">${innerHtml}</p>`;
 };

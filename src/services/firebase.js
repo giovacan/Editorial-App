@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
+import { getStorage } from 'firebase/storage';
 import * as mockFirebase from './firebase.mock';
 
 // Check if Firebase credentials are available
@@ -9,7 +10,7 @@ const hasFirebaseCredentials =
   import.meta.env.VITE_FIREBASE_API_KEY &&
   import.meta.env.VITE_FIREBASE_PROJECT_ID;
 
-let auth, db, functions, app;
+let auth, db, functions, storage, app;
 
 if (hasFirebaseCredentials) {
   // Production: Use real Firebase
@@ -26,17 +27,19 @@ if (hasFirebaseCredentials) {
   auth = getAuth(app);
   db = getFirestore(app);
   functions = getFunctions(app);
+  storage = getStorage(app);
 
 } else {
   // Development: Use mock Firebase
   auth = mockFirebase.auth;
   db = mockFirebase.db;
   functions = mockFirebase.functions;
+  storage = mockFirebase.storage;
   app = null;
   // Don't auto-login - allows viewing landing page
   // Uncomment to auto-login for testing protected routes:
   // mockFirebase.initializeMockDevelopmentMode();
 }
 
-export { auth, db, functions };
+export { auth, db, functions, storage };
 export default app;

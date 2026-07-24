@@ -124,6 +124,14 @@ const initialState = {
       separator: 'partial' as const,  // ⅓-column rule above the notes
       numbering: 'per-chapter' as const,
     },
+    // Images (roadmap B2): sizing/placement for block images. Images are always
+    // measured/drawn now; these only tune the box.
+    images: {
+      maxWidthFrac: 0.9,        // ≤ 90% of the column
+      maxHeightFrac: 0.85,      // ≤ 85% of the page (tall images cap here)
+      align: 'center' as 'center' | 'left' | 'right',
+      caption: false,
+    },
     chapterTitle: {
       align: 'center' as const,
       bold: true,
@@ -474,6 +482,66 @@ const useEditorStore = create<EditorState>()(
       return newState;
     }),
 
+    // Merge a chapter into the PREVIOUS one (fix for "detector split one chapter
+    // into two" / "detected a false chapter"). The absorbed chapter's title is
+    // KEPT as an inner subheading (<h3>) so no line is lost; its html, wordCount
+    // and footnotes are appended to the previous chapter. No-op on the first
+    // chapter (nothing before) or when there's only one.
+    mergeChapterIntoPrevious: (id) => set((state) => {
+      const chapters = [...(state.bookData?.chapters || [])];
+      const idx = chapters.findIndex((c) => c.id === id);
+      if (idx <= 0) return state; // first chapter or not found → nothing to merge into
+      const cur = chapters[idx];
+      const prev = chapters[idx - 1];
+      const subtitle = (cur.chapterName || cur.title || '').trim();
+      const subHtml = subtitle ? `<h3>${subtitle}</h3>` : '';
+      const merged = {
+        ...prev,
+        html: `${prev.html || ''}${subHtml}${cur.html || ''}`,
+        wordCount: (prev.wordCount || 0) + (cur.wordCount || 0),
+        footnotes: [ ...(prev.footnotes || []), ...(cur.footnotes || []) ],
+      };
+      chapters[idx - 1] = merged;
+      chapters.splice(idx, 1); // remove the absorbed chapter
+      const newState = {
+        bookData: { ...state.bookData, chapters },
+        editing: { ...state.editing, activeChapterId: prev.id, isDirty: true },
+      };
+      saveToStorage(newState as EditorState);
+      return newState;
+    }),
+
+    // Split a chapter in two at a chosen point (fix for "detector missed a
+    // chapter"): the current chapter keeps htmlBefore; a NEW chapter with
+    // htmlAfter is inserted right after it and becomes active. Used from the text
+    // editor ("dividir aquí" at the cursor).
+    splitChapter: (id, htmlBefore, htmlAfter, newTitle) => set((state) => {
+      const chapters = [...(state.bookData?.chapters || [])];
+      const idx = chapters.findIndex((c) => c.id === id);
+      if (idx === -1) return state;
+      const cur = chapters[idx];
+      const words = (html: string) =>
+        (html || '').replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+      const newId = `chapter-${Date.now()}`;
+      const newChapter = {
+        id: newId,
+        type: 'chapter' as const,
+        title: (newTitle || 'Nuevo capítulo').trim(),
+        chapterName: (newTitle || 'Nuevo capítulo').trim(),
+        chapterLabel: '',
+        html: htmlAfter || '',
+        wordCount: words(htmlAfter),
+      };
+      chapters[idx] = { ...cur, html: htmlBefore || '', wordCount: words(htmlBefore) };
+      chapters.splice(idx + 1, 0, newChapter);
+      const newState = {
+        bookData: { ...state.bookData, chapters },
+        editing: { ...state.editing, activeChapterId: newId, isDirty: true },
+      };
+      saveToStorage(newState as EditorState);
+      return newState;
+    }),
+
     setActiveChapter: (id) => set((state) => ({
       editing: { ...state.editing, activeChapterId: id }
     })),
@@ -550,14 +618,56 @@ const useEditorStore = create<EditorState>()(
     }),
 
     loadBook: (document) => set((state) => {
+      // If the incoming cloud chapters are content-identical to what we already
+      // have (e.g. right after promoting a local book to the cloud), REUSE the
+      // existing chapters array so bookData identity doesn't churn — that churn
+      // cancelled the first ~4 pagination runs before it converged.
+      const cur = state.bookData.chapters || [];
+      const inc = document.chapters || [];
+      const sameChapters = cur.length === inc.length
+        && cur.every((c, i) => c.id === inc[i]?.id && c.html === inc[i]?.html);
+      const chapters = sameChapters ? cur : inc;
+      const activeStillThere = chapters.some((c: Chapter) => c.id === state.editing.activeChapterId);
       const newState = {
-        bookData: document,
+        bookData: { ...document, chapters },
         editing: {
           ...state.editing,
-          activeChapterId: document.chapters[0]?.id || null,
+          activeChapterId: activeStillThere
+            ? state.editing.activeChapterId
+            : (chapters[0]?.id || null),
           isDirty: false
         },
         ui: { ...state.ui, showUpload: false, showPreview: true }
+      };
+      saveToStorage(newState as EditorState);
+      return newState;
+    }),
+
+    // Real-time cloud sync of chapters. Unlike loadContent/loadBook this NEVER
+    // touches `ui` — a background Firestore snapshot must not flip the user off
+    // the upload screen (bug: "Nuevo libro" showed the UploadArea then it
+    // vanished because the live subscription re-ran loadContent → showUpload:false).
+    syncChaptersFromCloud: (chapters) => set((state) => {
+      // Guard against the self-echo write→snapshot loop: Firestore fires a
+      // snapshot for our own debounced write, and if we always replaced the
+      // array (new identity) the pagination hash would think content changed →
+      // repaginate → write → snapshot → … (symptoms: page count stuck at 0, the
+      // active chapter kept resetting to the first). Skip when the incoming
+      // chapters match what we already have by id + html.
+      const cur = state.bookData.chapters || [];
+      const same = cur.length === chapters.length
+        && cur.every((c, i) => c.id === chapters[i]?.id && c.html === chapters[i]?.html);
+      if (same) return state;
+      // Preserve the active chapter if it still exists in the incoming set.
+      const activeStillThere = chapters.some((c) => c.id === state.editing.activeChapterId);
+      const newState = {
+        bookData: { ...state.bookData, chapters },
+        editing: {
+          ...state.editing,
+          activeChapterId: activeStillThere
+            ? state.editing.activeChapterId
+            : (chapters[0]?.id || null),
+        },
       };
       saveToStorage(newState as EditorState);
       return newState;
