@@ -28,6 +28,7 @@ export const DEFAULT_COVER_EFFECTS = {
 
 export const COVER_LAYOUTS = [
   { id: 'title-top', name: 'Título arriba + foto', desc: 'Título centrado, foto moderada debajo.' },
+  { id: 'title-band', name: 'Título arriba + banda a todo el ancho', desc: 'Título arriba, imagen rectangular que abarca todo el ancho de la página, abajo.' },
   { id: 'photo-top', name: 'Foto arriba + título', desc: 'Foto protagonista, título debajo.' },
   { id: 'full-bleed', name: 'Foto a página completa', desc: 'Foto a sangre con título superpuesto.' },
   { id: 'medallion', name: 'Medallón sobre el título', desc: 'Foto pequeña (circular opcional) sobre el título.' },
@@ -110,6 +111,21 @@ export const buildChapterCoverHtml = ({ layout, title = '', label = '', imageSrc
       return wrap(
         `<div style="font-size:1.6em;padding:0 8%;">${img}${labelHtml}${titleHtml}</div>`,
         'display:flex;flex-direction:column;justify-content:center;'
+      );
+    }
+    case 'title-band': {
+      // Title on top; the image is a full-WIDTH band (edge to edge, no side
+      // margins), height driven by `size`. The band ignores rounding/border by
+      // default to read as full-bleed, but honors shadow/filter.
+      const bandH = Math.round(H * Math.min(0.6, Math.max(0.22, size)));
+      const bandStyle = imgStyle(
+        { ...e, radius: 0, border: { width: 0 } },
+        `width:${W}px;height:${bandH}px;margin:1em 0 0`
+      );
+      const img = `<img src="${imageSrc}" alt="" width="${W}" height="${bandH}" style="${bandStyle}" />`;
+      return wrap(
+        `<div style="font-size:1.6em;padding:1.2em 8% 0;">${labelHtml}${titleHtml}</div>${img}`,
+        'display:flex;flex-direction:column;justify-content:flex-start;'
       );
     }
     case 'title-top':
