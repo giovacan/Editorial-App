@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { toast } from '../../utils/toast';
 import { extractImagesFromHtml } from '../../utils/extractImages';
 import { docxToHtml } from '../../utils/docxToHtml';
-import ChapterDetectionDialog from '../ChapterDetectionDialog/ChapterDetectionDialog';
+import ChapterReview from '../ChapterReview/ChapterReview';
 import useEditorStore from '../../store/useEditorStore';
 import { detectChaptersLocal } from './utils/chapterDetection';
 import { parseTextContent, parseHtmlContent } from './utils/contentParser';
@@ -13,18 +13,12 @@ function UploadArea({ onContentLoaded, onChaptersDetected, bookId = null }) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [mammothReady, setMammothReady] = useState(() => !!window.mammoth);
-  const [detectedChaptersLocal, setDetectedChaptersLocal] = useState([]);
   const [pendingChapters, setPendingChapters] = useState(null);
   const [pendingBookTitle, setPendingBookTitle] = useState('');
   const [showChapterDetection, setShowChapterDetection] = useState(false);
   const [chapterDetectionConfirmed, setChapterDetectionConfirmed] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef(null);
-  // B2 perf: image extraction runs in the background while the chapter dialog is
-  // shown. extractionRef holds that promise; hadImagesRef tells confirm whether
-  // to re-parse the extracted html (images) or use the already-parsed chapters.
-  const extractionRef = useRef(null);
-  const hadImagesRef = useRef(false);
 
   const setConfirmedChapterTitles = useEditorStore(s => s.setConfirmedChapterTitles);
   const paginationActive = useEditorStore(s => s.paginationProgress.isActive);
@@ -43,8 +37,8 @@ function UploadArea({ onContentLoaded, onChaptersDetected, bookId = null }) {
   const showDetectionDialog = (chapters) => {
     const detected = detectChaptersLocal(chapters);
     if (detected.length > 0) {
-      setDetectedChaptersLocal(detected);
       setPendingChapters(chapters);
+      setPendingBookTitle('');
       setShowChapterDetection(true);
     } else {
       setConfirmedChapterTitles([]);
@@ -67,35 +61,20 @@ function UploadArea({ onContentLoaded, onChaptersDetected, bookId = null }) {
         const rawHtml = await docxToHtml(file);
         if (!rawHtml?.trim()) { toast.error('El documento DOCX está vacío o no se pudo leer.'); return; }
         const hasImages = rawHtml.indexOf('<img') !== -1;
-        hadImagesRef.current = hasImages;
 
-        // B2 perf: image extraction (decode + measure every image) is the slow
-        // part (~7s for 100+ images) and the chapter-detection dialog DOESN'T
-        // need it — detection reads text headings only. So kick off extraction
-        // in the BACKGROUND and show the dialog immediately; we await the result
-        // when the user confirms (by then it's usually done). Falls back to raw
-        // HTML if extraction fails. No images → skip entirely (raw == final).
-        extractionRef.current = hasImages
-          ? extractImagesFromHtml(rawHtml, bookId).catch((e) => {
-              console.warn('extractImagesFromHtml falló, importando sin extraer:', e);
-              return rawHtml;
-            })
-          : Promise.resolve(rawHtml);
-
-        if (!user && hasImages) {
-          toast.info('Tu libro tiene imágenes guardadas solo en este navegador. Inicia sesión para guardarlas en la nube y no perderlas.');
+        // Extract images (base64 → data-img-id in the content store) BEFORE the
+        // review, so the review's preview shows real images and the html that
+        // enters the store is already lightweight. This runs during the
+        // "Procesando documento…" spinner. Falls back to raw html on failure.
+        let finalHtml = rawHtml;
+        if (hasImages) {
+          try { finalHtml = await extractImagesFromHtml(rawHtml, bookId); }
+          catch (e) { console.warn('extractImagesFromHtml falló, importando sin extraer:', e); }
+          if (!user) {
+            toast.info('Tu libro tiene imágenes guardadas solo en este navegador. Inicia sesión para guardarlas en la nube y no perderlas.');
+          }
         }
-
-        // Detect chapters now → show the dialog. Detection reads text headings
-        // only, so strip the base64 first: parsing 19MB of image data into the
-        // DOM cost ~3s. Replace each <img …base64…> with a tiny placeholder
-        // (keeps the tag so image-only paragraphs still count structurally) —
-        // the megabytes vanish and detection drops to milliseconds. The full
-        // rawHtml is still what gets extracted in the background above.
-        const detectHtml = hasImages
-          ? rawHtml.replace(/<img\b[^>]*>/gi, '<img>')
-          : rawHtml;
-        handleHtmlContent(detectHtml);
+        handleHtmlContent(finalHtml);
       } catch (error) {
         toast.error('Error al leer el archivo DOCX: ' + error.message);
       } finally {
@@ -118,67 +97,38 @@ function UploadArea({ onContentLoaded, onChaptersDetected, bookId = null }) {
   };
 
   const handleHtmlContent = (htmlContent) => {
+    // htmlContent already has images extracted (data-img-id) if there were any.
     const { chapters, detectedHeadings, bookTitle } = parseHtmlContent(htmlContent);
     if (detectedHeadings.length > 0) {
-      const chapterDetections = chapters.map((ch, idx) => ({
-        chapterId: ch.id, chapterIndex: idx,
-        chapterTitle: ch.title, detectedTitle: ch.title, confirmed: true
-      }));
-      setDetectedChaptersLocal(chapterDetections);
+      // Open the full-screen "Revisa tus capítulos" step over the REAL chapters.
       setPendingChapters(chapters);
       setPendingBookTitle(bookTitle || '');
       setShowChapterDetection(true);
     } else {
-      // No chapter dialog → load directly. Still swap in the extracted html so
-      // base64 never reaches the store (await the background extraction first).
+      // No chapters detected → load directly into the editor.
       setConfirmedChapterTitles([]);
-      if (hadImagesRef.current && extractionRef.current) {
-        extractionRef.current.then((extractedHtml) => {
-          const parsed = parseHtmlContent(extractedHtml);
-          extractionRef.current = null; hadImagesRef.current = false;
-          onContentLoaded(parsed.chapters?.length ? parsed.chapters : chapters, parsed.bookTitle || bookTitle || '');
-        });
-      } else {
-        onContentLoaded(chapters, bookTitle || '');
-      }
+      onContentLoaded(chapters, bookTitle || '');
     }
   };
 
-  const handleChaptersConfirm = async (confirmedList) => {
-    setConfirmedChapterTitles(confirmedList.filter(ch => ch.confirmed).map(ch => ch.detectedTitle));
-    if (onChaptersDetected) onChaptersDetected(confirmedList);
-
-    // The dialog was shown from chapters parsed off the RAW html (fast, but with
-    // base64 still inline). Before storing, swap in the chapters parsed from the
-    // EXTRACTED html (images pulled out → data-img-id). Await the background
-    // extraction that started at import (usually already done by now).
-    let chaptersToLoad = pendingChapters;
-    let titleToLoad = pendingBookTitle;
-    if (hadImagesRef.current && extractionRef.current) {
-      try {
-        const extractedHtml = await extractionRef.current;
-        const parsed = parseHtmlContent(extractedHtml);
-        if (parsed.chapters?.length) { chaptersToLoad = parsed.chapters; titleToLoad = parsed.bookTitle || titleToLoad; }
-      } catch (e) {
-        console.warn('No se pudo re-parsear el html con imágenes extraídas:', e);
-      }
-    }
-    extractionRef.current = null;
-    hadImagesRef.current = false;
-
-    if (chaptersToLoad) { onContentLoaded(chaptersToLoad, titleToLoad); setPendingChapters(null); setPendingBookTitle(''); }
-    // Dialog stays open — closes automatically when pagination finishes
+  // Continue: load the chapters the user edited in the review.
+  const handleReviewConfirm = (editedChapters, reviewBookTitle) => {
+    if (onChaptersDetected) onChaptersDetected(editedChapters);
+    onContentLoaded(editedChapters, reviewBookTitle || pendingBookTitle || '');
+    setPendingChapters(null);
+    // Review stays open (shows the progress bar) — closes when pagination ends.
     setChapterDetectionConfirmed(true);
   };
 
-  const handleChaptersCancel = () => {
-    setShowChapterDetection(false);
-    setChapterDetectionConfirmed(false);
-    setPendingChapters(null);
+  // Omitir revisión: load the chapters as detected, no edits.
+  const handleReviewCancel = (originalChapters, reviewBookTitle) => {
     setConfirmedChapterTitles([]);
+    onContentLoaded(originalChapters, reviewBookTitle || pendingBookTitle || '');
+    setPendingChapters(null);
+    setChapterDetectionConfirmed(true);
   };
 
-  // Close dialog automatically when pagination finishes (after confirm was clicked)
+  // Close the review automatically when pagination finishes (after confirm).
   useEffect(() => {
     if (!paginationActive && chapterDetectionConfirmed && showChapterDetection) {
       setShowChapterDetection(false);
@@ -193,11 +143,12 @@ function UploadArea({ onContentLoaded, onChaptersDetected, bookId = null }) {
 
   return (
     <>
-      {showChapterDetection && (
-        <ChapterDetectionDialog
-          chapters={detectedChaptersLocal}
-          onConfirm={handleChaptersConfirm}
-          onCancel={handleChaptersCancel}
+      {showChapterDetection && pendingChapters && (
+        <ChapterReview
+          chapters={pendingChapters}
+          bookTitle={pendingBookTitle}
+          onConfirm={handleReviewConfirm}
+          onCancel={handleReviewCancel}
         />
       )}
       <div className="upload-area" role="region" aria-label="Área de carga de archivos">
