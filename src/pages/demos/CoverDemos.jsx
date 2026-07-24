@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { buildChapterCoverHtml, COVER_LAYOUTS, DEFAULT_COVER_EFFECTS } from '../../utils/chapterCover';
-import { sampleLandscape, samplePortrait } from './sampleImage';
+import { sampleLandscape, sampleLandscape2, samplePortrait } from './sampleImage';
 import './CoverDemos.css';
 
 // Page formats → aspect ratio (width/height) for the thumbnail frame.
@@ -31,7 +31,9 @@ export default function CoverDemos() {
       layout: l.id,
       label: 'CAPÍTULO 3',
       title: 'El Espíritu Santo',
-      imageSrc: l.id === 'medallion' ? samplePortrait : sampleLandscape,
+      // Portrait art reads better for round/vertical layouts.
+      imageSrc: (l.id === 'medallion' || l.id === 'side-strip') ? samplePortrait : sampleLandscape,
+      imageSrc2: sampleLandscape2, // diptych's second image
       effects,
       dims,
     }),

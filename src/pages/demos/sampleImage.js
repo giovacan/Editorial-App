@@ -24,6 +24,23 @@ export const sampleLandscape = svgDataUri(`
         text-anchor="middle" dominant-baseline="middle">Foto de portada</text>
 </svg>`);
 
+/** Second landscape (warm palette) for the diptych layout. */
+export const sampleLandscape2 = svgDataUri(`
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+  <defs>
+    <linearGradient id="g2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f59e0b"/>
+      <stop offset="0.55" stop-color="#ef4444"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="800" fill="url(#g2)"/>
+  <circle cx="260" cy="200" r="80" fill="#fff7ed" opacity="0.85"/>
+  <path d="M0 800 L320 520 L560 660 L820 440 L1050 640 L1200 500 L1200 800 Z" fill="#1f2937" opacity="0.4"/>
+  <text x="600" y="430" font-family="Georgia, serif" font-size="52" fill="#ffffff" opacity="0.92"
+        text-anchor="middle" dominant-baseline="middle">Foto 2</text>
+</svg>`);
+
 /** Square portrait-style placeholder (silhouette) for the medallion layout. */
 export const samplePortrait = svgDataUri(`
 <svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
